@@ -164,8 +164,27 @@ func compassContextCommand(shellName, exe, placeholder string) string {
 }
 
 func gitignoreContextCommand(shellName, exe, placeholder string) string {
-	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -NoExit -Command "& %s --task context-gitignore --path '%s'"`,
-		shellName, shell.PsQuote(exe), placeholder)
+	// El binario es de consola, asi que lanzarlo directamente hace parpadear
+	// una ventana cmd. Lo arrancamos con `Start-Process -WindowStyle Hidden`
+	// para que no aparezca ninguna consola, y sustituimos el resultado visible
+	// por un globo de notificacion.
+	script := fmt.Sprintf(`
+$exe = %s
+$path = %s
+$p = Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList @('--task','context-gitignore','--path',$path) -Wait -PassThru
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$n = New-Object System.Windows.Forms.NotifyIcon
+$n.Icon = [System.Drawing.SystemIcons]::Information
+$n.Visible = $true
+if ($p.ExitCode -eq 0) {
+  $n.ShowBalloonTip(4000, 'Compass Go', '.gitignore creado o actualizado', 'Info')
+} else {
+  $n.ShowBalloonTip(5000, 'Compass Go', 'No se pudo crear el .gitignore', 'Warning')
+}
+Start-Sleep -Seconds 4
+$n.Dispose()`, shell.PsQuote(exe), shell.PsQuote(placeholder))
+	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -WindowStyle Hidden -Command "%s"`, shellName, script)
 }
 
 func contextMenuUninstall() error {
