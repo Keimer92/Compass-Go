@@ -243,6 +243,22 @@ func commandExists(name string) bool {
 	return strings.TrimSpace(string(out)) == "True"
 }
 
+func commandPath(name string) string {
+	ps := fmt.Sprintf(
+		`$c = Get-Command -Name %s -ErrorAction SilentlyContinue | Where-Object { $_.CommandType -in @('Application','ExternalScript') } | Select-Object -First 1; if ($c) { $c.Path }`,
+		shell.PsQuote(name),
+	)
+	out, err := shell.RunPS(ps)
+	if err != nil {
+		return ""
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" || !filepath.IsAbs(path) {
+		return ""
+	}
+	return path
+}
+
 // allTypes devuelve los 7 tipos de proyecto reconocidos (para registrar tareas
 // globales por tipo).
 func allTypes() []project.ProjectType {

@@ -238,7 +238,7 @@ var vibeTools = []vibeTool{
 	{"08Freebuff", "Freebuff", "freebuff", "npm install -g freebuff", nil, viaCmd},
 	{"09CommandCode", "Command Code", "cmdc --yolo", "npm install -g command-code", nil, viaCmd},
 	{"10QoderCli", "Qoder CLI", "qodercli --yolo", "irm https://qoder.com/install.ps1 | iex", []string{"HOME/.qoder/bin/qodercli/qodercli.exe", "HOME/.qoder/bin/qodercli.exe"}, viaPowerShell},
-	{"11Hermes", "Hermes", "hermes", "iex (irm https://hermes-agent.nousresearch.com/install.ps1)", []string{"LOCALAPPDATA/hermes/bin/hermes.exe"}, viaPowerShell},
+	{"11Hermes", "Hermes", "hermes", "iex (irm https://hermes-agent.nousresearch.com/install.ps1)", []string{"LOCALAPPDATA/hermes/bin/hermes.exe", "LOCALAPPDATA/hermes/bin/hermes.cmd"}, viaPowerShell},
 }
 
 func resolveToolCommand(t vibeTool) (string, string) {
@@ -248,8 +248,12 @@ func resolveToolCommand(t vibeTool) (string, string) {
 		bin = b
 		args = a
 	}
-	if commandExists(bin) {
-		return t.cli, ""
+	if path := commandPath(bin); path != "" {
+		path = preferCmdShim(path)
+		if args != "" {
+			return fmt.Sprintf("%s %s", shell.PsQuote(path), args), path
+		}
+		return shell.PsQuote(path), path
 	}
 	for _, cand := range fallbackCandidates(t) {
 		if fileExists(cand) {
@@ -282,7 +286,30 @@ func fallbackCandidates(t vibeTool) []string {
 			out = append(out, hint)
 		}
 	}
+	if strings.HasPrefix(t.install, "npm ") {
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			if home := homeDir(); home != "" {
+				appData = filepath.Join(home, "AppData", "Roaming")
+			}
+		}
+		if appData != "" {
+			bin, _, _ := strings.Cut(t.cli, " ")
+			base := filepath.Join(appData, "npm", bin)
+			out = append(out, base+".cmd", base+".exe", base+".ps1", base)
+		}
+	}
 	return out
+}
+
+func preferCmdShim(path string) string {
+	if strings.EqualFold(filepath.Ext(path), ".ps1") {
+		cmdShim := strings.TrimSuffix(path, filepath.Ext(path)) + ".cmd"
+		if fileExists(cmdShim) {
+			return cmdShim
+		}
+	}
+	return path
 }
 
 func joinRelative(base, relative string) string {
