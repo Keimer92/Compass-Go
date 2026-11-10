@@ -772,6 +772,10 @@ func addContextGitignoreTask(ctx *project.ProjectContext) error {
 
 // AddContextGitignoreFromDir escribe un .gitignore sensato para la carpeta dada
 // subiendo hasta encontrar un proyecto reconocido.
+//
+// Si no hay ningun proyecto reconocido en la carpeta ni en sus padres, no falla:
+// crea un .gitignore generico en la carpeta seleccionada (así el menu contextual
+// siempre hace algo util, en lugar de mostrar un error).
 func AddContextGitignoreFromDir(start string) error {
 	info, err := os.Stat(start)
 	if err != nil || !info.IsDir() {
@@ -788,7 +792,8 @@ func AddContextGitignoreFromDir(start string) error {
 		}
 		dir = parent
 	}
-	return fmt.Errorf("no se encontro un proyecto reconocido en esta carpeta ni en sus padres")
+	// No se encontro un proyecto reconocido: .gitignore generico en la carpeta.
+	return writeContextGitignore(start, gitignoreContentForPlatform(project.TypeGo))
 }
 
 func printPreserved(pt project.ProjectType) {

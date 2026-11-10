@@ -1,26 +1,33 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Instalando Compass (Go)...
+title Instalando Compass Go...
 echo.
 echo =============================================
-echo   Compass for Go - Instalador
+echo   Compass Go - Compilar + Instalar + Empaquetar
 echo =============================================
 echo.
 
 REM ---------------------------------------------------------------
 REM  Flags:  install.bat --force   rehace tambien los menus y la cascada
 REM          install.bat --vibe    vuelve a configurar Vibe Coding
+REM          install.bat --no-dist omite la generacion del instalador
 REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
+set "MAKE_DIST=1"
 :parse
 if "%~1"=="" goto parsed
-if /i "%~1"=="--force" set "FORCE=1"
-if /i "%~1"=="-f"     set "FORCE=1"
-if /i "%~1"=="--vibe"  set "WITH_VIBE=1"
+if /i "%~1"=="--force"   set "FORCE=1"
+if /i "%~1"=="-f"        set "FORCE=1"
+if /i "%~1"=="--vibe"    set "WITH_VIBE=1"
+if /i "%~1"=="--no-dist" set "MAKE_DIST=0"
 shift
 goto parse
 :parsed
+
+set "BINDIR=%LOCALAPPDATA%\Programs\Keimer"
+set "LEGACYBIN=%USERPROFILE%\.cargo\bin"
+set "MAKENSIS=%ProgramFiles(x86)%\NSIS\makensis.exe"
 
 where go >nul 2>nul
 if errorlevel 1 (
@@ -79,7 +86,6 @@ echo.
 REM ---------------------------------------------------------------
 REM  2. Copiar binario e iconos
 REM ---------------------------------------------------------------
-set "BINDIR=%USERPROFILE%\.cargo\bin"
 if not exist "%BINDIR%" mkdir "%BINDIR%"
 
 echo [INFO] Instalando en %BINDIR%...
@@ -107,15 +113,38 @@ if not exist "%BINDIR%\opencode.ico" if exist "%BINDIR%\Default.ico" (
 echo [OK] Iconos copiados.
 echo.
 
-echo %PATH% | "%SystemRoot%\System32\find.exe" /i "%BINDIR%" >nul
-if errorlevel 1 (
-    echo [WARN] %BINDIR% no esta en el PATH.
-    echo        Anadelo para poder escribir "compass-go" en cualquier terminal.
-    echo.
+REM ---------------------------------------------------------------
+REM  3. Migrar la instalacion antigua en .cargo\bin
+REM ---------------------------------------------------------------
+REM Compass vivia antes en .cargo\bin (carpeta de Rust). Se borra solo
+REM compass-go.exe; los .ico se dejan porque otros tools (code-runner) los
+REM comparten.
+if exist "%LEGACYBIN%\compass-go.exe" (
+    del /f /q "%LEGACYBIN%\compass-go.exe" >nul 2>nul
+    if exist "%LEGACYBIN%\compass-go.exe" (
+        echo [WARN] No se pudo borrar %LEGACYBIN%\compass-go.exe.
+    ) else (
+        echo [OK] Copia antigua de .cargo\bin eliminada.
+    )
 )
+echo.
 
 REM ---------------------------------------------------------------
-REM  3. Menu contextual de Compass
+REM  4. Asegurar %BINDIR% en el PATH del usuario
+REM ---------------------------------------------------------------
+REM Se edita HKCU\Environment\Path conservando el tipo REG_EXPAND_SZ y sin
+REM expandir variables existentes (%USERPROFILE%, etc.).
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$d='%BINDIR%'; $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); if($k){$v=[string]$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); if(($v -split ';') -notcontains $d){if($v.TrimEnd(';') -eq ''){$nv=$d}else{$nv=$v.TrimEnd(';')+';'+$d}; $k.SetValue('Path',$nv,[Microsoft.Win32.RegistryValueKind]::ExpandString)}; $k.Close()}"
+if errorlevel 1 (
+    echo [WARN] No se pudo actualizar el PATH del usuario.
+    echo        Anade manualmente: %BINDIR%
+) else (
+    echo [OK] PATH del usuario actualizado. Abre una terminal nueva para verlo.
+)
+echo.
+
+REM ---------------------------------------------------------------
+REM  5. Menu contextual de Compass
 REM ---------------------------------------------------------------
 echo [INFO] Configurando menu contextual de Compass...
 "%BINDIR%\compass-go.exe" --task context-menu-install
@@ -127,7 +156,7 @@ if errorlevel 1 (
 echo.
 
 REM ---------------------------------------------------------------
-REM  4. Vibe Coding (solo la primera vez o con --vibe)
+REM  6. Vibe Coding (solo la primera vez o con --vibe)
 REM ---------------------------------------------------------------
 if "%FORCE%"=="1" set "WITH_VIBE=1"
 reg query "HKCU\Software\Classes\Directory\ContextMenus\VibeCoding" >nul 2>nul
@@ -147,12 +176,51 @@ if "%WITH_VIBE%"=="1" (
 )
 echo.
 
+REM ---------------------------------------------------------------
+REM  7. Generar el instalador autonomo en dist\
+REM ---------------------------------------------------------------
+if "%MAKE_DIST%"=="0" (
+    echo [SKIP] Generacion de dist omitida (--no-dist^).
+    goto done
+)
+
+echo [INFO] Preparando dist\payload...
+if not exist "dist\payload" mkdir "dist\payload"
+copy /Y "compass-go.exe" "dist\payload\compass-go.exe" >nul
+for %%I in (Icon.ico Default.ico opencode.ico) do (
+    if exist "assets\icon\%%I" (
+        copy /Y "assets\icon\%%I" "dist\payload\%%I" >nul 2>nul
+    )
+)
+
+if not exist "%MAKENSIS%" (
+    echo [WARN] NSIS no esta instalado; se omite el instalador.
+    echo        Instala NSIS desde https://nsis.sourceforge.io/ y repite,
+    echo        o ejecuta dist\build_installer.bat.
+    goto done
+)
+
+echo [INFO] Generando dist\CompassGo-Setup.exe...
+pushd "dist"
+"%MAKENSIS%" installer.nsi >nul
+if errorlevel 1 (
+    popd
+    echo [WARN] No se pudo generar el instalador.
+) else (
+    popd
+    echo [OK] dist\CompassGo-Setup.exe generado.
+)
+echo.
+
+:done
 REM El icono de las entradas nuevas solo aparece al refrescar la cache.
 ie4uinit.exe -show >nul 2>nul
 
 echo =============================================
 echo   [OK] Instalacion completada
 echo =============================================
+echo   Binario:    %BINDIR%\compass-go.exe
+if "%MAKE_DIST%"=="1" if exist "dist\CompassGo-Setup.exe" echo   Instalador: %CD%\dist\CompassGo-Setup.exe
 echo.
 echo Si el menu no aparece, reinicia el Explorador:
 echo   taskkill /f /im explorer.exe ^& start explorer.exe

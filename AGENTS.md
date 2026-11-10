@@ -49,7 +49,7 @@ Compass Go/
 ├─ assets/icon/               # Icon.ico, Default.ico, opencode.ico
 ├─ dist/                      # instalador NSIS (installer.nsi, build_installer.bat, payload/)
 ├─ build.bat                  # compilar compass-go.exe (con go-winres)
-├─ install.bat                # instalar en la máquina (bin + menús)
+├─ install.bat                # compilar + instalar + empaquetar (todo en uno)
 ├─ uninstall.bat              # desinstalar de la máquina
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
 └─ PLAN.md                    # plan de migración original
@@ -60,7 +60,7 @@ Módulo Go: `compass` (imports `compass/internal/...`).
 ## Scripts `.bat` (Windows) — uso
 
 Hay **tres tipos** de scripts según su propósito, más un cuarto de empaquetado
-que los combina:
+independiente:
 
 ### 1. `build.bat` — compilar (tipo: *build*)
 
@@ -75,16 +75,19 @@ build.bat
 - Si no, avisa y compila sin recursos de Windows.
 - Equivalente manual: `go build -o compass-go.exe ./cmd/compass`.
 
-### 2. `install.bat` — instalar en la máquina (tipo: *install*)
+### 2. `install.bat` — compilar + instalar + empaquetar (tipo: *install*)
 
-Compila, copia `compass-go.exe` + iconos a `%USERPROFILE%\.cargo\bin`
-(añadido al PATH de usuario), registra el **menú contextual Compass** y la
-acción **`.gitignore`**, y configura **Vibe Coding** la primera vez.
+Compila `compass-go.exe`, lo instala con los iconos en
+`%LOCALAPPDATA%\Programs\Keimer` (añadido al PATH de usuario), elimina la copia
+antigua de `%USERPROFILE%\.cargo\bin`, registra el **menú contextual Compass** y
+la acción **`.gitignore`**, configura **Vibe Coding** la primera vez y genera el
+instalador autónomo `dist\CompassGo-Setup.exe` (si NSIS está instalado).
 
 ```bat
-install.bat              # instalación normal
+install.bat              # compilar + instalar + generar dist
 install.bat --force      # rehace también menús y la cascada Vibe Coding
 install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
+install.bat --no-dist    # instala pero no genera el instalador
 ```
 
 - Cierra `compass-go.exe` en ejecución antes de sobrescribir (Windows no
@@ -92,12 +95,15 @@ install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
 - El menú contextual queda en `HKCU\...\shell\zz_CompassGo` y
   `zz_CompassGitignore`; Vibe Coding en `zz_VibeCoding`.
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
+- Si falta NSIS, avisa y omite solo el instalador; el resto se instala igual.
 
 ### 3. `uninstall.bat` — desinstalar de la máquina (tipo: *uninstall*)
 
 Quita los menús contextuales (Compass + `.gitignore` + cascada Vibe Coding)
 vía el propio binario (`--task context-menu-uninstall` / `opencode-uninstall`)
-y borra `compass-go.exe` e iconos de `%USERPROFILE%\.cargo\bin`.
+y borra `compass-go.exe` e iconos de `%LOCALAPPDATA%\Programs\Keimer` (más
+cualquier resto en `%USERPROFILE%\.cargo\bin`), quitando esa carpeta del PATH
+del usuario.
 
 ```bat
 uninstall.bat
@@ -111,17 +117,18 @@ uninstall.bat
 > propia máquina**. Para **distribuir** a terceros usa el instalador NSIS
 > (ver abajo), que no requiere Go ni scripts sueltos.
 
-### 4. `dist/build_installer.bat` — empaquetar el instalador (tipo: *packaging*)
+### 4. `dist/build_installer.bat` — empaquetar sin instalar (tipo: *packaging*)
 
 Construye `compass-go.exe`, reúne los archivos en `dist/payload/` y genera
-el instalador autónomo `dist/CompassGo-Setup.exe` con NSIS.
+el instalador autónomo `dist/CompassGo-Setup.exe` con NSIS. `install.bat` ya
+hace esto mismo; este script sirve para empaquetar sin tocar la máquina.
 
 ```bat
 dist\build_installer.bat
 ```
 
 - Requiere **NSIS** instalado (`makensis.exe` en `C:\Program Files (x86)\NSIS`).
-- El instalador instala en `%LOCALAPPDATA%\Programs\Compass Go`, añade ese
+- El instalador instala en `%LOCALAPPDATA%\Programs\Keimer`, añade ese
   directorio al PATH del usuario (HKCU\Environment) y registra el menú
   contextual. La desinstalación (desde "Agregar o quitar programas") limpia
   también el PATH.
