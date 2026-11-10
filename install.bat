@@ -145,14 +145,14 @@ if exist "%LEGACYBIN%\compass-go.exe" (
 echo.
 
 REM ---------------------------------------------------------------
-REM  4. Asegurar %BINDIR% en el PATH del usuario
+REM  4. Asegurar Compass y los shims globales de npm en el PATH del usuario
 REM ---------------------------------------------------------------
 REM Se edita HKCU\Environment\Path conservando el tipo REG_EXPAND_SZ y sin
 REM expandir variables existentes (%USERPROFILE%, etc.).
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$d='%BINDIR%'; $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); if($k){$v=[string]$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); if(($v -split ';') -notcontains $d){if($v.TrimEnd(';') -eq ''){$nv=$d}else{$nv=$v.TrimEnd(';')+';'+$d}; $k.SetValue('Path',$nv,[Microsoft.Win32.RegistryValueKind]::ExpandString)}; $k.Close()}"
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$dirs=@('%BINDIR%'); $npm=Join-Path $env:APPDATA 'npm'; if(Test-Path -LiteralPath $npm -PathType Container){$dirs+=$npm}; $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); if($k){$v=[string]$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); foreach($d in $dirs){$paths=@($v -split ';' | ForEach-Object {$_.TrimEnd('\')}); if($paths -notcontains $d.TrimEnd('\')){if($v.TrimEnd(';') -eq ''){$v=$d}else{$v=$v.TrimEnd(';')+';'+$d}}}; $kind=try{$k.GetValueKind('Path')}catch{[Microsoft.Win32.RegistryValueKind]::ExpandString}; $k.SetValue('Path',$v,$kind); $k.Close()}"
 if errorlevel 1 (
     echo [WARN] No se pudo actualizar el PATH del usuario.
-    echo        Anade manualmente: %BINDIR%
+    echo        Anade manualmente: %BINDIR% y %APPDATA%\npm
 ) else (
     echo [OK] PATH del usuario actualizado. Abre una terminal nueva para verlo.
 )
