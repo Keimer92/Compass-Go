@@ -1,0 +1,26 @@
+# ============================================
+# .gitignore para Go
+# ============================================
+
+# --- Binarios y pruebas ---
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# --- Editor / entorno local ---
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+*.log
+
+# --- Windows ---
+$RECYCLE.BIN/
+ehthumbs.db
+*.lnk
