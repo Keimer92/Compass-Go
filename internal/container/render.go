@@ -158,22 +158,31 @@ func (c *Container) DrawBody(s tcell.Screen, body Rect, th *theme.Theme) {
 	termH := body.Height - 1
 	if termH > 0 {
 		term := Rect{body.X, body.Y, body.Width, termH}
+		c.term = term
 		p.Session.Resize(term.Width, term.Height)
+		sel := c.sel
 		p.Session.WithScreen(func(v vt10x.View) {
-			renderView(s, term, v, th)
+			renderView(s, term, v, th, sel)
 		})
 	}
 
 	if termH+1 <= body.Height {
 		footer := Rect{body.X, body.Y + termH, body.Width, 1}
-		renderPaneFooter(s, footer, th, p.Session.Exited())
+		renderPaneFooter(s, footer, th, p.Session.Exited(), c.Notice())
 	}
 }
 
+// selectionStyle es el estilo de las celdas seleccionadas: el acento del tema
+// como fondo para que el texto se lea encima.
+func selectionStyle(th *theme.Theme) tcell.Style {
+	return tcell.StyleDefault.Background(th.Brand).Foreground(th.Background)
+}
+
 // renderView vuelca la pantalla parseada en el area del terminal.
-func renderView(s tcell.Screen, area Rect, v vt10x.View, th *theme.Theme) {
+func renderView(s tcell.Screen, area Rect, v vt10x.View, th *theme.Theme, sel Selection) {
 	cols, rows := v.Size()
 	defFG, defBG := th.Text, th.Background
+	selStyle := selectionStyle(th)
 
 	for y := 0; y < area.Height && y < rows; y++ {
 		for x := 0; x < area.Width && x < cols; x++ {
@@ -182,7 +191,11 @@ func renderView(s tcell.Screen, area Rect, v vt10x.View, th *theme.Theme) {
 			if ch == 0 {
 				ch = ' '
 			}
-			s.SetContent(area.X+x, area.Y+y, ch, nil, styleOf(g, defFG, defBG))
+			st := styleOf(g, defFG, defBG)
+			if sel.Contains(x, y) {
+				st = selStyle
+			}
+			s.SetContent(area.X+x, area.Y+y, ch, nil, st)
 			// Una runa ancha ocupa dos celdas: la siguiente la cubre tcell.
 			if uniseg.StringWidth(string(ch)) == 2 {
 				x++
@@ -205,11 +218,14 @@ func renderView(s tcell.Screen, area Rect, v vt10x.View, th *theme.Theme) {
 	st := tcell.StyleDefault.
 		Foreground(colorOf(g.BG, defBG)).
 		Background(colorOf(g.FG, defFG))
+	if sel.Contains(cur.X, cur.Y) {
+		st = selStyle
+	}
 	s.SetContent(area.X+cur.X, area.Y+cur.Y, ch, nil, st)
 }
 
 // renderPaneFooter pinta la ayuda de teclas y el estado del proceso.
-func renderPaneFooter(s tcell.Screen, r Rect, th *theme.Theme, exited bool) {
+func renderPaneFooter(s tcell.Screen, r Rect, th *theme.Theme, exited bool, notice string) {
 	base := tcell.StyleDefault.Background(th.Background)
 	text := base.Foreground(th.Text)
 	muted := base.Foreground(th.Muted)
@@ -228,10 +244,15 @@ func renderPaneFooter(s tcell.Screen, r Rect, th *theme.Theme, exited bool) {
 	seg(" siguiente  ", muted)
 	seg("Alt+1..9", text)
 	seg(" pestana  ", muted)
+	seg("Shift+arrastrar", text)
+	seg(" copiar  ", muted)
 
-	if exited {
+	switch {
+	case notice != "":
+		seg(notice, base.Foreground(th.Success))
+	case exited:
 		seg("proceso finalizado", base.Foreground(th.Warning))
-	} else {
+	default:
 		seg("en ejecucion", base.Foreground(th.Success))
 	}
 

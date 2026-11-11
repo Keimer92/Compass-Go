@@ -3,6 +3,7 @@ package container
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"compass/internal/console"
 
@@ -65,7 +66,21 @@ type Container struct {
 	// prevBtn es el estado del raton en el evento anterior: sin el no se
 	// distingue una pulsacion de un arrastre.
 	prevBtn tcell.ButtonMask
+
+	// sel es la seleccion de texto de la pestana activa y dragging indica que
+	// se esta arrastrando con el boton pulsado.
+	sel      Selection
+	dragging bool
+	// term es el rectangulo del terminal de la pestana activa en coordenadas
+	// de pantalla: lo fija DrawBody y lo usa el raton para pasar a celdas.
+	term Rect
+	// notice es el aviso efimero del pie ("copiado al portapapeles").
+	notice   string
+	noticeAt time.Time
 }
+
+// noticeFor es lo que dura el aviso del pie.
+const noticeFor = 2 * time.Second
 
 // New crea un contenedor sin pestanas.
 func New() *Container {
@@ -99,6 +114,7 @@ func (c *Container) Open(title, script, dir string, rows, cols int) error {
 	c.panes = append(c.panes, Pane{Title: title, Session: s, Dir: dir})
 	c.active = len(c.panes) - 1
 	c.last = c.active
+	c.resetSelection()
 	// Con pestanas abiertas, conhost no deja cerrar la ventana anfitriona de
 	// golpe: la salida pasa por el aviso del menu.
 	console.SetOpenTabs(len(c.panes))
@@ -111,12 +127,14 @@ func (c *Container) ShowMenu() {
 		c.last = c.active
 	}
 	c.active = -1
+	c.resetSelection()
 }
 
 // ShowLast vuelve a la ultima pestana de terminal. Devuelve false si no hay.
 func (c *Container) ShowLast() bool {
 	if c.last >= 0 && c.last < len(c.panes) {
 		c.active = c.last
+		c.resetSelection()
 		return true
 	}
 	if len(c.panes) == 0 {
@@ -124,6 +142,7 @@ func (c *Container) ShowLast() bool {
 	}
 	c.active = len(c.panes) - 1
 	c.last = c.active
+	c.resetSelection()
 	return true
 }
 
@@ -136,6 +155,7 @@ func (c *Container) Select(target int) {
 	if target < len(c.panes) {
 		c.active = target
 		c.last = target
+		c.resetSelection()
 	}
 }
 
@@ -160,6 +180,7 @@ func (c *Container) Next(delta int) {
 	i := ((cur+delta)%n + n) % n
 	c.active = i
 	c.last = i
+	c.resetSelection()
 }
 
 // CloseActive cierra la pestana activa.
@@ -179,6 +200,7 @@ func (c *Container) closePane(i int) {
 	console.UnregisterPane(pane.Session.Pid())
 	console.SetOpenTabs(len(c.panes))
 	pane.Session.Close()
+	c.resetSelection()
 
 	if len(c.panes) == 0 {
 		c.active = -1
@@ -224,6 +246,7 @@ func (c *Container) CloseAll() {
 	console.SetOpenTabs(0)
 	c.active = -1
 	c.last = -1
+	c.resetSelection()
 }
 
 // Click procesa un clic en la barra. Devuelve true si cayo en una pestana o en

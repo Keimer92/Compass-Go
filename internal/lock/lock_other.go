@@ -8,7 +8,7 @@ import "fmt"
 type Lock struct{}
 
 // TryAcquire siempre falla fuera de Windows.
-func TryAcquire(dir string) (*Lock, bool, error) {
+func TryAcquire(key string) (*Lock, bool, error) {
 	return nil, false, fmt.Errorf("Compass solo tiene soporte para Windows")
 }
 

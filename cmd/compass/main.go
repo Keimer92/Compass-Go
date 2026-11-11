@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"compass/internal/lock"
 	"compass/internal/project"
@@ -13,6 +14,7 @@ import (
 	"compass/internal/shell"
 	"compass/internal/tasks"
 	"compass/internal/tui"
+	"compass/internal/window"
 )
 
 func main() {
@@ -61,13 +63,6 @@ func main() {
 
 	// La instancia unica solo aplica a la TUI (sin --task).
 	if task == "" {
-		if _, ok, err := lock.TryAcquire(dir); err != nil {
-			fmt.Fprintln(os.Stderr, "[WARN] No se pudo verificar instancia unica:", err)
-		} else if !ok {
-			fmt.Println("[INFO] Ya hay una instancia de Compass Go corriendo aqui.")
-			return
-		}
-
 		// Sin --task, un fallo de deteccion ofrece elegir la carpeta.
 		ctx, err := project.Detect()
 		if err != nil {
@@ -86,6 +81,19 @@ func main() {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
+		}
+
+		// Un solo Compass por proyecto: si ya hay uno abierto para esta
+		// carpeta, se trae su ventana al frente en vez de abrir otra.
+		guard, free, err := lock.TryAcquire(ctx.ScriptDir)
+		switch {
+		case err != nil:
+			fmt.Fprintln(os.Stderr, "[WARN] No se pudo verificar instancia unica:", err)
+		case !free:
+			reuseOpenInstance(ctx)
+			return
+		default:
+			defer guard.Close()
 		}
 
 		tui.SetTrace(*trace)
@@ -115,6 +123,18 @@ func main() {
 	if shell.CloseTabRequested() {
 		os.Exit(shell.ExitCloseTab)
 	}
+}
+
+// reuseOpenInstance evita una segunda ventana para el mismo proyecto: lleva al
+// frente la que ya esta abierta y, si no la encuentra, deja el aviso a la vista
+// un momento antes de cerrar esta (la lanzada desde el menu contextual abre su
+// propia consola y desaparece al salir).
+func reuseOpenInstance(ctx *project.ProjectContext) {
+	if window.Focus(ctx.WindowTitle()) {
+		return
+	}
+	fmt.Printf("[INFO] Ya hay un Compass Go abierto para %s.\n", ctx.ScriptDir)
+	time.Sleep(2 * time.Second)
 }
 
 // resolveDir aplica la misma prioridad que Rust: --pick > --path > autodeteccion.

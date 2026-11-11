@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"compass/internal/clipboard"
 )
 
 // TestCompassSubmenusE2E arranca el compass-go.exe real dentro de una ConPTY y
@@ -25,18 +28,7 @@ func TestCompassSubmenusE2E(t *testing.T) {
 		t.Skip("define COMPASS_E2E=1 para ejecutar la prueba de extremo a extremo")
 	}
 
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	exe := filepath.Join(root, "compass-go.exe")
-	if _, err := os.Stat(exe); err != nil {
-		build := exec.Command("go", "build", "-o", exe, "./cmd/compass")
-		build.Dir = root
-		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("no se pudo compilar compass-go.exe: %v\n%s", err, out)
-		}
-	}
+	exe := compassExe(t)
 
 	project := t.TempDir()
 	conf := `{"productName":"Fixture","version":"1.0.0"}`
@@ -111,4 +103,185 @@ func waitForText(s *Session, want string, timeout time.Duration) bool {
 		time.Sleep(150 * time.Millisecond)
 	}
 	return false
+}
+
+// compassExe compila el binario real (si falta) y devuelve su ruta.
+func compassExe(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(root, "compass-go.exe")
+	if _, err := os.Stat(exe); err != nil {
+		build := exec.Command("go", "build", "-o", exe, "./cmd/compass")
+		build.Dir = root
+		if out, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("no se pudo compilar compass-go.exe: %v\n%s", err, out)
+		}
+	}
+	return exe
+}
+
+// TestTabSwitchE2E reproduce el fallo de abrir una pestana, volver a la pestana
+// principal y quedarse sin poder abrir otra: el menu resolvia el clic al pulsar
+// con un estado del raton que seguia "pulsado" al cruzar de pestana, asi que la
+// primera pulsacion al volver se tomaba por un arrastre.
+//
+//	COMPASS_E2E=1 go test ./internal/container -run TestTabSwitchE2E -v
+func TestTabSwitchE2E(t *testing.T) {
+	if os.Getenv("COMPASS_E2E") != "1" {
+		t.Skip("define COMPASS_E2E=1 para ejecutar la prueba de extremo a extremo")
+	}
+
+	exe := compassExe(t)
+
+	// Proyecto Go minimo: la card "Run" (go run .) termina sola y deja la
+	// pestana abierta con su marca ✓.
+	project := t.TempDir()
+	files := map[string]string{
+		"go.mod":  "module fixture\n\ngo 1.21\n",
+		"main.go": "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"HOLA MUNDO\") }\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(project, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s, err := Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120)
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	defer s.Close()
+
+	if !waitForText(s, "DESARROLLO", 25*time.Second) {
+		t.Fatalf("el menu no se dibujo. Pantalla:\n%s", s.Text())
+	}
+
+	// Primera pestana: card "Run" de la rejilla.
+	mouseClick(s, 10, 8)
+	if !waitForText(s, "1 Run", 20*time.Second) {
+		t.Fatalf("no se abrio la pestana 1. Pantalla:\n%s", s.Text())
+	}
+
+	// Volver a Inicio desde la barra.
+	mouseClick(s, 5, 1)
+	if !waitForText(s, "DESARROLLO", 10*time.Second) {
+		t.Fatalf("el clic en la pestana Compass no volvio al menu. Pantalla:\n%s", s.Text())
+	}
+
+	// La misma card debe abrir una segunda pestana.
+	mouseClick(s, 10, 8)
+	if !waitForText(s, "2 Run", 20*time.Second) {
+		t.Fatalf("no se abrio la pestana 2 tras volver al menu. Pantalla:\n%s", s.Text())
+	}
+
+	// Y desde el menu, la barra sigue sirviendo para volver a una pestana.
+	mouseClick(s, 5, 1)
+	if !waitForText(s, "DESARROLLO", 10*time.Second) {
+		t.Fatalf("no volvio al menu. Pantalla:\n%s", s.Text())
+	}
+	mouseClick(s, 20, 1)
+	if !waitForText(s, "HOLA MUNDO", 10*time.Second) {
+		t.Fatalf("el clic en la pestana 1 no la mostro. Pantalla:\n%s", s.Text())
+	}
+}
+
+// TestSelectionCopyE2E comprueba que arrastrar sobre el terminal de una pestana
+// selecciona el texto visible y lo deja en el portapapeles.
+//
+//	COMPASS_E2E=1 go test ./internal/container -run TestSelectionCopyE2E -v
+func TestSelectionCopyE2E(t *testing.T) {
+	if os.Getenv("COMPASS_E2E") != "1" {
+		t.Skip("define COMPASS_E2E=1 para ejecutar la prueba de extremo a extremo")
+	}
+
+	exe := compassExe(t)
+
+	project := t.TempDir()
+	files := map[string]string{
+		"go.mod":  "module fixture\n\ngo 1.21\n",
+		"main.go": "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"HOLA MUNDO\") }\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(project, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s, err := Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120)
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	defer s.Close()
+
+	if !waitForText(s, "DESARROLLO", 25*time.Second) {
+		t.Fatalf("el menu no se dibujo. Pantalla:\n%s", s.Text())
+	}
+	mouseClick(s, 10, 8) // card Run: pestana con la salida de `go run .`
+	if !waitForText(s, "HOLA MUNDO", 25*time.Second) {
+		t.Fatalf("la tarea no imprimio nada. Pantalla:\n%s", s.Text())
+	}
+
+	row, col, ok := findText(s, "HOLA MUNDO")
+	if !ok {
+		t.Fatalf("no se encontro el texto. Pantalla:\n%s", s.Text())
+	}
+
+	// Marca previa para no dar por bueno lo que ya estaba en el portapapeles.
+	if err := clipboard.Write("compass-e2e-sentinel"); err != nil {
+		t.Fatalf("no se pudo preparar el portapapeles: %v", err)
+	}
+
+	// Shift+arrastrar sobre la linea copiada.
+	mouseDrag(s, col, row, col+len("HOLA MUNDO")-1, row)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := clipboardText(t); strings.Contains(got, "HOLA MUNDO") {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("el texto seleccionado no llego al portapapeles (portapapeles: %q). Pantalla:\n%s",
+		clipboardText(t), s.Text())
+}
+
+// mouseClick manda una pulsacion y su suelta en (col,row).
+func mouseClick(s *Session, col, row int) {
+	s.Write([]byte(fmt.Sprintf("\x1b[<0;%d;%dM", col+1, row+1)))
+	time.Sleep(120 * time.Millisecond)
+	s.Write([]byte(fmt.Sprintf("\x1b[<0;%d;%dm", col+1, row+1)))
+	time.Sleep(500 * time.Millisecond)
+}
+
+// mouseDrag arrastra con Shift (boton 1 + modificador 4) de (x0,y0) a (x1,y1).
+func mouseDrag(s *Session, x0, y0, x1, y1 int) {
+	s.Write([]byte(fmt.Sprintf("\x1b[<4;%d;%dM", x0+1, y0+1)))
+	time.Sleep(120 * time.Millisecond)
+	s.Write([]byte(fmt.Sprintf("\x1b[<36;%d;%dM", x1+1, y1+1)))
+	time.Sleep(120 * time.Millisecond)
+	s.Write([]byte(fmt.Sprintf("\x1b[<4;%d;%dm", x1+1, y1+1)))
+	time.Sleep(300 * time.Millisecond)
+}
+
+// findText busca want en la pantalla y devuelve su fila y columna.
+func findText(s *Session, want string) (row, col int, ok bool) {
+	for y, line := range strings.Split(s.Text(), "\n") {
+		if i := strings.Index(line, want); i >= 0 {
+			return y, utf8.RuneCountInString(line[:i]), true
+		}
+	}
+	return 0, 0, false
+}
+
+// clipboardText lee el portapapeles con PowerShell (solo para las pruebas).
+func clipboardText(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw").Output()
+	if err != nil {
+		t.Fatalf("Get-Clipboard: %v", err)
+	}
+	return string(out)
 }

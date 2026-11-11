@@ -43,7 +43,8 @@ Compass Go/
 │  ├─ theme/                  # 14 temas + persistencia
 │  ├─ project/                # detección de tipo de proyecto
 │  ├─ shell/                  # envoltorio PowerShell / cmd
-│  ├─ lock/                   # instancia única (LockFileEx, Windows)
+│  ├─ lock/                   # instancia única por proyecto (LockFileEx, Windows)
+│  ├─ window/                 # trae al frente la ventana de otra instancia abierta
 │  ├─ console/                # Ctrl-C handler y bloqueo de cierre (Windows)
 │  ├─ prompts/  ui/           # prompts y helpers de UI
 ├─ assets/icon/               # Icon.ico, Default.ico, opencode.ico
@@ -167,9 +168,13 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
   pintadas.
 - **Terminal embebida**: `go-pty` (ConPTY) + `vt10x` (parser VT) en vez de
   `portable-pty`. **vt10x no tiene scrollback** (solo pantalla visible).
-- **Instancia única**: `internal/lock` con `x/sys/windows.LockFileEx`
-  (archivo `.compass-go-instance.lock` junto al ejecutable). El conteo de
-  instancias previas usa el nombre real del exe (`os.Args[0]`), así que
+- **Instancia única por proyecto**: `internal/lock` con
+  `x/sys/windows.LockFileEx` sobre un fichero por proyecto en
+  `%LOCALAPPDATA%\compass\instances` (no se escribe nada en la carpeta del
+  proyecto). Si ya hay un Compass abierto para esa carpeta, la segunda
+  instancia no arranca: `internal/window` trae al frente su ventana de consola
+  (conhost o Windows Terminal) y, si no la encuentra, avisa y sale. El conteo
+  de instancias previas usa el nombre real del exe (`os.Args[0]`), así que
   renombrar el binario no rompe el conteo.
 - **Regex**: RE2 (`regexp`) en vez de la crate `regex` de Rust — **sin
   lookahead/lookbehind**.

@@ -174,6 +174,10 @@ func Run(ctx *project.ProjectContext) error {
 		case *tcell.EventMouse:
 			if panes.Active() >= 0 {
 				panes.HandleMouse(e)
+				// El menu no vio este evento: su estado del raton hay que
+				// ponerlo al dia igualmente o, al volver a Inicio, la primera
+				// pulsacion se tomaria por un arrastre y no abriria nada.
+				prevBtn = e.Buttons()
 				continue
 			}
 			handleMouse(st, ctx, panes, screen, e, &prevBtn)
@@ -253,9 +257,15 @@ func handleKey(st *MenuState, ctx *project.ProjectContext, panes *container.Cont
 
 // handleMouse procesa raton: rueda mueve filas; clic en pestana cambia; clic en
 // card ejecuta. El hover sigue al puntero.
+//
+// El clic se resuelve al soltar, como en el contenedor y en los submenus. Si se
+// resolviera al pulsar, un arrastre ejecutaria la card y el estado del raton
+// quedaria "pulsado" al cruzar de una pestana al menu.
 func handleMouse(st *MenuState, ctx *project.ProjectContext, panes *container.Container, screen tcell.Screen, e *tcell.EventMouse, prevBtn *tcell.ButtonMask) {
 	x, y := e.Position()
 	btn := e.Buttons()
+	prev := *prevBtn
+	*prevBtn = btn
 
 	if btn&tcell.WheelUp != 0 {
 		st.moveRow(-1)
@@ -264,14 +274,16 @@ func handleMouse(st *MenuState, ctx *project.ProjectContext, panes *container.Co
 		st.moveRow(1)
 	}
 
-	pressed := btn&tcell.Button1 != 0
-	wasPressed := *prevBtn&tcell.Button1 != 0
-	if pressed && !wasPressed {
-		// Barra de pestanas.
+	if btn&tcell.Button1 == 0 && prev&tcell.Button1 != 0 {
+		// Barra del contenedor: pestanas de tarea y sus botones ×.
+		if panes.Click(x, y) {
+			st.setHover(-1)
+			return
+		}
+		// Barra de pestanas del menu.
 		if t, ok := st.tabAt(x, y); ok {
 			st.setTab(t)
 			st.setHover(-1)
-			*prevBtn = btn
 			return
 		}
 		// Boton [x] del recordatorio de InferX.
@@ -279,21 +291,19 @@ func handleMouse(st *MenuState, ctx *project.ProjectContext, panes *container.Co
 			st.ui.ReminderButton.Contains(x, y) {
 			st.opencodeReminder = false
 			st.setHover(-1)
-			*prevBtn = btn
 			return
 		}
 		// Card.
 		if idx := st.hoverAt(x, y); idx >= 0 {
 			st.jumpTo(idx)
 			openSelected(ctx, st.items[idx], panes, screen)
-			*prevBtn = btn
+			st.setHover(-1)
 			return
 		}
 	}
 
 	// El hover se actualiza con cualquier actividad del raton.
 	st.setHover(st.hoverAt(x, y))
-	*prevBtn = btn
 }
 
 // openSelected abre la tarea de la card en una pestana incrustada. Si ConPTY
