@@ -7,7 +7,6 @@ import (
 	"compass/internal/theme"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/hinshun/vt10x"
 	"github.com/rivo/uniseg"
 )
 
@@ -160,15 +159,16 @@ func (c *Container) DrawBody(s tcell.Screen, body Rect, th *theme.Theme) {
 		term := Rect{body.X, body.Y, body.Width, termH}
 		c.term = term
 		p.Session.Resize(term.Width, term.Height)
+		// Asegura tamano y captura inicial antes de pintar.
+		p.Session.WithScreen(p.sb.Update)
 		sel := c.sel
-		p.Session.WithScreen(func(v vt10x.View) {
-			renderView(s, term, v, th, sel)
-		})
+		top := p.sb.TopRow()
+		renderView(s, term, p.sb, top, th, sel)
 	}
 
 	if termH+1 <= body.Height {
 		footer := Rect{body.X, body.Y + termH, body.Width, 1}
-		renderPaneFooter(s, footer, th, p.Session.Exited(), c.Notice())
+		renderPaneFooter(s, footer, th, p.Session.Exited(), c.Notice(), p.sb.Offset())
 	}
 }
 
@@ -178,21 +178,23 @@ func selectionStyle(th *theme.Theme) tcell.Style {
 	return tcell.StyleDefault.Background(th.Brand).Foreground(th.Background)
 }
 
-// renderView vuelca la pantalla parseada en el area del terminal.
-func renderView(s tcell.Screen, area Rect, v vt10x.View, th *theme.Theme, sel Selection) {
-	cols, rows := v.Size()
+// renderView vuelca el documento (historia + pantalla viva) del scrollback en
+// el area del terminal. top es la primera fila del documento visible.
+func renderView(s tcell.Screen, area Rect, b *Scrollback, top int, th *theme.Theme, sel Selection) {
 	defFG, defBG := th.Text, th.Background
 	selStyle := selectionStyle(th)
+	cols := b.Cols()
 
-	for y := 0; y < area.Height && y < rows; y++ {
+	for y := 0; y < area.Height; y++ {
+		docY := top + y
 		for x := 0; x < area.Width && x < cols; x++ {
-			g := v.Cell(x, y)
+			g := b.Cell(x, docY)
 			ch := g.Char
 			if ch == 0 {
 				ch = ' '
 			}
 			st := styleOf(g, defFG, defBG)
-			if sel.Contains(x, y) {
+			if sel.Contains(x, docY) {
 				st = selStyle
 			}
 			s.SetContent(area.X+x, area.Y+y, ch, nil, st)
@@ -203,29 +205,31 @@ func renderView(s tcell.Screen, area Rect, v vt10x.View, th *theme.Theme, sel Se
 		}
 	}
 
-	if !v.CursorVisible() {
+	cx, cy, cg, visible := b.Cursor()
+	if !visible {
 		return
 	}
-	cur := v.Cursor()
-	if cur.X < 0 || cur.X >= area.Width || cur.Y < 0 || cur.Y >= area.Height {
+	if cy < top || cy >= top+area.Height {
 		return
 	}
-	g := v.Cell(cur.X, cur.Y)
-	ch := g.Char
+	if cx < 0 || cx >= area.Width {
+		return
+	}
+	ch := cg.Char
 	if ch == 0 {
 		ch = ' '
 	}
 	st := tcell.StyleDefault.
-		Foreground(colorOf(g.BG, defBG)).
-		Background(colorOf(g.FG, defFG))
-	if sel.Contains(cur.X, cur.Y) {
+		Foreground(colorOf(cg.BG, defBG)).
+		Background(colorOf(cg.FG, defFG))
+	if sel.Contains(cx, cy) {
 		st = selStyle
 	}
-	s.SetContent(area.X+cur.X, area.Y+cur.Y, ch, nil, st)
+	s.SetContent(area.X+cx, area.Y+(cy-top), ch, nil, st)
 }
 
 // renderPaneFooter pinta la ayuda de teclas y el estado del proceso.
-func renderPaneFooter(s tcell.Screen, r Rect, th *theme.Theme, exited bool, notice string) {
+func renderPaneFooter(s tcell.Screen, r Rect, th *theme.Theme, exited bool, notice string, scrollOffset int) {
 	base := tcell.StyleDefault.Background(th.Background)
 	text := base.Foreground(th.Text)
 	muted := base.Foreground(th.Muted)
@@ -250,6 +254,8 @@ func renderPaneFooter(s tcell.Screen, r Rect, th *theme.Theme, exited bool, noti
 	switch {
 	case notice != "":
 		seg(notice, base.Foreground(th.Success))
+	case scrollOffset > 0:
+		seg(fmt.Sprintf("↑ %d lineas (rueda para bajar)", scrollOffset), base.Foreground(th.Warning))
 	case exited:
 		seg("proceso finalizado", base.Foreground(th.Warning))
 	default:

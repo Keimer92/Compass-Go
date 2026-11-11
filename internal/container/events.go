@@ -2,6 +2,9 @@ package container
 
 import "github.com/gdamore/tcell/v2"
 
+// wheelLines es el numero de filas que sube/baja la rueda en el scrollback.
+const wheelLines = 3
+
 // HandleKey procesa una tecla con una pestana activa.
 //
 // Las teclas reservadas del contenedor no llegan al hijo: F12 vuelve al menu,
@@ -82,6 +85,19 @@ func (c *Container) HandleMouse(e *tcell.EventMouse) bool {
 
 	p := c.Pane()
 	if p == nil {
+		return true
+	}
+
+	// La rueda sube/baja el scrollback cuando el hijo no pidio el raton (una
+	// shell normal). Si el hijo lo pidio, la rueda va a el como antes.
+	if (btn&tcell.WheelUp != 0 || btn&tcell.WheelDown != 0) && p.sb != nil && !c.mouseTracking() {
+		delta := wheelLines
+		if btn&tcell.WheelUp != 0 {
+			delta = -wheelLines
+		}
+		if p.sb.Scroll(delta) {
+			c.resetSelection()
+		}
 		return true
 	}
 

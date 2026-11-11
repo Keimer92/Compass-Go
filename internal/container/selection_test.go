@@ -8,15 +8,17 @@ import (
 	"github.com/hinshun/vt10x"
 )
 
-// newScreenSession crea una sesion con una pantalla ya rellena, sin ConPTY.
-func newScreenSession(cols, rows int, content string) *Session {
+// newScreenBacklog crea un scrollback con una pantalla ya rellena, sin ConPTY.
+func newScreenBacklog(cols, rows int, content string) *Scrollback {
 	term := vt10x.New(vt10x.WithSize(cols, rows))
 	_, _ = term.Write([]byte(content))
-	return &Session{term: term}
+	b := newScrollback()
+	b.Update(term)
+	return b
 }
 
 func TestSelectionText(t *testing.T) {
-	sess := newScreenSession(20, 5, "hola mundo\r\nsegunda linea\r\ntercera\r\n")
+	b := newScreenBacklog(20, 5, "hola mundo\r\nsegunda linea\r\ntercera\r\n")
 
 	cases := []struct {
 		name string
@@ -52,7 +54,7 @@ func TestSelectionText(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := c.sel.Text(sess); got != c.want {
+			if got := c.sel.Text(b); got != c.want {
 				t.Errorf("Text() = %q, queria %q", got, c.want)
 			}
 		})
@@ -92,13 +94,12 @@ func TestSelectionContains(t *testing.T) {
 // pintan con el acento del tema y las demas no.
 func TestRenderViewHighlightsSelection(t *testing.T) {
 	th := theme.Default()
-	term := vt10x.New(vt10x.WithSize(20, 4))
-	_, _ = term.Write([]byte("hola mundo\r\n"))
 
 	sel := Selection{fromCol: 0, fromRow: 0, toCol: 3, toRow: 0, active: true}
 	s := newTestScreen(20, 4)
 	defer s.Fini()
-	renderView(s, Rect{0, 0, 20, 4}, term, th, sel)
+	b := newScreenBacklog(20, 4, "hola mundo\r\n")
+	renderView(s, Rect{0, 0, 20, 4}, b, 0, th, sel)
 	s.Show()
 
 	cells, w, _ := s.GetContents()

@@ -51,46 +51,48 @@ func (s Selection) bounds() (c0, r0, c1, r1 int) {
 	return c0, r0, c1, r1
 }
 
-// Text extrae el texto seleccionado de la pantalla del terminal. Cada linea se
-// recorta por la derecha y se separan con CRLF, como al copiar de una consola.
-func (s Selection) Text(sess *Session) string {
-	if !s.active || sess == nil {
+// Text extrae el texto seleccionado del documento del terminal (historia +
+// pantalla viva). Cada linea se recorta por la derecha y se separan con CRLF,
+// como al copiar de una consola.
+func (s Selection) Text(b *Scrollback) string {
+	if !s.active || b == nil {
 		return ""
 	}
 	c0, r0, c1, r1 := s.bounds()
+	cols := b.Cols()
+	if cols < 1 {
+		cols = 1
+	}
 
-	var b strings.Builder
-	sess.WithScreen(func(v vt10x.View) {
-		cols, rows := v.Size()
-		for row := r0; row <= r1 && row < rows; row++ {
-			if row < 0 {
+	var buf strings.Builder
+	for row := r0; row <= r1; row++ {
+		if row < 0 {
+			continue
+		}
+		from, to := 0, cols-1
+		if row == r0 {
+			from = c0
+		}
+		if row == r1 {
+			to = c1
+		}
+		var line strings.Builder
+		for col := from; col <= to; col++ {
+			if col < 0 {
 				continue
 			}
-			from, to := 0, cols-1
-			if row == r0 {
-				from = c0
+			ch := b.Cell(col, row).Char
+			if ch == 0 {
+				ch = ' '
 			}
-			if row == r1 {
-				to = c1
-			}
-			var line strings.Builder
-			for col := from; col <= to && col < cols; col++ {
-				if col < 0 {
-					continue
-				}
-				ch := v.Cell(col, row).Char
-				if ch == 0 {
-					ch = ' '
-				}
-				line.WriteRune(ch)
-			}
-			b.WriteString(strings.TrimRight(line.String(), " "))
-			if row < r1 {
-				b.WriteString("\r\n")
-			}
+			line.WriteRune(ch)
 		}
-	})
-	return b.String()
+		buf.WriteString(strings.TrimRight(line.String(), " "))
+		if row < r1 {
+			buf.WriteString("\r\n")
+		}
+	}
+	return buf.String()
 }
 
 // resetSelection descarta la seleccion y el aviso del pie.
@@ -114,12 +116,18 @@ func (c *Container) setNotice(msg string) {
 	c.noticeAt = time.Now()
 }
 
-// cellAt traduce coordenadas de pantalla a celdas de la pantalla del terminal.
+// cellAt traduce coordenadas de pantalla a celdas del documento del terminal
+// (filas de historia + vivas), teniendo en cuenta el scroll del scrollback.
 func (c *Container) cellAt(x, y int) (int, int, bool) {
 	if !c.term.Contains(x, y) {
 		return 0, 0, false
 	}
-	return x - c.term.X, y - c.term.Y, true
+	p := c.Pane()
+	if p == nil || p.sb == nil {
+		return x - c.term.X, y - c.term.Y, true
+	}
+	docY := p.sb.TopRow() + (y - c.term.Y)
+	return x - c.term.X, docY, true
 }
 
 // mouseTracking indica si el hijo pidio el raton (modos 1000/1002/1003). Si no
@@ -170,10 +178,10 @@ func (c *Container) selectMouse(e *tcell.EventMouse, prev tcell.ButtonMask) bool
 // caracteres se copiaron.
 func (c *Container) copySelection() (int, bool) {
 	p := c.Pane()
-	if p == nil || c.sel.Empty() {
+	if p == nil || p.sb == nil || c.sel.Empty() {
 		return 0, false
 	}
-	text := c.sel.Text(p.Session)
+	text := c.sel.Text(p.sb)
 	if strings.TrimSpace(text) == "" {
 		c.resetSelection()
 		return 0, false
