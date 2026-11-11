@@ -159,11 +159,19 @@ func (c *Container) DrawBody(s tcell.Screen, body Rect, th *theme.Theme) {
 		term := Rect{body.X, body.Y, body.Width, termH}
 		c.term = term
 		p.Session.Resize(term.Width, term.Height)
-		// Asegura tamano y captura inicial antes de pintar.
-		p.Session.WithScreen(p.sb.Update)
+		p.sb.Resize(term.Width, term.Height)
 		sel := c.sel
-		top := p.sb.TopRow()
-		renderView(s, term, p.sb, top, th, sel)
+		// Pantalla alterna (less, vim): se pinta la vista viva tal cual y sin
+		// scrollback. Si no, la vista viva se pinta desde el parser real y la
+		// historia (scrollback) desde el terminal alto.
+		live := p.sb.AtBottom() && !p.sb.Alt()
+		if live {
+			p.Session.WithScreen(func(v vt10x.View) {
+				renderView(s, term, v, p.sb, th, sel)
+			})
+		} else {
+			renderView(s, term, nil, p.sb, th, sel)
+		}
 	}
 
 	if termH+1 <= body.Height {
@@ -178,23 +186,30 @@ func selectionStyle(th *theme.Theme) tcell.Style {
 	return tcell.StyleDefault.Background(th.Brand).Foreground(th.Background)
 }
 
-// renderView vuelca el documento (historia + pantalla viva) del scrollback en
-// el area del terminal. top es la primera fila del documento visible.
-func renderView(s tcell.Screen, area Rect, b *Scrollback, top int, th *theme.Theme, sel Selection) {
+// renderView vuelca el terminal en el area. Si v no es nil se pinta la vista
+// viva (pantalla real del hijo); si es nil, la historia del scrollback. sel
+// resalta la seleccion en coordenadas del terminal alto.
+func renderView(s tcell.Screen, area Rect, v vt10x.View, b *Scrollback, th *theme.Theme, sel Selection) {
 	defFG, defBG := th.Text, th.Background
 	selStyle := selectionStyle(th)
 	cols := b.Cols()
+	off := b.Offset()
 
 	for y := 0; y < area.Height; y++ {
-		docY := top + y
+		backRow := b.visibleTop(off) + y
 		for x := 0; x < area.Width && x < cols; x++ {
-			g := b.Cell(x, docY)
+			var g vt10x.Glyph
+			if v != nil {
+				g = v.Cell(x, y)
+			} else {
+				g = b.Cell(x, backRow)
+			}
 			ch := g.Char
 			if ch == 0 {
 				ch = ' '
 			}
 			st := styleOf(g, defFG, defBG)
-			if sel.Contains(x, docY) {
+			if sel.Contains(x, backRow) {
 				st = selStyle
 			}
 			s.SetContent(area.X+x, area.Y+y, ch, nil, st)
@@ -205,27 +220,25 @@ func renderView(s tcell.Screen, area Rect, b *Scrollback, top int, th *theme.The
 		}
 	}
 
-	cx, cy, cg, visible := b.Cursor()
-	if !visible {
+	if v == nil || !v.CursorVisible() {
 		return
 	}
-	if cy < top || cy >= top+area.Height {
+	cur := v.Cursor()
+	if cur.X < 0 || cur.X >= area.Width || cur.Y < 0 || cur.Y >= area.Height {
 		return
 	}
-	if cx < 0 || cx >= area.Width {
-		return
-	}
-	ch := cg.Char
+	g := v.Cell(cur.X, cur.Y)
+	ch := g.Char
 	if ch == 0 {
 		ch = ' '
 	}
 	st := tcell.StyleDefault.
-		Foreground(colorOf(cg.BG, defBG)).
-		Background(colorOf(cg.FG, defFG))
-	if sel.Contains(cx, cy) {
+		Foreground(colorOf(g.BG, defBG)).
+		Background(colorOf(g.FG, defFG))
+	if sel.Contains(cur.X, b.visibleTop(off)+cur.Y) {
 		st = selStyle
 	}
-	s.SetContent(area.X+cx, area.Y+(cy-top), ch, nil, st)
+	s.SetContent(area.X+cur.X, area.Y+cur.Y, ch, nil, st)
 }
 
 // renderPaneFooter pinta la ayuda de teclas y el estado del proceso.

@@ -89,8 +89,10 @@ func (c *Container) HandleMouse(e *tcell.EventMouse) bool {
 	}
 
 	// La rueda sube/baja el scrollback cuando el hijo no pidio el raton (una
-	// shell normal). Si el hijo lo pidio, la rueda va a el como antes.
-	if (btn&tcell.WheelUp != 0 || btn&tcell.WheelDown != 0) && p.sb != nil && !c.mouseTracking() {
+	// shell normal) y no esta en pantalla alterna. Si el hijo lo pidio, la
+	// rueda va a el como antes.
+	if (btn&tcell.WheelUp != 0 || btn&tcell.WheelDown != 0) && p.sb != nil &&
+		!c.mouseTracking() && !p.sb.Alt() {
 		delta := wheelLines
 		if btn&tcell.WheelUp != 0 {
 			delta = -wheelLines

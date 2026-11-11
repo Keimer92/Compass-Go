@@ -43,8 +43,6 @@ type Pane struct {
 	// sb es el scrollback propio de la pestana: conserva el texto que vt10x ya
 	// no muestra para poder subir y seleccionarlo.
 	sb *Scrollback
-	// stop cierra la goroutine de actualizacion del scrollback al cerrar.
-	stop chan struct{}
 }
 
 // barHit es una zona clicable de la barra. Target -1 es la pestana Compass.
@@ -111,18 +109,15 @@ func (c *Container) RunningCount() int {
 
 // Open abre una pestana nueva y le da el foco.
 func (c *Container) Open(title, script, dir string, rows, cols int) error {
-	s, err := Spawn(script, dir, rows, cols)
+	sb := newScrollback(cols, rows)
+	s, err := Spawn(script, dir, rows, cols, sb)
 	if err != nil {
 		return err
 	}
 	console.RegisterPane(s.Pid())
-	c.panes = append(c.panes, Pane{Title: title, Session: s, Dir: dir})
+	c.panes = append(c.panes, Pane{Title: title, Session: s, Dir: dir, sb: sb})
 	c.active = len(c.panes) - 1
 	c.last = c.active
-	p := &c.panes[c.active]
-	p.sb = newScrollback()
-	p.stop = make(chan struct{})
-	p.sb.Start(s, p.stop)
 	c.resetSelection()
 	// Con pestanas abiertas, conhost no deja cerrar la ventana anfitriona de
 	// golpe: la salida pasa por el aviso del menu.
@@ -208,9 +203,6 @@ func (c *Container) closePane(i int) {
 	c.panes = append(c.panes[:i], c.panes[i+1:]...)
 	console.UnregisterPane(pane.Session.Pid())
 	console.SetOpenTabs(len(c.panes))
-	if pane.stop != nil {
-		close(pane.stop)
-	}
 	pane.Session.Close()
 	c.resetSelection()
 
@@ -252,9 +244,6 @@ func (c *Container) ReapFinished() {
 func (c *Container) CloseAll() {
 	for _, p := range c.panes {
 		console.UnregisterPane(p.Session.Pid())
-		if p.stop != nil {
-			close(p.stop)
-		}
 		p.Session.Close()
 	}
 	c.panes = nil

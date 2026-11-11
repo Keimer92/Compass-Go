@@ -116,18 +116,21 @@ func (c *Container) setNotice(msg string) {
 	c.noticeAt = time.Now()
 }
 
-// cellAt traduce coordenadas de pantalla a celdas del documento del terminal
-// (filas de historia + vivas), teniendo en cuenta el scroll del scrollback.
+// cellAt traduce coordenadas de pantalla a celdas del terminal alto, teniendo
+// en cuenta el scroll del scrollback. Las filas inferiores son la pantalla
+// viva y las superiores, la historia.
 func (c *Container) cellAt(x, y int) (int, int, bool) {
 	if !c.term.Contains(x, y) {
 		return 0, 0, false
 	}
+	col := x - c.term.X
+	localY := y - c.term.Y
 	p := c.Pane()
 	if p == nil || p.sb == nil {
-		return x - c.term.X, y - c.term.Y, true
+		return col, localY, true
 	}
-	docY := p.sb.TopRow() + (y - c.term.Y)
-	return x - c.term.X, docY, true
+	docY := p.sb.visibleTop(p.sb.Offset()) + localY
+	return col, docY, true
 }
 
 // mouseTracking indica si el hijo pidio el raton (modos 1000/1002/1003). Si no

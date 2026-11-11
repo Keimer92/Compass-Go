@@ -30,6 +30,10 @@ type Session struct {
 	pty  pty.Pty
 	pid  int
 
+	// sb es el scrollback de la pestana; su terminal "alto" se alimenta con
+	// la misma salida que el parser vivo para conservar la historia.
+	sb *Scrollback
+
 	exited atomic.Bool
 	// code es el codigo de salida del shell; -1 mientras sigue vivo.
 	code atomic.Int32
@@ -42,8 +46,9 @@ type Session struct {
 //
 // La sesion hereda COMPASS_EMBEDDED=1: con esa marca las tareas que lanzan
 // procesos interactivos los ejecutan en esta misma consola en vez de abrir
-// otra ventana.
-func Spawn(script, dir string, rows, cols int) (*Session, error) {
+// otra ventana. sb es el scrollback de la pestana (su terminal "alto" se
+// alimenta con la misma salida para conservar la historia).
+func Spawn(script, dir string, rows, cols int, sb *Scrollback) (*Session, error) {
 	if rows < 2 {
 		rows = 2
 	}
@@ -73,6 +78,7 @@ func Spawn(script, dir string, rows, cols int) (*Session, error) {
 		pty:  p,
 		rows: rows,
 		cols: cols,
+		sb:   sb,
 	}
 	s.code.Store(-1)
 	if cmd.Process != nil {
@@ -80,11 +86,20 @@ func Spawn(script, dir string, rows, cols int) (*Session, error) {
 	}
 
 	// La salida se parsea en segundo plano; la pantalla queda protegida por el
-	// candado del propio emulador.
+	// candado del propio emulador. El mismo flujo alimenta el terminal "alto"
+	// del scrollback para conservar la historia.
 	go func() {
 		br := bufio.NewReaderSize(p, 8192)
+		buf := make([]byte, 8192)
 		for {
-			if err := s.term.Parse(br); err != nil {
+			n, err := br.Read(buf)
+			if n > 0 {
+				s.term.Write(buf[:n])
+				if s.sb != nil {
+					s.sb.Feed(buf[:n])
+				}
+			}
+			if err != nil {
 				s.exited.Store(true)
 				return
 			}
@@ -173,6 +188,9 @@ func (s *Session) Resize(cols, rows int) {
 	s.mu.Unlock()
 
 	s.term.Resize(cols, rows)
+	if s.sb != nil {
+		s.sb.Resize(cols, rows)
+	}
 	_ = s.pty.Resize(cols, rows)
 }
 

@@ -88,6 +88,15 @@ func (b *Scrollback) topBack() int {
 	return b.H - b.docRows() + off
 }
 
+// visibleTop es la primera fila (en el terminal alto) de la ventana visible
+// para un desplazamiento concreto: las filas inferiores son la pantalla viva y
+// las superiores, la historia.
+func (b *Scrollback) visibleTop(off int) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.H - b.rows - off
+}
+
 // Cell devuelve el glyph del terminal alto en (docX, backRow); vacio fuera.
 func (b *Scrollback) Cell(docX, backRow int) vt10x.Glyph {
 	if backRow < 0 || backRow >= b.H {
