@@ -22,7 +22,7 @@ func waitFor(t *testing.T, cond func() bool) bool {
 }
 
 func TestSessionRendersItsOutput(t *testing.T) {
-	s, err := Spawn("Write-Output 'hola compass'; exit 0", t.TempDir(), 10, 60)
+	s, err := Spawn("Write-Output 'hola compass'; exit 0", t.TempDir(), 10, 60, nil)
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestSessionRendersItsOutput(t *testing.T) {
 }
 
 func TestSessionPropagatesExitCode(t *testing.T) {
-	s, err := Spawn("exit 95", t.TempDir(), 10, 60)
+	s, err := Spawn("exit 95", t.TempDir(), 10, 60, nil)
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}

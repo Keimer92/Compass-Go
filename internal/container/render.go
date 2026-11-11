@@ -7,6 +7,7 @@ import (
 	"compass/internal/theme"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/hinshun/vt10x"
 	"github.com/rivo/uniseg"
 )
 

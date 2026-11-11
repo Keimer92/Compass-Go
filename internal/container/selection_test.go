@@ -4,16 +4,12 @@ import (
 	"testing"
 
 	"compass/internal/theme"
-
-	"github.com/hinshun/vt10x"
 )
 
 // newScreenBacklog crea un scrollback con una pantalla ya rellena, sin ConPTY.
 func newScreenBacklog(cols, rows int, content string) *Scrollback {
-	term := vt10x.New(vt10x.WithSize(cols, rows))
-	_, _ = term.Write([]byte(content))
-	b := newScrollback()
-	b.Update(term)
+	b := newScrollback(cols, rows)
+	b.Feed([]byte(content))
 	return b
 }
 
@@ -99,7 +95,7 @@ func TestRenderViewHighlightsSelection(t *testing.T) {
 	s := newTestScreen(20, 4)
 	defer s.Fini()
 	b := newScreenBacklog(20, 4, "hola mundo\r\n")
-	renderView(s, Rect{0, 0, 20, 4}, b, 0, th, sel)
+	renderView(s, Rect{0, 0, 20, 4}, nil, b, th, sel)
 	s.Show()
 
 	cells, w, _ := s.GetContents()

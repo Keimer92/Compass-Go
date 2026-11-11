@@ -38,7 +38,7 @@ func TestSingleInstancePerProjectE2E(t *testing.T) {
 	}
 
 	// Primera instancia: el TUI de verdad, dentro de una ConPTY.
-	first, err := container.Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120)
+	first, err := container.Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120, nil)
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}

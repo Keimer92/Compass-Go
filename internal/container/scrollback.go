@@ -63,14 +63,11 @@ func (b *Scrollback) Resize(cols, rows int) {
 	b.back.Resize(cols, b.H)
 }
 
-// docRows es el numero de filas con contenido que puede mostrar el scrollback.
+// docRows es el numero de filas de contenido conservadas (hasta maxScrollback).
 func (b *Scrollback) docRows() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	d := b.rows
-	if b.used > d {
-		d = b.used
-	}
+	d := b.used
 	if d > b.H {
 		d = b.H
 	}
@@ -80,21 +77,26 @@ func (b *Scrollback) docRows() int {
 // DocRows expuesto para los tests.
 func (b *Scrollback) DocRows() int { return b.docRows() }
 
-// topBack es la primera fila (en el terminal alto) de la ventana visible.
-func (b *Scrollback) topBack() int {
+// contentTop es la fila (en el terminal alto) donde empieza el contenido
+// visible: 0 mientras el contenido cabe sin rellenar la pantalla y, al rellenar
+// y rodar, la fila desde la que se ven las ultimas `rows` lineas.
+func (b *Scrollback) contentTop() int {
 	b.mu.Lock()
-	off := b.offset
-	b.mu.Unlock()
-	return b.H - b.docRows() + off
+	defer b.mu.Unlock()
+	ct := b.docRows() - b.rows
+	if ct < 0 {
+		ct = 0
+	}
+	return ct
 }
 
 // visibleTop es la primera fila (en el terminal alto) de la ventana visible
-// para un desplazamiento concreto: las filas inferiores son la pantalla viva y
-// las superiores, la historia.
+// para un desplazamiento concreto: el contenido vivo ocupa las filas inferiores
+// de lo conservado y la historia, las superiores.
 func (b *Scrollback) visibleTop(off int) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.H - b.rows - off
+	return b.contentTop() - off
 }
 
 // Cell devuelve el glyph del terminal alto en (docX, backRow); vacio fuera.
@@ -137,10 +139,7 @@ func (b *Scrollback) Alt() bool {
 func (b *Scrollback) Scroll(delta int) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	max := b.docRows() - b.rows
-	if max < 0 {
-		max = 0
-	}
+	max := b.contentTop()
 	next := b.offset + delta
 	if next < 0 {
 		next = 0

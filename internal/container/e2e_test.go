@@ -57,7 +57,7 @@ func TestCompassSubmenusE2E(t *testing.T) {
 			} else {
 				script = PaneScript(exe, tc.task, project)
 			}
-			s, err := Spawn(script, project, 32, 120)
+			s, err := Spawn(script, project, 32, 120, nil)
 			if err != nil {
 				t.Fatalf("spawn: %v", err)
 			}
@@ -149,7 +149,7 @@ func TestTabSwitchE2E(t *testing.T) {
 		}
 	}
 
-	s, err := Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120)
+	s, err := Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120, nil)
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestSelectionCopyE2E(t *testing.T) {
 		}
 	}
 
-	s, err := Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120)
+	s, err := Spawn(fmt.Sprintf("& '%s' --path '%s'", exe, project), project, 40, 120, nil)
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
