@@ -21,15 +21,19 @@ const maxScrollback = 5000
 //
 // La pantalla viva se pinta desde el terminal real del hijo (su altura es la
 // del area visible); la historia se pinta desde este terminal alto.
+//
+// El viewport se ancla por fila absoluta del documento (top): al recibir
+// salida nueva mientras se esta subido, la vista no se mueve y el nuevo
+// contenido rueda por debajo; al estar abajo, la vista sigue el fondo.
 type Scrollback struct {
 	mu sync.Mutex
 
-	cols, rows int     // tamano de la pantalla viva (area visible)
-	H          int     // altura del terminal alto (maxScrollback)
+	cols, rows int // tamano de la pantalla viva (area visible)
+	H          int // altura del terminal alto (maxScrollback)
 	back       vt10x.Terminal
 
-	offset int // lineas subidas desde el fondo (0 = abajo, en vivo)
-	used   int // numero aproximado de filas de contenido (limita el scroll)
+	used int // numero aproximado de filas de contenido (limita el scroll)
+	top  int // fila absoluta del documento en la primera linea visible
 }
 
 // newScrollback crea un scrollback para una pantalla viva de rows x cols.
@@ -45,11 +49,18 @@ func newScrollback(cols, rows int) *Scrollback {
 
 // Feed entrega un trozo de salida al terminal alto (historia).
 func (b *Scrollback) Feed(chunk []byte) {
-	b.back.Write(chunk)
 	b.mu.Lock()
+	oldTop := b.contentTopLocked()
+	b.back.Write(chunk)
 	b.used += bytes.Count(chunk, []byte{'\n'})
 	if b.used > b.H {
 		b.used = b.H
+	}
+	newTop := b.contentTopLocked()
+	// Si estabamos abajo (o mas abajo aun), seguimos el fondo; si estabamos
+	// subidos, la vista queda anclada a las mismas filas.
+	if b.top >= oldTop {
+		b.top = newTop
 	}
 	b.mu.Unlock()
 }
@@ -58,15 +69,19 @@ func (b *Scrollback) Feed(chunk []byte) {
 // perder la historia.
 func (b *Scrollback) Resize(cols, rows int) {
 	b.mu.Lock()
+	oldTop := b.contentTopLocked()
 	b.cols, b.rows = cols, rows
-	b.mu.Unlock()
 	b.back.Resize(cols, b.H)
+	newTop := b.contentTopLocked()
+	if b.top >= oldTop {
+		b.top = newTop
+	}
+	b.mu.Unlock()
 }
 
-// docRows es el numero de filas de contenido conservadas (hasta maxScrollback).
-func (b *Scrollback) docRows() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+// docRowsLocked es el numero de filas de contenido (hasta maxScrollback).
+// Requiere poseer b.mu.
+func (b *Scrollback) docRowsLocked() int {
 	d := b.used
 	if d > b.H {
 		d = b.H
@@ -74,29 +89,41 @@ func (b *Scrollback) docRows() int {
 	return d
 }
 
+// docRows es el numero de filas de contenido conservadas (hasta maxScrollback).
+func (b *Scrollback) docRows() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.docRowsLocked()
+}
+
 // DocRows expuesto para los tests.
 func (b *Scrollback) DocRows() int { return b.docRows() }
 
-// contentTop es la fila (en el terminal alto) donde empieza el contenido
+// contentTopLocked es la fila (en el terminal alto) donde empieza el contenido
 // visible: 0 mientras el contenido cabe sin rellenar la pantalla y, al rellenar
-// y rodar, la fila desde la que se ven las ultimas `rows` lineas.
-func (b *Scrollback) contentTop() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	ct := b.docRows() - b.rows
+// y rodar, la fila desde la que se ven las ultimas `rows` lineas. Requiere
+// poseer b.mu.
+func (b *Scrollback) contentTopLocked() int {
+	ct := b.docRowsLocked() - b.rows
 	if ct < 0 {
 		ct = 0
 	}
 	return ct
 }
 
-// visibleTop es la primera fila (en el terminal alto) de la ventana visible
-// para un desplazamiento concreto: el contenido vivo ocupa las filas inferiores
-// de lo conservado y la historia, las superiores.
-func (b *Scrollback) visibleTop(off int) int {
+// contentTop expuesto (adquiere el cerrojo).
+func (b *Scrollback) contentTop() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.contentTop() - off
+	return b.contentTopLocked()
+}
+
+// ViewTop es la fila absoluta (en el terminal alto) de la primera linea
+// visible del viewport.
+func (b *Scrollback) ViewTop() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.top
 }
 
 // Cell devuelve el glyph del terminal alto en (docX, backRow); vacio fuera.
@@ -114,18 +141,22 @@ func (b *Scrollback) Cols() int {
 	return b.cols
 }
 
-// Offset es el numero de lineas subidas desde el fondo.
+// Offset es el numero de lineas subidas desde el fondo (0 = abajo, en vivo).
 func (b *Scrollback) Offset() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.offset
+	off := b.contentTopLocked() - b.top
+	if off < 0 {
+		off = 0
+	}
+	return off
 }
 
 // AtBottom indica si se ve la pantalla viva (sin subir).
 func (b *Scrollback) AtBottom() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.offset == 0
+	return b.top >= b.contentTopLocked()
 }
 
 // Alt indica si el hijo esta en pantalla alterna (less, vim, ...): no se debe
@@ -134,22 +165,22 @@ func (b *Scrollback) Alt() bool {
 	return b.back.Mode()&vt10x.ModeAltScreen != 0
 }
 
-// Scroll ajusta el desplazamiento (negativo sube, positivo baja). Devuelve
-// true si el desplazamiento cambio.
+// Scroll ajusta el desplazamiento: delta negativo sube (contenido mas antiguo,
+// hacia la fila 0) y positivo baja. Devuelve true si el desplazamiento cambio.
 func (b *Scrollback) Scroll(delta int) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	max := b.contentTop()
-	next := b.offset + delta
+	next := b.top + delta
 	if next < 0 {
 		next = 0
 	}
+	max := b.contentTopLocked()
 	if next > max {
 		next = max
 	}
-	if next == b.offset {
+	if next == b.top {
 		return false
 	}
-	b.offset = next
+	b.top = next
 	return true
 }

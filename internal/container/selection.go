@@ -51,9 +51,10 @@ func (s Selection) bounds() (c0, r0, c1, r1 int) {
 	return c0, r0, c1, r1
 }
 
-// Text extrae el texto seleccionado del documento del terminal (historia +
-// pantalla viva). Cada linea se recorta por la derecha y se separan con CRLF,
-// como al copiar de una consola.
+// Text extrae el texto seleccionado desde el scrollback (historia). Las filas
+// de la seleccion son relativas al cuerpo (pantalla viva); se traduce a la fila
+// absoluta del documento con ViewTop. Cada linea se recorta por la derecha y
+// se separan con CRLF, como al copiar de una consola.
 func (s Selection) Text(b *Scrollback) string {
 	if !s.active || b == nil {
 		return ""
@@ -63,12 +64,14 @@ func (s Selection) Text(b *Scrollback) string {
 	if cols < 1 {
 		cols = 1
 	}
+	top := b.ViewTop()
 
 	var buf strings.Builder
 	for row := r0; row <= r1; row++ {
 		if row < 0 {
 			continue
 		}
+		docRow := top + row
 		from, to := 0, cols-1
 		if row == r0 {
 			from = c0
@@ -81,7 +84,7 @@ func (s Selection) Text(b *Scrollback) string {
 			if col < 0 {
 				continue
 			}
-			ch := b.Cell(col, row).Char
+			ch := b.Cell(col, docRow).Char
 			if ch == 0 {
 				ch = ' '
 			}
@@ -116,21 +119,17 @@ func (c *Container) setNotice(msg string) {
 	c.noticeAt = time.Now()
 }
 
-// cellAt traduce coordenadas de pantalla a celdas del terminal alto, teniendo
-// en cuenta el scroll del scrollback. Las filas inferiores son la pantalla
-// viva y las superiores, la historia.
+// cellAt traduce coordenadas de pantalla a celdas del cuerpo de la pestana.
+// Las filas que devuelve son relativas al cuerpo (0 = primera fila visible del
+// hijo), no absolutas del documento: el scroll del scrollback se aplica al
+// pintar y al extraer el texto, no aqui.
 func (c *Container) cellAt(x, y int) (int, int, bool) {
 	if !c.term.Contains(x, y) {
 		return 0, 0, false
 	}
 	col := x - c.term.X
 	localY := y - c.term.Y
-	p := c.Pane()
-	if p == nil || p.sb == nil {
-		return col, localY, true
-	}
-	docY := p.sb.visibleTop(p.sb.Offset()) + localY
-	return col, docY, true
+	return col, localY, true
 }
 
 // mouseTracking indica si el hijo pidio el raton (modos 1000/1002/1003). Si no
@@ -153,7 +152,6 @@ func (c *Container) selectMouse(e *tcell.EventMouse, prev tcell.ButtonMask) bool
 	btn := e.Buttons()
 	pressed := btn&tcell.Button1 != 0
 	wasPressed := prev&tcell.Button1 != 0
-
 	switch {
 	case pressed && !wasPressed:
 		col, row, ok := c.cellAt(e.Position())
@@ -184,7 +182,7 @@ func (c *Container) copySelection() (int, bool) {
 	if p == nil || p.sb == nil || c.sel.Empty() {
 		return 0, false
 	}
-	text := c.sel.Text(p.sb)
+	text := c.selectionText(p)
 	if strings.TrimSpace(text) == "" {
 		c.resetSelection()
 		return 0, false
@@ -195,4 +193,47 @@ func (c *Container) copySelection() (int, bool) {
 	}
 	c.setNotice("copiado al portapapeles")
 	return len([]rune(text)), true
+}
+
+// selectionText extrae el texto seleccionado. En la pantalla viva (sin subir y
+// fuera de pantalla alterna) lee directamente la vista del hijo, que es la
+// fuente de verdad; al estar subido lee la historia del scrollback.
+func (c *Container) selectionText(p *Pane) string {
+	sel := c.sel
+	if p.sb.AtBottom() && !p.sb.Alt() {
+		var out strings.Builder
+		p.Session.WithScreen(func(v vt10x.View) {
+			cols, rows := v.Size()
+			c0, r0, c1, r1 := sel.bounds()
+			for row := r0; row <= r1; row++ {
+				if row < 0 || row >= rows {
+					continue
+				}
+				from, to := 0, cols-1
+				if row == r0 {
+					from = c0
+				}
+				if row == r1 {
+					to = c1
+				}
+				var line strings.Builder
+				for col := from; col <= to; col++ {
+					if col < 0 {
+						continue
+					}
+					ch := v.Cell(col, row).Char
+					if ch == 0 {
+						ch = ' '
+					}
+					line.WriteRune(ch)
+				}
+				out.WriteString(strings.TrimRight(line.String(), " "))
+				if row < r1 {
+					out.WriteString("\r\n")
+				}
+			}
+		})
+		return out.String()
+	}
+	return sel.Text(p.sb)
 }

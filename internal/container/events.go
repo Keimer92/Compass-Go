@@ -1,6 +1,8 @@
 package container
 
-import "github.com/gdamore/tcell/v2"
+import (
+	"github.com/gdamore/tcell/v2"
+)
 
 // wheelLines es el numero de filas que sube/baja la rueda en el scrollback.
 const wheelLines = 3

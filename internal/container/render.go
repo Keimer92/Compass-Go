@@ -194,23 +194,28 @@ func renderView(s tcell.Screen, area Rect, v vt10x.View, b *Scrollback, th *them
 	defFG, defBG := th.Text, th.Background
 	selStyle := selectionStyle(th)
 	cols := b.Cols()
-	off := b.Offset()
+	top := b.ViewTop()
 
 	for y := 0; y < area.Height; y++ {
-		backRow := b.visibleTop(off) + y
+		// En la vista viva las filas son relativas al cuerpo; en la historia
+		// hay que desplazarlas por ViewTop (fila absoluta del documento).
+		docRow := y
+		if v == nil {
+			docRow = top + y
+		}
 		for x := 0; x < area.Width && x < cols; x++ {
 			var g vt10x.Glyph
 			if v != nil {
 				g = v.Cell(x, y)
 			} else {
-				g = b.Cell(x, backRow)
+				g = b.Cell(x, docRow)
 			}
 			ch := g.Char
 			if ch == 0 {
 				ch = ' '
 			}
 			st := styleOf(g, defFG, defBG)
-			if sel.Contains(x, backRow) {
+			if sel.Contains(x, docRow) {
 				st = selStyle
 			}
 			s.SetContent(area.X+x, area.Y+y, ch, nil, st)
@@ -236,7 +241,7 @@ func renderView(s tcell.Screen, area Rect, v vt10x.View, b *Scrollback, th *them
 	st := tcell.StyleDefault.
 		Foreground(colorOf(g.BG, defBG)).
 		Background(colorOf(g.FG, defFG))
-	if sel.Contains(cur.X, b.visibleTop(off)+cur.Y) {
+	if sel.Contains(cur.X, cur.Y) {
 		st = selStyle
 	}
 	s.SetContent(area.X+cur.X, area.Y+cur.Y, ch, nil, st)

@@ -224,7 +224,7 @@ func TestSelectionCopyE2E(t *testing.T) {
 		t.Fatalf("la tarea no imprimio nada. Pantalla:\n%s", s.Text())
 	}
 
-	row, col, ok := findText(s, "HOLA MUNDO")
+	row, _, ok := findText(s, "HOLA MUNDO")
 	if !ok {
 		t.Fatalf("no se encontro el texto. Pantalla:\n%s", s.Text())
 	}
@@ -234,8 +234,13 @@ func TestSelectionCopyE2E(t *testing.T) {
 		t.Fatalf("no se pudo preparar el portapapeles: %v", err)
 	}
 
-	// Shift+arrastrar sobre la linea copiada.
-	mouseDrag(s, col, row, col+len("HOLA MUNDO")-1, row)
+	// Shift+arrastrar sobre la linea copiada. findText busca en s.Text(), que
+	// es la pantalla completa del contenedor (incluye titulo y pie), asi que su
+	// fila ya es una coordenada de pantalla del contenedor: el arrastre la usa
+	// directamente. Se arrastra una franja ancha (hasta la columna 30) porque
+	// al terminar el proceso el pane reindenta la salida y el texto se desplaza
+	// a la derecha: asi se captura "HOLA MUNDO" tanto antes como despues.
+	mouseDrag(s, 0, row, 30, row)
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
