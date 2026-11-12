@@ -105,6 +105,25 @@ func RunPSInDirStatus(script string, dir string) error {
 	return nil
 }
 
+// mergeEnv devuelve el entorno del proceso con las variables de envs
+// aplicadas. Hay que partir de os.Environ(): un Cmd con Env no nulo deja de
+// heredar PATH, SystemRoot, TEMP y todo lo demas.
+func mergeEnv(envs map[string]string) []string {
+	env := os.Environ()
+	for k, v := range envs {
+		prefix := k + "="
+		filtered := env[:0]
+		for _, kv := range env {
+			if len(kv) >= len(prefix) && strings.EqualFold(kv[:len(prefix)], prefix) {
+				continue
+			}
+			filtered = append(filtered, kv)
+		}
+		env = append(filtered, prefix+v)
+	}
+	return env
+}
+
 // RunPSStatus ejecuta un script en dir con entorno extra; devuelve si tuvo exito.
 func RunPSStatus(script string, dir string, envs map[string]string) (bool, error) {
 	if !dirExists(dir) {
@@ -115,9 +134,7 @@ func RunPSStatus(script string, dir string, envs map[string]string) (bool, error
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	for k, v := range envs {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
+	cmd.Env = mergeEnv(envs)
 	err := cmd.Run()
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
@@ -144,9 +161,7 @@ func RunPSFile(path string, args []string, dir string, envs map[string]string) (
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	for k, v := range envs {
-		c.Env = append(c.Env, k+"="+v)
-	}
+	c.Env = mergeEnv(envs)
 	err := c.Run()
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
@@ -228,9 +243,7 @@ func RunTimeout(cmd string, args []string, timeoutSecs uint) (bool, error) {
 func RunProgram(program string, args []string, dir string, envs map[string]string) (bool, error) {
 	c := exec.Command(program, args...)
 	c.Dir = dir
-	for k, v := range envs {
-		c.Env = append(c.Env, k+"="+v)
-	}
+	c.Env = mergeEnv(envs)
 	err := c.Run()
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
@@ -245,9 +258,7 @@ func RunProgram(program string, args []string, dir string, envs map[string]strin
 func RunProgramCapture(program string, args []string, dir string, envs map[string]string) ([]byte, error) {
 	c := exec.Command(program, args...)
 	c.Dir = dir
-	for k, v := range envs {
-		c.Env = append(c.Env, k+"="+v)
-	}
+	c.Env = mergeEnv(envs)
 	out, err := c.CombinedOutput()
 	return out, err
 }
@@ -276,9 +287,7 @@ func runShellStatus(command string, dir string, envs map[string]string) bool {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	for k, v := range envs {
-		c.Env = append(c.Env, k+"="+v)
-	}
+	c.Env = mergeEnv(envs)
 	err := c.Run()
 	return err == nil
 }

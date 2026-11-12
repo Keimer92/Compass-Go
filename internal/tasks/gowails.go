@@ -704,25 +704,26 @@ func wailsPrepareAndroid(ctx *project.ProjectContext, release bool, abis []abi) 
 		return nil, fmt.Errorf("[ERROR] Falló `wails3 android overlay:gen`.")
 	}
 
-	// 2. Bindings (en el host, sin GOOS=android).
+	// 2. Bindings. Wails v3 las genera para Android con CGO desactivado (la
+	// ruta sin cgo existe justo para que el generador pueda cargar el paquete
+	// sin la NDK). GOARCH=arm64 evita android/amd64, que exige enlace externo
+	// con cgo y hace fallar la carga de paquetes en el host. Los tags de
+	// release/debug son solo para compilar libwails.so; el generador usa
+	// siempre `android`.
 	fmt.Println("[2/5] Generando los bindings...")
-	buildFlags := "-tags production,android"
-	if !release {
-		buildFlags = "-tags android,debug"
-	}
 	bo, err := shell.RunProgramCapture("wails3", []string{
 		"generate", "bindings",
-		"-f", buildFlags,
+		"-f", "-tags android",
 		"-clean=true", "-ts", "-i",
-	}, root, nil)
-	if err != nil {
-		return nil, err
-	}
-	stderr := string(bo)
-	if strings.Contains(stderr, "could not import") {
-		return nil, fmt.Errorf("[ERROR] El generador de bindings no pudo cargar los paquetes de Go.\n" +
-			"   Suele pasar si se genera con GOOS=android: los bindings deben generarse\n" +
-			"   en el host (sin GOOS=android) y sólo los flags llevan los tags de Android.")
+	}, root, map[string]string{
+		"GOOS":        "android",
+		"GOARCH":      "arm64",
+		"CGO_ENABLED": "0",
+	})
+	if err != nil || strings.Contains(string(bo), "could not import") {
+		out := strings.TrimSpace(string(bo))
+		return nil, fmt.Errorf("[ERROR] El generador de bindings no pudo cargar los paquetes de Go.\n"+
+			"   Se genera con GOOS=android y CGO_ENABLED=0 (sin NDK), solo con el tag android.\n%s", out)
 	}
 
 	// 3. Frontend.
