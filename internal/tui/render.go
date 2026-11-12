@@ -459,8 +459,16 @@ func renderThemePicker(s tcell.Screen, area Rect, th *theme.Theme, picker ThemeP
 	// Titulo " Temas ".
 	put(s, rect.X+2, rect.Y, " Temas ", base.Foreground(th.Text).Bold(true))
 
-	for i, t := range theme.Themes {
-		rowY := rect.Y + 1 + i
+	// La lista puede no caber en pantallas bajas: se desplaza para mantener
+	// visible el tema seleccionado.
+	visible := h - 2
+	start := 0
+	if picker.index >= visible {
+		start = picker.index - visible + 1
+	}
+
+	for i := start; i < count; i++ {
+		rowY := rect.Y + 1 + (i - start)
 		if rowY >= rect.Bottom()-1 {
 			break
 		}
@@ -479,6 +487,7 @@ func renderThemePicker(s tcell.Screen, area Rect, th *theme.Theme, picker ThemeP
 		if selected {
 			nameStyle = base.Foreground(th.Text)
 		}
+		t := theme.Themes[i]
 		put(s, rect.X+4, rowY, padRight(t.Name, 12), nameStyle)
 
 		// Muestras DEV/MNT/CFG.

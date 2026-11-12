@@ -97,7 +97,10 @@ func Run(ctx *project.ProjectContext) error {
 		panes.ReapFinished()
 
 		w, h := screen.Size()
-		fillRect(screen, Rect{0, 0, w, h}, ' ', bgStyle(th))
+		// st.theme cambia en vivo con el selector (preview); el fondo, las
+		// pestanas y el terminal abierto deben seguirlo al instante.
+		cur := st.theme
+		fillRect(screen, Rect{0, 0, w, h}, ' ', bgStyle(cur))
 
 		barH := container.BarHeight
 		if barH > h {
@@ -110,11 +113,11 @@ func Run(ctx *project.ProjectContext) error {
 			// El terminal no tiene cards: el hit-testing del menu queda apagado
 			// para que un clic no ejecute nada de la pantalla oculta.
 			st.ui = nil
-			panes.DrawBody(screen, container.Rect{X: body.X, Y: body.Y, Width: body.Width, Height: body.Height}, th)
+			panes.DrawBody(screen, container.Rect{X: body.X, Y: body.Y, Width: body.Width, Height: body.Height}, cur)
 		} else {
 			renderMenu(screen, st, ctx, body)
 		}
-		panes.DrawBar(screen, container.Rect{X: bar.X, Y: bar.Y, Width: bar.Width, Height: bar.Height}, th)
+		panes.DrawBar(screen, container.Rect{X: bar.X, Y: bar.Y, Width: bar.Width, Height: bar.Height}, cur)
 		screen.Show()
 
 		// Recuperar el titulo de la consola una vez por segundo.

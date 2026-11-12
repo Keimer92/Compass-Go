@@ -41,7 +41,7 @@ Compass Go/
 │  ├─ container/              # contenedor ConPTY: sesión, encode teclado/ratón, render vt10x→tcell
 │  ├─ tasks/                  # ejecutores por plataforma + menús contextuales Windows + global tasks
 │  │  └─ assets/              # plantillas PowerShell (env-backup, opencode)
-│  ├─ theme/                  # 14 temas + persistencia
+│  ├─ theme/                  # 20 temas + persistencia
 │  ├─ project/                # detección de tipo de proyecto
 │  ├─ shell/                  # envoltorio PowerShell / cmd
 │  ├─ lock/                   # instancia única por proyecto (LockFileEx, Windows)
