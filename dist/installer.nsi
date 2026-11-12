@@ -1,6 +1,6 @@
 ; ============================================================================
 ;  Compass Go - Instalador autonomo (NSIS)
-;  Generado por install.bat. No editar a mano: se sobrescribe en cada build.
+;  Generado por dist.bat. No editar a mano: se sobrescribe en cada build.
 ;
 ;  Instala compass-go.exe + iconos en LOCALAPPDATA\Programs\Keimer,
 ;  anade ese directorio al PATH del usuario y registra el menu contextual.

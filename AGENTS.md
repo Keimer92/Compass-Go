@@ -27,8 +27,9 @@ autónomo (`dist/CompassGo-Setup.exe`).
 | **go-winres** *(opcional)* | embeber icono + versión + manifest en el `.exe` | `go install github.com/tc-hib/go-winres@latest` |
 | **NSIS** *(opcional)* | empaquetar el instalador `CompassGo-Setup.exe` | https://nsis.sourceforge.io/ |
 
-Si `go-winres` no está instalado, `install.bat` compila igualmente pero **sin**
-los recursos de Windows embebidos (el icono del `.exe` será el genérico).
+Si `go-winres` no está instalado, `install.bat` / `dist.bat` compilan igualmente
+pero **sin** los recursos de Windows embebidos (el icono del `.exe` será el
+genérico).
 
 ## Estructura del repositorio
 
@@ -48,8 +49,10 @@ Compass Go/
 │  ├─ console/                # Ctrl-C handler y bloqueo de cierre (Windows)
 │  ├─ prompts/  ui/           # prompts y helpers de UI
 ├─ assets/icon/               # Icon.ico, Default.ico, opencode.ico
-├─ dist/                      # GENERADO por install.bat (payload, installer.nsi, setup); desechable
-├─ install.bat                # núcleo: compilar + instalar + empaquetar (todo en uno)
+├─ dist/                      # GENERADO por dist.bat (payload, installer.nsi, setup); desechable
+├─ bin/                       # GENERADO por install.bat (binario de trabajo); desechable
+├─ install.bat                # compilar + instalar en el sistema
+├─ dist.bat                   # compilar + empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
 └─ PLAN.md                    # plan de migración original
@@ -59,24 +62,24 @@ Módulo Go: `compass` (imports `compass/internal/...`).
 
 ## Scripts `.bat` (Windows) — uso
 
-Hay **dos scripts**: `install.bat` es el núcleo y agrupa compilación,
-instalación y empaquetado; `uninstall.bat` desinstala.
+Hay **tres scripts**, separados por velocidad de uso: `install.bat` compila e
+instala en la máquina (el ciclo corto de desarrollo), `dist.bat` compila y
+empaqueta el instalador autónomo en `dist\` (solo para distribuir) y
+`uninstall.bat` desinstala.
 
-### 1. `install.bat` — compilar + instalar + empaquetar (tipo: *install*)
+### 1. `install.bat` — compilar + instalar (tipo: *install*)
 
-Compila directo a `dist\payload\compass-go.exe` (integrado: `go-winres` +
-`go build`, sin binario portable en la raíz), lo instala con los iconos en
-`%LOCALAPPDATA%\Programs\Keimer` (añadido al PATH de usuario), elimina la copia
-antigua de `%USERPROFILE%\.cargo\bin`, registra el **menú contextual Compass** y
-la acción **`.gitignore`**, configura **Vibe Coding** la primera vez y genera el
-instalador autónomo `dist\CompassGo-Setup.exe` (si NSIS está instalado). Todo
-lo generado vive en `dist\`; no se deja ningún `.exe` en la raíz.
+Compila a `bin\compass-go.exe` (integrado: `go-winres` + `go build`), lo instala
+con los iconos en `%LOCALAPPDATA%\Programs\Keimer` (añadido al PATH de usuario),
+elimina la copia antigua de `%USERPROFILE%\.cargo\bin`, registra el **menú
+contextual Compass** y la acción **`.gitignore`**, y configura **Vibe Coding**
+la primera vez. **No** genera nada en `dist\` ni ejecuta NSIS: es el camino
+rápido para probar cambios en tu propia máquina.
 
 ```bat
-install.bat              # compilar + instalar + generar dist
+install.bat              # compilar + instalar
 install.bat --force      # rehace también menús y la cascada Vibe Coding
 install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
-install.bat --no-installer  # instala y prepara dist\payload, pero no genera el setup
 ```
 
 - Cierra `compass-go.exe` en ejecución antes de sobrescribir (Windows no
@@ -84,9 +87,22 @@ install.bat --no-installer  # instala y prepara dist\payload, pero no genera el 
 - El menú contextual queda en `HKCU\...\shell\zz_CompassGo` y
   `zz_CompassGitignore`; Vibe Coding en `zz_VibeCoding`.
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
-- Si falta NSIS, avisa y omite solo el instalador; el resto se instala igual.
 
-### 2. `uninstall.bat` — desinstalar de la máquina (tipo: *uninstall*)
+### 2. `dist.bat` — generar el instalador en `dist\` (tipo: *package*)
+
+Compila a `dist\payload\compass-go.exe` (con iconos), regenera
+`dist\installer.nsi` y, si NSIS está instalado, produce el instalador autónomo
+`dist\CompassGo-Setup.exe`. Todo lo generado vive en `dist\` y es desechable.
+
+```bat
+dist.bat                 # compila + genera dist\CompassGo-Setup.exe
+dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
+```
+
+- Si falta NSIS, avisa y deja `dist\payload` e `installer.nsi` listos.
+- Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
+
+### 3. `uninstall.bat` — desinstalar de la máquina (tipo: *uninstall*)
 
 Quita los menús contextuales (Compass + `.gitignore` + cascada Vibe Coding)
 vía el propio binario (`--task context-menu-uninstall` / `opencode-uninstall`)
@@ -102,10 +118,10 @@ uninstall.bat
   cline, …); solo limpia las entradas de registro de Compass.
 - Refresca la caché de iconos del Explorador (`ie4uinit.exe -show`).
 
-> Nota: `install.bat` / `uninstall.bat` son para **desarrollo / uso en tu
-> propia máquina**. Para **distribuir** a terceros usa el instalador NSIS que
-> genera `install.bat` (`dist\CompassGo-Setup.exe`), que no requiere Go ni
-> scripts sueltos.
+> Nota: `install.bat` / `dist.bat` / `uninstall.bat` son para **desarrollo /
+> uso en tu propia máquina**. Para **distribuir** a terceros usa el instalador
+> NSIS que genera `dist.bat` (`dist\CompassGo-Setup.exe`), que no requiere Go
+> ni scripts sueltos.
 
 ## Uso del binario (CLI)
 
@@ -159,7 +175,7 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 - Los tests e2e (`internal/container/e2e_test.go`) están **tras la variable
   de entorno `COMPASS_E2E=1`** porque arrancan `compass-go.exe` de verdad.
 - Recursos de Windows: `go-winres.json` + `assets/icon/*.ico` → `.syso` en
-  `cmd/compass/rsrc` (generados al compilar con `install.bat`).
+  `cmd/compass/rsrc` (generados al compilar con `install.bat` / `dist.bat`).
 
 ## Notas de arquitectura / diferencias con el Rust original
 

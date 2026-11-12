@@ -3,32 +3,28 @@ setlocal
 title Instalando Compass Go...
 echo.
 echo =============================================
-echo   Compass Go - Compilar + Instalar + Empaquetar
+echo   Compass Go - Compilar + Instalar
 echo =============================================
 echo.
 
 REM ---------------------------------------------------------------
-REM  Flags:  install.bat --force         rehace tambien los menus y la cascada
-REM          install.bat --vibe          vuelve a configurar Vibe Coding
-REM          install.bat --no-installer  omite solo el setup (dist\payload se usa igual)
+REM  Flags:  install.bat --force   rehace tambien los menus y la cascada
+REM          install.bat --vibe    vuelve a configurar Vibe Coding
 REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
-set "MAKE_INSTALLER=1"
 :parse
 if "%~1"=="" goto parsed
-if /i "%~1"=="--force"        set "FORCE=1"
-if /i "%~1"=="-f"             set "FORCE=1"
-if /i "%~1"=="--vibe"         set "WITH_VIBE=1"
-if /i "%~1"=="--no-installer" set "MAKE_INSTALLER=0"
-if /i "%~1"=="--no-dist"      set "MAKE_INSTALLER=0"
+if /i "%~1"=="--force" set "FORCE=1"
+if /i "%~1"=="-f"      set "FORCE=1"
+if /i "%~1"=="--vibe"  set "WITH_VIBE=1"
 shift
 goto parse
 :parsed
 
 set "BINDIR=%LOCALAPPDATA%\Programs\Keimer"
 set "LEGACYBIN=%USERPROFILE%\.cargo\bin"
-set "MAKENSIS=%ProgramFiles(x86)%\NSIS\makensis.exe"
+set "BUILDDIR=bin"
 
 where go >nul 2>nul
 if errorlevel 1 (
@@ -68,10 +64,10 @@ if not errorlevel 1 (
 echo.
 
 REM ---------------------------------------------------------------
-REM  1. Compilar directo a dist\payload (sin artefactos en la raiz)
+REM  1. Compilar (a bin\, fuera de la instalacion)
 REM ---------------------------------------------------------------
-echo [INFO] Compilando en dist\payload...
-if not exist "dist\payload" mkdir "dist\payload"
+echo [INFO] Compilando en %BUILDDIR%...
+if not exist "%BUILDDIR%" mkdir "%BUILDDIR%"
 where go-winres >nul 2>nul
 if not errorlevel 1 (
     echo [INFO] Generando recursos de Windows con go-winres...
@@ -80,7 +76,7 @@ if not errorlevel 1 (
 ) else (
     echo [AVISO] go-winres no encontrado: se compila sin icono ni version.
 )
-go build -o "dist\payload\compass-go.exe" ./cmd/compass
+go build -o "%BUILDDIR%\compass-go.exe" ./cmd/compass
 if errorlevel 1 (
     echo.
     echo =============================================
@@ -91,9 +87,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-REM Limpiar el binario portable de versiones anteriores en la raiz.
-if exist "compass-go.exe" del /f /q "compass-go.exe" >nul 2>nul
-echo [OK] dist\payload\compass-go.exe generado.
+echo [OK] %BUILDDIR%\compass-go.exe generado.
 echo.
 
 REM ---------------------------------------------------------------
@@ -102,9 +96,9 @@ REM ---------------------------------------------------------------
 if not exist "%BINDIR%" mkdir "%BINDIR%"
 
 echo [INFO] Instalando en %BINDIR%...
-copy /Y "dist\payload\compass-go.exe" "%BINDIR%\compass-go.exe" >nul
+copy /Y "%BUILDDIR%\compass-go.exe" "%BINDIR%\compass-go.exe" >nul
 if errorlevel 1 (
-    echo [ERROR] No se pudo copiar dist\payload\compass-go.exe a %BINDIR%.
+    echo [ERROR] No se pudo copiar %BUILDDIR%\compass-go.exe a %BINDIR%.
     pause
     exit /b 1
 )
@@ -112,12 +106,8 @@ echo [OK] compass-go.exe instalado.
 
 REM Los iconos se resuelven junto al ejecutable (icon.ico / Default.ico /
 REM opencode.ico); sin ellos el menu contextual muestra el icono generico.
-REM Se copian a la instalacion y se dejan en dist\payload para el instalador.
 for %%I in (Icon.ico Default.ico opencode.ico) do (
-    if exist "assets\icon\%%I" (
-        copy /Y "assets\icon\%%I" "%BINDIR%\%%I" >nul 2>nul
-        copy /Y "assets\icon\%%I" "dist\payload\%%I" >nul 2>nul
-    )
+    if exist "assets\icon\%%I" copy /Y "assets\icon\%%I" "%BINDIR%\%%I" >nul 2>nul
 )
 if not exist "%BINDIR%\Default.ico" if exist "%BINDIR%\Icon.ico" (
     copy /Y "%BINDIR%\Icon.ico" "%BINDIR%\Default.ico" >nul 2>nul
@@ -191,122 +181,13 @@ if "%WITH_VIBE%"=="1" (
 )
 echo.
 
-REM ---------------------------------------------------------------
-REM  7. Generar el instalador autonomo en dist\
-REM ---------------------------------------------------------------
-REM dist\payload (binario + iconos) ya se genero en los pasos 1-2.
-echo [INFO] Preparando dist...
-
-REM dist\installer.nsi se regenera en cada ejecucion: dist\ es desechable.
-echo [INFO] Generando dist\installer.nsi...
-> "dist\installer.nsi" echo ; ============================================================================
->> "dist\installer.nsi" echo ;  Compass Go - Instalador autonomo (NSIS)
->> "dist\installer.nsi" echo ;  Generado por install.bat. No editar a mano: se sobrescribe en cada build.
->> "dist\installer.nsi" echo ;
->> "dist\installer.nsi" echo ;  Instala compass-go.exe + iconos en LOCALAPPDATA\Programs\Keimer,
->> "dist\installer.nsi" echo ;  anade ese directorio al PATH del usuario y registra el menu contextual.
->> "dist\installer.nsi" echo ; ============================================================================
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo !define APPNAME  "Compass Go"
->> "dist\installer.nsi" echo !define APPEXE   "compass-go.exe"
->> "dist\installer.nsi" echo !define REGKEY   "CompassGo"
->> "dist\installer.nsi" echo !define UNREGKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${REGKEY}"
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo Name "${APPNAME}"
->> "dist\installer.nsi" echo OutFile "CompassGo-Setup.exe"
->> "dist\installer.nsi" echo InstallDir "$LOCALAPPDATA\Programs\Keimer"
->> "dist\installer.nsi" echo RequestExecutionLevel user
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo !include "WinMessages.nsh"
->> "dist\installer.nsi" echo !include "StrFunc.nsh"
->> "dist\installer.nsi" echo ${StrStr}
->> "dist\installer.nsi" echo ${StrRep}
->> "dist\installer.nsi" echo ${UnStrStr}
->> "dist\installer.nsi" echo ${UnStrRep}
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo Section "Principal" SEC_PRINCIPAL
->> "dist\installer.nsi" echo   SetOutPath "$INSTDIR"
->> "dist\installer.nsi" echo   File /r "payload\*"
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo   ; Migracion: eliminar la copia antigua de .cargo\bin.
->> "dist\installer.nsi" echo   Delete "$PROFILE\.cargo\bin\compass-go.exe"
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo   ReadRegStr $0 HKCU "Environment" "Path"
->> "dist\installer.nsi" echo   ${StrStr} $1 $0 "$INSTDIR"
->> "dist\installer.nsi" echo   ${If} $1 == ""
->> "dist\installer.nsi" echo     ${If} $0 == ""
->> "dist\installer.nsi" echo       WriteRegExpandStr HKCU "Environment" "Path" "$INSTDIR;"
->> "dist\installer.nsi" echo     ${Else}
->> "dist\installer.nsi" echo       WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR"
->> "dist\installer.nsi" echo     ${EndIf}
->> "dist\installer.nsi" echo     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment"
->> "dist\installer.nsi" echo   ${EndIf}
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo   WriteUninstaller "$INSTDIR\Uninstall.exe"
->> "dist\installer.nsi" echo   WriteRegStr HKCU "${UNREGKEY}" "DisplayName" "${APPNAME}"
->> "dist\installer.nsi" echo   WriteRegStr HKCU "${UNREGKEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
->> "dist\installer.nsi" echo   WriteRegStr HKCU "${UNREGKEY}" "DisplayIcon" "$INSTDIR\${APPEXE},0"
->> "dist\installer.nsi" echo   WriteRegStr HKCU "${UNREGKEY}" "InstallLocation" "$INSTDIR"
->> "dist\installer.nsi" echo   WriteRegStr HKCU "${UNREGKEY}" "Publisher" "${APPNAME}"
->> "dist\installer.nsi" echo   WriteRegStr HKCU "${UNREGKEY}" "Version" "1.0.0.0"
->> "dist\installer.nsi" echo   WriteRegDWORD HKCU "${UNREGKEY}" "NoModify" 1
->> "dist\installer.nsi" echo   WriteRegDWORD HKCU "${UNREGKEY}" "NoRepair" 1
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo   ExecWait '"$INSTDIR\${APPEXE}" --task context-menu-install'
->> "dist\installer.nsi" echo SectionEnd
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo Section "Uninstall"
->> "dist\installer.nsi" echo   ExecWait '"$INSTDIR\${APPEXE}" --task context-menu-uninstall'
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo   ReadRegStr $0 HKCU "Environment" "Path"
->> "dist\installer.nsi" echo   ${UnStrStr} $1 $0 "$INSTDIR"
->> "dist\installer.nsi" echo   ${If} $1 != ""
->> "dist\installer.nsi" echo     ${UnStrRep} $0 $0 "$INSTDIR;" ""
->> "dist\installer.nsi" echo     ${UnStrRep} $0 $0 ";$INSTDIR" ""
->> "dist\installer.nsi" echo     ${UnStrRep} $0 $0 "$INSTDIR" ""
->> "dist\installer.nsi" echo     WriteRegExpandStr HKCU "Environment" "Path" $0
->> "dist\installer.nsi" echo     SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment"
->> "dist\installer.nsi" echo   ${EndIf}
->> "dist\installer.nsi" echo.
->> "dist\installer.nsi" echo   Delete "$INSTDIR\Uninstall.exe"
->> "dist\installer.nsi" echo   RMDir /r "$INSTDIR"
->> "dist\installer.nsi" echo   DeleteRegKey HKCU "${UNREGKEY}"
->> "dist\installer.nsi" echo SectionEnd
-echo [OK] dist\installer.nsi generado.
-
-if "%MAKE_INSTALLER%"=="0" (
-    echo [SKIP] Setup omitido por --no-installer. dist\payload e installer.nsi quedan listos.
-    goto done
-)
-
-if not exist "%MAKENSIS%" (
-    echo [WARN] NSIS no esta instalado; se omite el instalador.
-    echo        Instala NSIS desde https://nsis.sourceforge.io/ y ejecuta:
-    echo        "%MAKENSIS%" "dist\installer.nsi"
-    goto done
-)
-
-echo [INFO] Generando dist\CompassGo-Setup.exe...
-pushd "dist"
-"%MAKENSIS%" installer.nsi >nul
-if errorlevel 1 (
-    popd
-    echo [WARN] No se pudo generar el instalador.
-) else (
-    popd
-    echo [OK] dist\CompassGo-Setup.exe generado.
-)
-echo.
-
-:done
 REM El icono de las entradas nuevas solo aparece al refrescar la cache.
 ie4uinit.exe -show >nul 2>nul
 
 echo =============================================
 echo   [OK] Instalacion completada
 echo =============================================
-echo   Binario:    %BINDIR%\compass-go.exe
-if "%MAKE_INSTALLER%"=="1" if exist "dist\CompassGo-Setup.exe" echo   Instalador: %CD%\dist\CompassGo-Setup.exe
+echo   Binario: %BINDIR%\compass-go.exe
 echo.
 echo Si el menu no aparece, reinicia el Explorador:
 echo   taskkill /f /im explorer.exe ^& start explorer.exe
