@@ -101,6 +101,39 @@ func TestScrollbackAnchorWhenHistoryFull(t *testing.T) {
 	}
 }
 
+func TestScrollbackIgnoresTrailingBlankLines(t *testing.T) {
+	b := newScrollback(20, 4)
+	b.Feed([]byte("L0\r\nL1\r\n\r\n\r\n\r\n\r\n"))
+	// Solo dos filas tienen texto: las lineas en blanco del final no son
+	// historia por la que se pueda seguir bajando.
+	if got := b.DocRows(); got != 2 {
+		t.Errorf("DocRows = %d, queria 2 (sin contar blancos finales)", got)
+	}
+	if b.Scroll(-3) {
+		t.Error("Scroll no deberia moverse: el texto ya cabe en pantalla")
+	}
+	if got := b.Offset(); got != 0 {
+		t.Errorf("Offset = %d, queria 0", got)
+	}
+}
+
+func TestScrollbackDropsHistoryAfterClear(t *testing.T) {
+	b := newScrollback(20, 4)
+	feedLines(b, 20)
+	if b.DocRows() != 20 {
+		t.Fatalf("DocRows = %d, queria 20", b.DocRows())
+	}
+	// Pantalla limpiada: el terminal alto queda en blanco, asi que tampoco
+	// debe quedar historia por la que bajar.
+	b.Feed([]byte("\x1b[2J\x1b[H"))
+	if got := b.DocRows(); got != 0 {
+		t.Errorf("DocRows tras limpiar = %d, queria 0", got)
+	}
+	if b.Scroll(-3) {
+		t.Error("Scroll no deberia moverse tras limpiar la pantalla")
+	}
+}
+
 func TestScrollbackClampShortContent(t *testing.T) {
 	b := newScrollback(20, 10)
 	b.Feed([]byte("una\r\nlinea\r\ncorta\r\n"))

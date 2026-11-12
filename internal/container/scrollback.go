@@ -32,7 +32,8 @@ type Scrollback struct {
 	H          int // altura del terminal alto (maxScrollback)
 	back       vt10x.Terminal
 
-	used int // numero aproximado de filas de contenido (limita el scroll)
+	used int // filas escritas (solo para detectar cuando rodo la historia)
+	end  int // fila siguiente a la ultima con texto: limite real del scroll
 	top  int // fila absoluta del documento en la primera linea visible
 }
 
@@ -60,6 +61,10 @@ func (b *Scrollback) Feed(chunk []byte) {
 		scrolled = b.used - b.H
 		b.used = b.H
 	}
+	// El limite del scroll es la ultima fila con texto, no las filas escritas:
+	// una salida que termina en lineas en blanco (o una pantalla limpiada) no
+	// debe dejar historia vacia por la que seguir bajando.
+	b.end = b.lastTextRowLocked() + 1
 	newTop := b.contentTopLocked()
 	if b.top >= oldTop {
 		// Estabamos abajo: seguimos el fondo.
@@ -72,6 +77,7 @@ func (b *Scrollback) Feed(chunk []byte) {
 			b.top = 0
 		}
 	}
+	b.clampTopLocked()
 	b.mu.Unlock()
 }
 
@@ -82,19 +88,55 @@ func (b *Scrollback) Resize(cols, rows int) {
 	oldTop := b.contentTopLocked()
 	b.cols, b.rows = cols, rows
 	b.back.Resize(cols, b.H)
+	b.end = b.lastTextRowLocked() + 1
 	newTop := b.contentTopLocked()
 	if b.top >= oldTop {
 		b.top = newTop
 	}
+	b.clampTopLocked()
 	b.mu.Unlock()
+}
+
+// lastTextRowLocked devuelve la ultima fila del terminal alto que tiene algun
+// caracter visible, o -1 si no hay texto. Empieza en el cursor (no hay texto
+// por debajo de el) para no recorrer las miles de filas vacias del terminal.
+// Requiere poseer b.mu.
+func (b *Scrollback) lastTextRowLocked() int {
+	b.back.Lock()
+	defer b.back.Unlock()
+	last := b.back.Cursor().Y
+	if last > b.H-1 {
+		last = b.H - 1
+	}
+	for y := last; y >= 0; y-- {
+		for x := 0; x < b.cols; x++ {
+			if ch := b.back.Cell(x, y).Char; ch != 0 && ch != ' ' {
+				return y
+			}
+		}
+	}
+	return -1
+}
+
+// clampTopLocked deja `top` dentro del rango desplazable. Requiere b.mu.
+func (b *Scrollback) clampTopLocked() {
+	if max := b.contentTopLocked(); b.top > max {
+		b.top = max
+	}
+	if b.top < 0 {
+		b.top = 0
+	}
 }
 
 // docRowsLocked es el numero de filas de contenido (hasta maxScrollback).
 // Requiere poseer b.mu.
 func (b *Scrollback) docRowsLocked() int {
-	d := b.used
+	d := b.end
 	if d > b.H {
 		d = b.H
+	}
+	if d < 0 {
+		d = 0
 	}
 	return d
 }
