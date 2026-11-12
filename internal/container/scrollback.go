@@ -53,14 +53,24 @@ func (b *Scrollback) Feed(chunk []byte) {
 	oldTop := b.contentTopLocked()
 	b.back.Write(chunk)
 	b.used += bytes.Count(chunk, []byte{'\n'})
+	// Al llenarse el terminal alto, cada fila nueva desplaza una fila fuera
+	// de la ventana: la fila absoluta del documento deja de ser estable.
+	scrolled := 0
 	if b.used > b.H {
+		scrolled = b.used - b.H
 		b.used = b.H
 	}
 	newTop := b.contentTopLocked()
-	// Si estabamos abajo (o mas abajo aun), seguimos el fondo; si estabamos
-	// subidos, la vista queda anclada a las mismas filas.
 	if b.top >= oldTop {
+		// Estabamos abajo: seguimos el fondo.
 		b.top = newTop
+	} else if scrolled > 0 {
+		// Estabamos subidos: la historia ha rodado `scrolled` filas, asi que
+		// bajamos el ancla lo mismo para seguir viendo las mismas lineas.
+		b.top -= scrolled
+		if b.top < 0 {
+			b.top = 0
+		}
 	}
 	b.mu.Unlock()
 }

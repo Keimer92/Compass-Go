@@ -86,6 +86,21 @@ func TestScrollbackAnchorOnNewOutput(t *testing.T) {
 	}
 }
 
+func TestScrollbackAnchorWhenHistoryFull(t *testing.T) {
+	b := newScrollback(20, 4)
+	feedLines(b, maxScrollback)
+	b.Scroll(-3)
+	before := lineText(b, b.ViewTop())
+
+	// Con la historia llena, cada fila nueva desplaza el contenido una fila
+	// dentro del terminal alto: el ancla tiene que bajar lo mismo para que la
+	// vista siga mostrando las mismas lineas.
+	b.Feed([]byte("X\r\n"))
+	if got := lineText(b, b.ViewTop()); got != before {
+		t.Errorf("la vista derivo de %q a %q al llenarse la historia", before, got)
+	}
+}
+
 func TestScrollbackClampShortContent(t *testing.T) {
 	b := newScrollback(20, 10)
 	b.Feed([]byte("una\r\nlinea\r\ncorta\r\n"))
