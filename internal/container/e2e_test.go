@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -105,22 +106,36 @@ func waitForText(s *Session, want string, timeout time.Duration) bool {
 	return false
 }
 
-// compassExe compila el binario real (si falta) y devuelve su ruta.
+// compassExe compila el binario real y devuelve su ruta. Se compila siempre
+// (una vez por ejecución) para que las pruebas no corran contra un binario
+// viejo de una sesión anterior.
+var (
+	compassOnce sync.Once
+	compassPath string
+	compassErr  error
+)
+
 func compassExe(t *testing.T) string {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	exe := filepath.Join(root, "compass-go.exe")
-	if _, err := os.Stat(exe); err != nil {
+	compassOnce.Do(func() {
+		root, err := filepath.Abs(filepath.Join("..", ".."))
+		if err != nil {
+			compassErr = err
+			return
+		}
+		exe := filepath.Join(root, "compass-go.exe")
 		build := exec.Command("go", "build", "-o", exe, "./cmd/compass")
 		build.Dir = root
 		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("no se pudo compilar compass-go.exe: %v\n%s", err, out)
+			compassErr = fmt.Errorf("no se pudo compilar compass-go.exe: %v\n%s", err, out)
+			return
 		}
+		compassPath = exe
+	})
+	if compassErr != nil {
+		t.Fatal(compassErr)
 	}
-	return exe
+	return compassPath
 }
 
 // TestTabSwitchE2E reproduce el fallo de abrir una pestana, volver a la pestana
