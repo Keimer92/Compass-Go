@@ -20,14 +20,72 @@ func init() {
 	Register("whatsapp", project.TypeGoWails, WhatsappBuild)
 }
 
-// WhatsappBuild compila el motor de WhatsApp con ncc y reporta el bundle.
-// Equivalente de tasks/whatsapp.rs::build.
+// WhatsappBuild compila el motor de WhatsApp. Si el proyecto tiene una carpeta
+// whatsapp_engine local, la usa; si no, usa el motor canónico (definido por
+// COMPASS_WHATSAPP_ENGINE, dentro de Compass en corekit/whatsapp) y luego lo
+// etaja en el binario del proyecto.
 func WhatsappBuild(ctx *project.ProjectContext) error {
 	shell.ClearScreen()
 	fmt.Println("╔══════════════════════════════════════════════════╗")
 	fmt.Println("║         COMPILAR MOTOR DE WHATSAPP               ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")
 
+	if ctx.HasWhatsAppEngine {
+		return buildLocalWhatsapp(ctx)
+	}
+
+	src := whatsappEngineSource()
+	if !dirExists(src) || !fileExists(filepath.Join(src, "engine.js")) {
+		fmt.Println()
+		fmt.Printf("[ERROR] No se encontró un motor de WhatsApp (ni local ni canónico).\n")
+		fmt.Printf("  Motor canónico esperado en: %s\n", src)
+		fmt.Println("  Define COMPASS_WHATSAPP_ENGINE o crea whatsapp_engine/ en el proyecto.")
+		ui.Pause()
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("[INFO] Usando motor de WhatsApp canónico en:")
+	fmt.Printf("  %s\n", src)
+	fmt.Println("[INFO] Instalando dependencias del motor...")
+	if err := shell.RunNpmInstall(src); err != nil {
+		fmt.Printf("[ERROR] %v\n", err)
+		ui.Pause()
+		return nil
+	}
+
+	fmt.Println("[INFO] Compilando motor de WhatsApp con ncc...")
+	if err := shell.RunInDirStatus("node", src, "bundle.mjs"); err != nil {
+		fmt.Printf("[ERROR] Falló la compilación del motor: %v\n", err)
+		ui.Pause()
+		return nil
+	}
+
+	fmt.Println("[OK] Motor de WhatsApp compilado exitosamente!")
+
+	stageWhatsappEngine(ctx)
+
+	bundleDir := filepath.Join(src, "whatsapp-engine-bundle")
+	if dirExists(bundleDir) {
+		var total int64
+		_ = filepath.Walk(bundleDir, func(_ string, info os.FileInfo, _ error) error {
+			if info != nil && !info.IsDir() {
+				total += info.Size()
+			}
+			return nil
+		})
+		fmt.Printf("  Bundle generado en: %s\n", bundleDir)
+		fmt.Printf("  Tamaño total del bundle: %.2f MB\n", float64(total)/1048576.0)
+	}
+
+	fmt.Println()
+	ui.Pause()
+	return nil
+}
+
+// buildLocalWhatsapp compila el motor de WhatsApp que vive dentro del propio
+// proyecto (carpeta whatsapp_engine).
+func buildLocalWhatsapp(ctx *project.ProjectContext) error {
 	engineDir := ctx.ProjectType.WhatsappPath(ctx.ScriptDir)
 	if !dirExists(engineDir) {
 		fmt.Println()

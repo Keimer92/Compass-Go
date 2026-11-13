@@ -136,21 +136,21 @@ func windowsEntries(ctx *project.ProjectContext) []releaseEntry {
 		return nil
 	}
 	return []releaseEntry{
-		{archKeyX86, tui.SubItem{
-			Icon: iconDesktop, Label: "Windows x86",
-			Description: "32 bits · PCs y VMs antiguas", ColorKey: "build",
-		}},
 		{archKeyX64, tui.SubItem{
 			Icon: iconDesktop, Label: "Windows x64",
 			Description: "64 bits · uso general", ColorKey: "run",
 		}},
-		{archKeyArm64, tui.SubItem{
-			Icon: iconDesktop, Label: "Windows ARM64",
-			Description: "Snapdragon X · bajo consumo", ColorKey: "reload",
-		}},
 		{archKeyAll, tui.SubItem{
 			Icon: iconAll, Label: "Todos",
 			Description: "Compila x86 + x64 + ARM64", ColorKey: "profile",
+		}},
+		{archKeyX86, tui.SubItem{
+			Icon: iconDesktop, Label: "Windows x86",
+			Description: "32 bits · PCs y VMs antiguas", ColorKey: "build",
+		}},
+		{archKeyArm64, tui.SubItem{
+			Icon: iconDesktop, Label: "Windows ARM64",
+			Description: "Snapdragon X · bajo consumo", ColorKey: "reload",
 		}},
 		releaseBack(),
 	}
@@ -203,7 +203,11 @@ func androidEntries(ctx *project.ProjectContext) []releaseEntry {
 func ReleaseWindows(ctx *project.ProjectContext) error {
 	switch ctx.ProjectType {
 	case project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails:
-		return runReleaseMenu(ctx, releaseTitleWindows, windowsEntries(ctx), false, revealLastArtifact,
+		reveal := revealLastArtifact
+		if ctx.ProjectType == project.TypeGoWails {
+			reveal = revealBinFolder
+		}
+		return runReleaseMenu(ctx, releaseTitleWindows, windowsEntries(ctx), false, reveal,
 			func(key string) ([]string, error) { return windowsArtifacts(ctx, key) })
 	case project.TypeFlutter:
 		return FlutterBuildWindows(ctx)
@@ -289,10 +293,17 @@ func finishRelease(ctx *project.ProjectContext, artifacts []string, reveal revea
 		case revealLastArtifact:
 			shell.ShowArtifact(artifacts[len(artifacts)-1])
 		case revealBinFolder:
-			shell.OpenFolder(filepath.Join(ctx.ScriptDir, "bin"))
+			shell.OpenFolder(releaseBinDir(ctx))
 		}
 	}
 	ui.PauseFor(10)
+}
+
+func releaseBinDir(ctx *project.ProjectContext) string {
+	if ctx.ProjectType == project.TypeGoWails {
+		return wailsBinDir(ctx)
+	}
+	return filepath.Join(ctx.ScriptDir, "bin")
 }
 
 // ── Despacho por arquitectura ───────────────────────────────────────────────
@@ -305,6 +316,9 @@ func singleArtifact(artifact string, err error) ([]string, error) {
 }
 
 func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error) {
+	// Etapa el motor de WhatsApp canónico (no-op si el proyecto no lo usa).
+	stageWhatsappEngine(ctx)
+
 	if key == archKeyAll {
 		var artifacts []string
 		for _, a := range []string{archKeyX86, archKeyX64, archKeyArm64} {

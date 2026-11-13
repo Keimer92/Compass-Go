@@ -55,6 +55,8 @@ Compass Go/
 ├─ dist.bat                   # compilar + empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
+├─ corekit/                  # core kits canónicos que viajan dentro de Compass (p.ej. whatsapp)
+│  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs, node.exe, node_modules
 └─ PLAN.md                    # plan de migración original
 ```
 
@@ -160,6 +162,29 @@ proyecto concreto:
 | `cline-install` / `cline-uninstall` | Ídem para Cline |
 | `kilo-install` / `kilo-uninstall` | Ídem para Kilo Code |
 | `antigravity-install` / `antigravity-uninstall` | Ídem para Antigravity |
+
+## Core kits (motores canónicos)
+
+Compass lleva dentro ciertos **core kits** —motores o runtimes compartidos— en
+`corekit/`, para que viajen con el binario y no dependan de rutas externas. El
+primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
+
+- `corekit/whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
+  `node_modules/`, `node.exe` y el bundle generado `whatsapp-engine-bundle/`.
+  `bundle.mjs` deja el bundle en la raíz del kit (junto a `node.exe`).
+- **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
+  1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
+  2. `<dir del exe>/corekit/whatsapp` (instalación / binario compilado);
+  3. `<cwd>/corekit/whatsapp` (desarrollo con `go run`).
+- **Opt-in por proyecto**: un proyecto solo recibe el runtime si tiene el
+  marcador `use-whatsapp-engine` en su raíz (o una carpeta `whatsapp_engine`
+  local). Sin él, Compass no etaja nada.
+- **Etapado en build**: `stageWhatsappEngine` (llamado desde `windowsArtifacts`
+  en el release de escritorio) reconstruye el bundle si `engine.js` cambió y
+  copia `node.exe` + `whatsapp-engine-bundle` al `bin/resources/` del proyecto
+  (o al `resources/` de Tauri/Flutter/Kotlin según tipo).
+- **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
+- `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador.
 
 ## Desarrollo
 

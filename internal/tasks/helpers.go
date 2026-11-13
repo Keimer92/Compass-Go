@@ -272,3 +272,39 @@ func allTypes() []project.ProjectType {
 		project.TypeGoWails,
 	}
 }
+
+// copyDir copia recursivamente src en dst (sobrescribiendo).
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		s := filepath.Join(src, e.Name())
+		d := filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			if err := copyDir(s, d); err != nil {
+				return err
+			}
+		} else if err := copyFile(s, d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// isNewer indica si el archivo a es mas reciente que b (o b no existe).
+func isNewer(a, b string) bool {
+	ia, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	ib, err := os.Stat(b)
+	if err != nil {
+		return true
+	}
+	return ia.ModTime().After(ib.ModTime())
+}

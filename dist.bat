@@ -81,6 +81,17 @@ if not exist "dist\payload\opencode.ico" if exist "dist\payload\Default.ico" (
 echo [OK] Iconos copiados.
 echo.
 
+REM Core kits (motores canonicos, p.ej. whatsapp) viajan dentro del payload;
+REM el instalador ya empaqueta payload\* con File /r.
+if exist "corekit" (
+    echo [INFO] Copiando core kits a dist\payload...
+    xcopy /E /I /Y "corekit" "dist\payload\corekit" >nul 2>nul
+    echo [OK] Core kits copiados.
+) else (
+    echo [SKIP] No se encontro la carpeta corekit; se omite.
+)
+echo.
+
 if "%MAKE_INSTALLER%"=="0" (
     echo [SKIP] Instalador omitido por --no-installer. dist\payload queda listo.
     goto done

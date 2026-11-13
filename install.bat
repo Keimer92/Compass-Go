@@ -119,6 +119,18 @@ echo [OK] Iconos copiados.
 echo.
 
 REM ---------------------------------------------------------------
+REM  2b. Core kits (motores canonicos, p.ej. whatsapp) junto al exe
+REM ---------------------------------------------------------------
+if exist "corekit" (
+    echo [INFO] Copiando core kits a %BINDIR%...
+    xcopy /E /I /Y "corekit" "%BINDIR%\corekit" >nul 2>nul
+    echo [OK] Core kits copiados.
+) else (
+    echo [SKIP] No se encontro la carpeta corekit; se omite.
+)
+echo.
+
+REM ---------------------------------------------------------------
 REM  3. Migrar la instalacion antigua en .cargo\bin
 REM ---------------------------------------------------------------
 REM Compass vivia antes en .cargo\bin (carpeta de Rust). Se borra solo
