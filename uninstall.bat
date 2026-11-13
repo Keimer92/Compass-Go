@@ -65,6 +65,17 @@ if errorlevel 1 (
 )
 echo.
 
+REM ---------------------------------------------------------------
+REM  Quitar COMPASS_WHATSAPP_ENGINE del entorno del usuario
+REM ---------------------------------------------------------------
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "[Environment]::SetEnvironmentVariable('COMPASS_WHATSAPP_ENGINE',$null,'User')"
+if errorlevel 1 (
+    echo [WARN] No se pudo quitar COMPASS_WHATSAPP_ENGINE.
+) else (
+    echo [OK] COMPASS_WHATSAPP_ENGINE eliminada.
+)
+echo.
+
 echo [INFO] Borrando binario e iconos...
 if exist "%BINDIR%\compass-go.exe" del /f /q "%BINDIR%\compass-go.exe" >nul 2>nul
 if exist "%BINDIR%\Icon.ico"       del /f /q "%BINDIR%\Icon.ico" >nul 2>nul

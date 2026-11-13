@@ -197,6 +197,14 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   (o al `resources/` de Tauri/Flutter/Kotlin según tipo).
 - **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
 - `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador.
+- **Variable de entorno en la instalación**: `install.bat` define
+  `COMPASS_WHATSAPP_ENGINE` (ámbito Usuario) apuntando al corekit instalado
+  (`%LOCALAPPDATA%\Programs\Keimer\corekit\whatsapp`), para que los proyectos
+  que consumen el motor (p.ej. GymPro en modo desarrollo) lo reutilicen en vivo
+  sin copiarlo dentro del proyecto. `uninstall.bat` elimina esa variable.
+  El modo desarrollo de Compass (`windows-dev` → `wails3 task dev`) no hace
+  staging: la ventana nueva hereda el entorno de Compass, así que basta con
+  reiniciar Compass tras la instalación para que el proyecto vea el engine.
 
 ## Desarrollo
 

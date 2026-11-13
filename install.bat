@@ -131,6 +131,26 @@ if exist "corekit" (
 echo.
 
 REM ---------------------------------------------------------------
+REM  2c. Variable COMPASS_WHATSAPP_ENGINE (motor canonico)
+REM ---------------------------------------------------------------
+REM Apunta a los proyectos que consumen el motor (p.ej. GymPro en modo
+REM desarrollo) al engine canonico instalado junto al binario, para que lo
+REM reutilicen sin copiarlo dentro del proyecto.
+if exist "%BINDIR%\corekit\whatsapp" (
+    echo [INFO] Configurando COMPASS_WHATSAPP_ENGINE...
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "[Environment]::SetEnvironmentVariable('COMPASS_WHATSAPP_ENGINE','%BINDIR%\corekit\whatsapp','User')"
+    if errorlevel 1 (
+        echo [WARN] No se pudo definir COMPASS_WHATSAPP_ENGINE.
+        echo        Definela manualmente: %BINDIR%\corekit\whatsapp
+    ) else (
+        echo [OK] COMPASS_WHATSAPP_ENGINE = %BINDIR%\corekit\whatsapp
+    )
+) else (
+    echo [SKIP] No se encontro corekit\whatsapp; se omite COMPASS_WHATSAPP_ENGINE.
+)
+echo.
+
+REM ---------------------------------------------------------------
 REM  3. Migrar la instalacion antigua en .cargo\bin
 REM ---------------------------------------------------------------
 REM Compass vivia antes en .cargo\bin (carpeta de Rust). Se borra solo
