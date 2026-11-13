@@ -79,7 +79,7 @@ func wailsTaskfileVar(ctx *project.ProjectContext, name string) string {
 	for _, line := range strings.Split(string(data), "\n") {
 		// Las vars de la raíz van indentadas con 2 espacios.
 		indent := len(line) - len(strings.TrimLeft(line, " "))
-		if indent == 0 || indent > 4 {
+		if indent != 2 {
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
@@ -98,6 +98,10 @@ func wailsTaskfileVar(ctx *project.ProjectContext, name string) string {
 				return value[1 : end+1]
 			}
 		}
+		if comment := strings.Index(value, " #"); comment >= 0 {
+			value = strings.TrimSpace(value[:comment])
+		}
+		return value
 	}
 	return ""
 }
@@ -115,6 +119,9 @@ func wailsBinDir(ctx *project.ProjectContext) string {
 	dir := wailsTaskfileVar(ctx, "BIN_DIR")
 	if dir == "" {
 		dir = "bin"
+	}
+	if filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
 	}
 	return filepath.Join(ctx.ScriptDir, dir)
 }
@@ -615,15 +622,18 @@ func WailsPackageDesktop(ctx *project.ProjectContext) error {
 	return WailsBuildDesktop(ctx)
 }
 
-// wailsBuildDesktopArch compila/empaqueta una arquitectura y copia a bin/.
+// wailsBuildDesktopArch compila/empaqueta una arquitectura y nombra los artefactos en BIN_DIR.
 func wailsBuildDesktopArch(ctx *project.ProjectContext, a desktopArch) ([]string, error) {
 	if err := ensureWailsCli(); err != nil {
 		return nil, err
 	}
 	bin := wailsBinDir(ctx)
-	os.MkdirAll(bin, 0o755)
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		return nil, fmt.Errorf("no se pudo crear el directorio de salida %s: %w", bin, err)
+	}
 
-	name, version := wailsReleaseMeta(ctx)
+	name := wailsAppName(ctx)
+	_, version := wailsReleaseMeta(ctx)
 	portable := filepath.Join(bin, wailsAppName(ctx)+".exe")
 
 	switch a {
@@ -636,13 +646,21 @@ func wailsBuildDesktopArch(ctx *project.ProjectContext, a desktopArch) ([]string
 		if !ok {
 			return nil, fmt.Errorf("[ERROR] Falló el build x86 (`wails3 task build ARCH=386`).")
 		}
-		return []string{copyArtifact(portable, filepath.Join(bin, wailsDesktopArtifact(name, version, "x86", "exe")))}, nil
+		dest := filepath.Join(bin, wailsDesktopArtifact(name, version, "x86 portable", "exe"))
+		if err := moveWailsArtifact(portable, dest); err != nil {
+			return nil, err
+		}
+		return []string{dest}, nil
 	default:
-		var arg, suffix string
+		var arg, archLabel string
 		if a == archArm64 {
-			arg, suffix = "arm64", "arm64"
+			arg, archLabel = "arm64", "ARM64"
 		} else {
-			arg, suffix = "amd64", ""
+			arg, archLabel = "amd64", "x64"
+		}
+		portableLabel := "portable"
+		if a == archArm64 {
+			portableLabel = archLabel + " portable"
 		}
 		label := a.label()
 		fmt.Printf("[INFO] Windows %s: portable + instalador NSIS (`wails3 task package ARCH=%s`).\n", label, arg)
@@ -657,11 +675,16 @@ func wailsBuildDesktopArch(ctx *project.ProjectContext, a desktopArch) ([]string
 		if !ok {
 			return nil, fmt.Errorf("[ERROR] Falló el paquete %s (`wails3 task package ARCH=%s`).", label, arg)
 		}
-		var artifacts []string
-		artifacts = append(artifacts, copyArtifact(portable, filepath.Join(bin, wailsDesktopArtifact(name, version, suffix, "exe"))))
+		portableDest := filepath.Join(bin, wailsDesktopArtifact(name, version, portableLabel, "exe"))
 		installer := filepath.Join(bin, fmt.Sprintf("%s-%s-installer.exe", wailsAppName(ctx), arg))
-		artifacts = append(artifacts, copyArtifact(installer, filepath.Join(bin, wailsDesktopArtifact(name, version, label+" installer", "exe"))))
-		return artifacts, nil
+		installerDest := filepath.Join(bin, wailsDesktopArtifact(name, version, archLabel+" installer", "exe"))
+		if err := moveWailsArtifact(portable, portableDest); err != nil {
+			return nil, err
+		}
+		if err := moveWailsArtifact(installer, installerDest); err != nil {
+			return nil, err
+		}
+		return []string{portableDest, installerDest}, nil
 	}
 }
 
@@ -925,6 +948,23 @@ func copyArtifact(src, dest string) string {
 	}
 	fmt.Printf("[OK] %s\n", dest)
 	return dest
+}
+
+func moveWailsArtifact(src, dest string) error {
+	if filepath.Clean(src) == filepath.Clean(dest) {
+		return nil
+	}
+	if _, err := os.Stat(src); err != nil {
+		return fmt.Errorf("no se encontró el artefacto generado %s: %w", src, err)
+	}
+	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("no se pudo reemplazar %s: %w", dest, err)
+	}
+	if err := os.Rename(src, dest); err != nil {
+		return fmt.Errorf("no se pudo renombrar %s a %s: %w", src, dest, err)
+	}
+	fmt.Printf("[OK] %s\n", dest)
+	return nil
 }
 
 // wailsSigningEnv devuelve las variables de firma que espera el Gradle de Wails

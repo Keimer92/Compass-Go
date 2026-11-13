@@ -41,10 +41,10 @@ func equalStrings(a, b []string) bool {
 
 func TestWindowsEntriesAreOfferedOnlyByDesktopArchTypes(t *testing.T) {
 	want := []string{
-		"Windows x86",
 		"Windows x64",
-		"Windows ARM64",
 		"Todos",
+		"Windows x86",
+		"Windows ARM64",
 		"Volver al menu principal",
 	}
 	for _, kind := range []project.ProjectType{
@@ -54,8 +54,8 @@ func TestWindowsEntriesAreOfferedOnlyByDesktopArchTypes(t *testing.T) {
 		if got := releaseLabels(entries); !equalStrings(got, want) {
 			t.Errorf("%s: %v, quiero %v", kind.Label(), got, want)
 		}
-		if entries[3].key != archKeyAll {
-			t.Errorf("%s: la card Todos debe ser 'all'", kind.Label())
+		if entries[0].key != archKeyX64 || entries[1].key != archKeyAll {
+			t.Errorf("%s: Windows x64 y Todos deben ser las primeras opciones", kind.Label())
 		}
 		if entries[len(entries)-1].key != archKeyBack {
 			t.Errorf("%s: la última card debe ser back", kind.Label())
@@ -233,6 +233,70 @@ func TestWriteAbiInitScriptPinsOneAbiOrEnablesSplits(t *testing.T) {
 	data, _ = os.ReadFile(splits)
 	if !containsAll(string(data), "splits.abi.enable = true", "universalApk = true", "'arm64-v8a', 'armeabi-v7a'") {
 		t.Errorf("init script de splits inesperado:\n%s", data)
+	}
+}
+
+func TestWailsDesktopArtifactNames(t *testing.T) {
+	cases := []struct {
+		name, version, suffix, want string
+	}{
+		{"gympro", "1.2.3", "portable", "gympro v1.2.3 portable.exe"},
+		{"gympro", "1.2.3", "x86 portable", "gympro v1.2.3 x86 portable.exe"},
+		{"gympro", "1.2.3", "ARM64 portable", "gympro v1.2.3 ARM64 portable.exe"},
+		{"gympro", "1.2.3", "x64 installer", "gympro v1.2.3 x64 installer.exe"},
+		{"gympro", "1.2.3", "ARM64 installer", "gympro v1.2.3 ARM64 installer.exe"},
+	}
+	for _, c := range cases {
+		if got := wailsDesktopArtifact(c.name, c.version, c.suffix, "exe"); got != c.want {
+			t.Errorf("wailsDesktopArtifact(%q, %q, %q) = %q, quiero %q",
+				c.name, c.version, c.suffix, got, c.want)
+		}
+	}
+}
+
+func TestMoveWailsArtifactRenamesWithoutKeepingSource(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "gympro-amd64-installer.exe")
+	dest := filepath.Join(dir, "gympro v1.2.3 x64 installer.exe")
+	if err := os.WriteFile(src, []byte("installer"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := moveWailsArtifact(src, dest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Fatalf("se conservó el archivo de origen: %v", err)
+	}
+	if data, err := os.ReadFile(dest); err != nil || string(data) != "installer" {
+		t.Fatalf("contenido del destino = %q, err = %v", data, err)
+	}
+}
+
+func TestReleaseBinDirUsesWailsDestination(t *testing.T) {
+	root := t.TempDir()
+	configured := filepath.Join(root, "artifacts")
+	taskfile := "version: '3'\nvars:\n  BIN_DIR: artifacts\ntasks:\n  build:\n    vars:\n      BIN_DIR: Documents\n"
+	if err := os.WriteFile(filepath.Join(root, "Taskfile.yml"), []byte(taskfile), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGoWails}
+	if got := releaseBinDir(ctx); got != configured {
+		t.Fatalf("releaseBinDir() = %q, quiero %q", got, configured)
+	}
+}
+
+func TestWailsBinDirPreservesAbsoluteDestination(t *testing.T) {
+	root := t.TempDir()
+	configured := filepath.Join(t.TempDir(), "release-output")
+	taskfile := "version: '3'\nvars:\n  BIN_DIR: '" + configured + "'\n"
+	if err := os.WriteFile(filepath.Join(root, "Taskfile.yml"), []byte(taskfile), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGoWails}
+	if got := wailsBinDir(ctx); got != configured {
+		t.Fatalf("wailsBinDir() = %q, quiero %q", got, configured)
 	}
 }
 

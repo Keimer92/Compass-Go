@@ -1,9 +1,12 @@
 package tasks
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"compass/internal/project"
 	"compass/internal/shell"
@@ -13,9 +16,17 @@ import (
 // dentro del repo/instalación (corekit/<kit>). Aquí el único kit es whatsapp.
 const whatsappEngineRel = "corekit/whatsapp"
 
-// whatsappEngineMarker es el archivo que un proyecto crea en su raíz para optar
-// a incrustar el motor de WhatsApp canónico en su binario.
+// whatsappEngineMarker es un archivo opcional que un proyecto puede crear en su
+// raíz para optar explícitamente a incrustar el motor de WhatsApp canónico.
+// La detección principal es automática (ver projectUsesWhatsappEngine).
 const whatsappEngineMarker = "use-whatsapp-engine"
+
+// errScanStop corta el WalkDir cuando ya se encontró la señal.
+var errScanStop = errors.New("stop scan")
+
+// whatsappImportRe detecta una cadena de importación de Go cuya ruta contiene
+// "whatsapp" tras una barra (p.ej. "miproyecto/internal/whatsapp").
+var whatsappImportRe = regexp.MustCompile(`"[^"]*/[^"]*whatsapp[^"]*"`)
 
 // whatsappEngineSource devuelve la ruta del motor de WhatsApp canónico.
 // Orden de resolución:
@@ -44,14 +55,57 @@ func whatsappEngineSource() string {
 	return rel
 }
 
-// projectUsesWhatsappEngine indica si el proyecto debe incrustar el motor:
-// bien porque tiene una carpeta whatsapp_engine local, o porque optó al motor
-// canónico creando el marcador use-whatsapp-engine en su raíz.
+// projectUsesWhatsappEngine indica si el proyecto debe incrustar el motor.
+// Criterios (cualquiera basta):
+//   1. tiene una carpeta whatsapp_engine local (motor propio del proyecto);
+//   2. tiene el marcador use-whatsapp-engine en su raíz (opt-in explícito);
+//   3. sus fuentes Go importan un paquete cuya ruta referencia whatsapp
+//      (detección automática).
 func projectUsesWhatsappEngine(ctx *project.ProjectContext) bool {
 	if ctx.HasWhatsAppEngine {
 		return true
 	}
-	return fileExists(filepath.Join(ctx.ScriptDir, whatsappEngineMarker))
+	if fileExists(filepath.Join(ctx.ScriptDir, whatsappEngineMarker)) {
+		return true
+	}
+	return projectImportsWhatsapp(ctx.ScriptDir)
+}
+
+// projectImportsWhatsapp escanea recursivamente las fuentes Go del proyecto en
+// busca de una importación cuyo path referencie whatsapp (p.ej. internal/whatsapp
+// del supervisor). Omite carpetas que no son código fuente (node_modules,
+// vendor, .git, bin, resources, out, corekit) para no rallar ni dar falsos
+// positivos dentro del propio Compass.
+func projectImportsWhatsapp(root string) bool {
+	skip := map[string]bool{
+		"node_modules": true, "vendor": true, ".git": true,
+		"bin": true, "resources": true, "out": true, "corekit": true,
+	}
+	found := false
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if skip[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil
+		}
+		if whatsappImportRe.Match(data) {
+			found = true
+			return errScanStop
+		}
+		return nil
+	})
+	return found
 }
 
 // engineOutputResources devuelve el directorio resources/ de salida donde el

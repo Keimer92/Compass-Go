@@ -176,9 +176,21 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
   2. `<dir del exe>/corekit/whatsapp` (instalación / binario compilado);
   3. `<cwd>/corekit/whatsapp` (desarrollo con `go run`).
-- **Opt-in por proyecto**: un proyecto solo recibe el runtime si tiene el
-  marcador `use-whatsapp-engine` en su raíz (o una carpeta `whatsapp_engine`
-  local). Sin él, Compass no etaja nada.
+- **Detección de uso (opt-in + automática)** (`projectUsesWhatsappEngine` /
+  `projectImportsWhatsapp` en `internal/tasks/whatsapp_engine.go`): un proyecto
+  recibe el runtime si se cumple **cualquiera** de estos criterios:
+  1. tiene una carpeta `whatsapp_engine` local (motor propio del proyecto);
+  2. tiene el marcador `use-whatsapp-engine` en su raíz (opt-in explícito);
+  3. **escaneo automático**: sus fuentes Go importan un paquete cuya ruta
+     referencia `whatsapp` (p.ej. `miproyecto/internal/whatsapp`). El escaneo
+     recorre recursivamente los `.go` y omite `node_modules`, `vendor`, `.git`,
+     `bin`, `resources`, `out` y `corekit` (para no rallar ni falsar positivos
+     dentro del propio Compass); para en cuanto encuentra una coincidencia.
+  El criterio 3 es el principal: basta con que el código del proyecto importe el
+  paquete WhatsApp para que Compass etaje el motor, sin marcadores manuales.
+- **Auto-instalación de dependencias**: durante el etapado, si `package.json`
+  es más reciente que `node_modules`, Compass ejecuta `npm install` en el kit
+  antes de reconstruir el bundle (así un clon limpio queda funcional).
 - **Etapado en build**: `stageWhatsappEngine` (llamado desde `windowsArtifacts`
   en el release de escritorio) reconstruye el bundle si `engine.js` cambió y
   copia `node.exe` + `whatsapp-engine-bundle` al `bin/resources/` del proyecto
