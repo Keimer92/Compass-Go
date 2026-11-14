@@ -74,12 +74,12 @@ desinstala.
 
 ### 1. `install.bat` — compilar + instalar (tipo: *install*)
 
-Llama a `dist.bat` (compila con `go-winres` + `go build` y genera
-`dist\CompassGo-Setup.exe`) y después ejecuta ese Setup con `/S` para que el
-instalador NSIS haga la instalación real: binario, iconos, corekits, PATH del
-usuario, menú contextual, accesos directos y (best-effort) anclaje a la barra
-de tareas. Al terminar, `install.bat` define `COMPASS_WHATSAPP_ENGINE` y
-configura **Vibe Coding** la primera vez.
+Llama a `dist.bat --fast` (compila con `go-winres` + `go build` y genera
+`dist\CompassGo-Setup.exe` con compresión zlib) y después ejecuta ese Setup con
+`/S` para que el instalador NSIS haga la instalación real: binario, iconos,
+corekits, PATH del usuario, menú contextual, accesos directos y (best-effort)
+anclaje a la barra de tareas. Al terminar, `install.bat` define
+`COMPASS_WHATSAPP_ENGINE` y configura **Vibe Coding** la primera vez.
 
 ```bat
 install.bat              # compilar + instalar
@@ -93,9 +93,9 @@ install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
   empaquetado falla, no se instala un Setup viejo.
 - **Requiere NSIS** (si falta, `install.bat` aborta y sugiere
   `winget install NSIS.NSIS`).
-- En modo silencioso no se crea el acceso del escritorio (es opcional y está
-  desmarcado por defecto) y el anclaje a la barra de tareas suele quedar
-  bloqueado por Windows; ancla a mano desde el menú Inicio.
+- En modo silencioso no se ejecuta la app al terminar y el anclaje a la barra
+  de tareas suele quedar bloqueado por Windows; ancla a mano desde el menú
+  Inicio.
 - El menú contextual queda en `HKCU\...\shell\zz_CompassGo` y
   `zz_CompassGitignore`; Vibe Coding en `zz_VibeCoding`.
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
@@ -115,9 +115,18 @@ tareas (best-effort: Windows 10 1903+ puede bloquearlo y se avisa al usuario)
 y la casilla **Ejecutar Compass Go** al terminar.
 
 ```bat
-dist.bat                 # compila + genera dist\CompassGo-Setup.exe
+dist.bat                 # compila + genera dist\CompassGo-Setup.exe (LZMA)
+dist.bat --fast          # compresión zlib: instalador mayor pero mucho más rápido
 dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
 ```
+
+- `--fast` (zlib) tarda ~40 s y produce ~57 MB; sin él, LZMA sólido tarda
+  ~3 min y produce ~38 MB. `install.bat` usa siempre `--fast`; para distribuir,
+  compila sin el flag.
+- El anclaje a la barra de tareas se intenta con
+  `Shell.Application.InvokeVerb` desde PowerShell, no con `ExecShell`: si
+  Windows no expone el verbo, `ExecShell` cae en el verbo `open` y abriría la
+  app durante la instalación.
 
 - Si falta NSIS, avisa y deja `dist\payload` e `installer.nsi` listos (no es
   un error para `dist.bat`; `install.bat` sí aborta en ese caso).

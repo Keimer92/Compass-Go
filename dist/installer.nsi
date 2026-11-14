@@ -139,7 +139,7 @@ Section "Anclar a la barra de tareas" SEC_PIN
 
   ; Shell.Application.InvokeVerb no cae al verbo "open" si Windows no expone
   ; "taskbarpin"; ExecShell si lo haria y abriria la app al instalar.
-  ExecWait 'powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$$sh=New-Object -ComObject Shell.Application; $$f=$$sh.NameSpace(''$SMPROGRAMS''); $$i=$$f.ParseName(''${APPNAME}.lnk''); if($$i){$$i.InvokeVerb(''taskbarpin'')}"'
+  ExecWait "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command $\"$$sh=New-Object -ComObject Shell.Application; $$f=$$sh.NameSpace('$SMPROGRAMS'); $$i=$$f.ParseName('${APPNAME}.lnk'); if($$i){$$i.InvokeVerb('taskbarpin')}$\""
 
   Sleep 800
   IfFileExists "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${APPNAME}.lnk" pin_done
@@ -147,13 +147,6 @@ Section "Anclar a la barra de tareas" SEC_PIN
   MessageBox MB_ICONINFORMATION|MB_OK "Windows no ha permitido anclar ${APPNAME} automaticamente.$\r$\n$\r$\nPara anclarlo, abre el menu Inicio, haz clic derecho sobre ${APPNAME} y elige Anclar a la barra de tareas."
   pin_done:
 SectionEnd
-
-; ── Estado inicial de los componentes ───────────────────────────────────────
-; El acceso del escritorio es opcional: desmarcado por defecto (tambien en /S).
-; Debe ir despues de las secciones para que ${SEC_DESKTOP} ya exista.
-Function .onInit
-  SectionSetFlags ${SEC_DESKTOP} 0
-FunctionEnd
 
 ; ── Descripciones de componentes ────────────────────────────────────────────
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
@@ -168,7 +161,7 @@ Section "Uninstall"
   ExecWait '"$INSTDIR\${APPEXE}" --task context-menu-uninstall'
 
   ; Quitar accesos directos (el anclaje se deshace best-effort, sin abrir la app).
-  ExecWait 'powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$$sh=New-Object -ComObject Shell.Application; $$f=$$sh.NameSpace(''$SMPROGRAMS''); $$i=$$f.ParseName(''${APPNAME}.lnk''); if($$i){$$i.InvokeVerb(''taskbarunpin'')}"'
+  ExecWait "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command $\"$$sh=New-Object -ComObject Shell.Application; $$f=$$sh.NameSpace('$SMPROGRAMS'); $$i=$$f.ParseName('${APPNAME}.lnk'); if($$i){$$i.InvokeVerb('taskbarunpin')}$\""
   Delete "$SMPROGRAMS\${APPNAME}.lnk"
   Delete "$DESKTOP\${APPNAME}.lnk"
 
