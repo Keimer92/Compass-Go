@@ -71,8 +71,8 @@ REM  1. Compilar y empaquetar con dist.bat
 REM ---------------------------------------------------------------
 REM Se borra el Setup anterior: si dist.bat falla, no se instala uno viejo.
 if exist "%SETUP%" del /f /q "%SETUP%" >nul 2>nul
-echo [INFO] Compilando y generando el instalador (dist.bat)...
-call "%~dp0dist.bat"
+echo [INFO] Compilando y generando el instalador (dist.bat --fast)...
+call "%~dp0dist.bat" --fast
 if errorlevel 1 (
     echo [ERROR] dist.bat fallo; no se ha instalado nada.
     exit /b 1

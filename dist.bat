@@ -10,12 +10,15 @@ echo.
 REM ---------------------------------------------------------------
 REM  Flags:  dist.bat                 compila + genera el instalador
 REM          dist.bat --no-installer  solo prepara dist\payload
+REM          dist.bat --fast          compresion zlib (rapida, instalador mayor)
 REM ---------------------------------------------------------------
 set "MAKE_INSTALLER=1"
+set "FAST=0"
 :parse
 if "%~1"=="" goto parsed
 if /i "%~1"=="--no-installer" set "MAKE_INSTALLER=0"
 if /i "%~1"=="--no-dist"      set "MAKE_INSTALLER=0"
+if /i "%~1"=="--fast"         set "FAST=1"
 shift
 goto parse
 :parsed
@@ -123,6 +126,12 @@ if exist "dist\payload\Icon.ico" (
     set "ICON_FLAG=/DAPPICON=payload\Default.ico"
 )
 
+set "FAST_FLAG="
+if "%FAST%"=="1" (
+    set "FAST_FLAG=/DFAST"
+    echo [INFO] Compresion rapida zlib: instalador mayor pero mucho mas rapido.
+)
+
 REM dist\installer.nsi se copia de la plantilla versionada en cada ejecucion:
 REM dist\ es desechable.
 if not exist "packaging\installer.nsi" (
@@ -139,13 +148,13 @@ echo [OK] dist\installer.nsi listo.
 if not exist "%MAKENSIS%" (
     echo [WARN] NSIS no esta instalado; se omite el instalador.
     echo        Instala NSIS desde https://nsis.sourceforge.io/ y ejecuta:
-    echo        "%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% "dist\installer.nsi"
+    echo        "%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% %FAST_FLAG% "dist\installer.nsi"
     goto done
 )
 
 echo [INFO] Generando dist\CompassGo-Setup.exe...
 pushd "dist"
-"%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% installer.nsi >nul
+"%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% %FAST_FLAG% installer.nsi >nul
 if errorlevel 1 (
     popd
     echo [ERROR] No se pudo generar el instalador.

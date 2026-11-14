@@ -31,8 +31,14 @@ OutFile "CompassGo-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\Keimer"
 InstallDirRegKey HKCU "Software\${REGKEY}" "InstallDir"
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
-SetCompressorDictSize 64
+; Compresion: LZMA lenta pero compacta para distribuir; zlib rapida para el
+; ciclo de desarrollo (install.bat pasa /DFAST).
+!ifdef FAST
+  SetCompressor zlib
+!else
+  SetCompressor /SOLID lzma
+  SetCompressorDictSize 64
+!endif
 BrandingText "${APPNAME} ${APPVER}"
 
 VIProductVersion "${APPVER}"
@@ -131,10 +137,9 @@ SectionEnd
 Section "Anclar a la barra de tareas" SEC_PIN
   CreateShortcut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\${APPEXE}" "" "$INSTDIR\${APPEXE}" 0
 
-  ClearErrors
-  ExecShell "taskbarpin" "$SMPROGRAMS\${APPNAME}.lnk"
-  IfErrors 0 +2
-  ExecShell "pintotaskbar" "$SMPROGRAMS\${APPNAME}.lnk"
+  ; Shell.Application.InvokeVerb no cae al verbo "open" si Windows no expone
+  ; "taskbarpin"; ExecShell si lo haria y abriria la app al instalar.
+  ExecWait 'powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$$sh=New-Object -ComObject Shell.Application; $$f=$$sh.NameSpace(''$SMPROGRAMS''); $$i=$$f.ParseName(''${APPNAME}.lnk''); if($$i){$$i.InvokeVerb(''taskbarpin'')}"'
 
   Sleep 800
   IfFileExists "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${APPNAME}.lnk" pin_done
@@ -162,8 +167,8 @@ FunctionEnd
 Section "Uninstall"
   ExecWait '"$INSTDIR\${APPEXE}" --task context-menu-uninstall'
 
-  ; Quitar accesos directos (el anclaje se deshace best-effort).
-  ExecShell "taskbarunpin" "$SMPROGRAMS\${APPNAME}.lnk"
+  ; Quitar accesos directos (el anclaje se deshace best-effort, sin abrir la app).
+  ExecWait 'powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$$sh=New-Object -ComObject Shell.Application; $$f=$$sh.NameSpace(''$SMPROGRAMS''); $$i=$$f.ParseName(''${APPNAME}.lnk''); if($$i){$$i.InvokeVerb(''taskbarunpin'')}"'
   Delete "$SMPROGRAMS\${APPNAME}.lnk"
   Delete "$DESKTOP\${APPNAME}.lnk"
 
