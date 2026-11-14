@@ -108,7 +108,7 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
   WriteRegStr HKCU "${UNREGKEY}" "DisplayIcon"     "$INSTDIR\${APPEXE},0"
   WriteRegStr HKCU "${UNREGKEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNREGKEY}" "Publisher"       "${APPNAME}"
-  WriteRegStr HKCU "${UNREGKEY}" "Version"         "${APPVER}"
+  WriteRegStr HKCU "${UNREGKEY}" "DisplayVersion"  "${APPVER}"
   WriteRegDWORD HKCU "${UNREGKEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNREGKEY}" "NoRepair" 1
 
@@ -142,6 +142,13 @@ Section "Anclar a la barra de tareas" SEC_PIN
   MessageBox MB_ICONINFORMATION|MB_OK "Windows no ha permitido anclar ${APPNAME} automaticamente.$\r$\n$\r$\nPara anclarlo, abre el menu Inicio, haz clic derecho sobre ${APPNAME} y elige Anclar a la barra de tareas."
   pin_done:
 SectionEnd
+
+; ── Estado inicial de los componentes ───────────────────────────────────────
+; El acceso del escritorio es opcional: desmarcado por defecto (tambien en /S).
+; Debe ir despues de las secciones para que ${SEC_DESKTOP} ya exista.
+Function .onInit
+  SectionSetFlags ${SEC_DESKTOP} 0
+FunctionEnd
 
 ; ── Descripciones de componentes ────────────────────────────────────────────
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN

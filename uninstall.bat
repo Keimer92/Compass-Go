@@ -9,7 +9,8 @@ echo.
 echo Se eliminaran:
 echo   - Los menus contextuales de Compass y .gitignore
 echo   - La cascada de Vibe Coding
-echo   - compass-go.exe e iconos de %LOCALAPPDATA%\Programs\Keimer
+echo   - compass-go.exe, iconos y corekits de %LOCALAPPDATA%\Programs\Keimer
+echo   - Los accesos directos y la entrada de "Aplicaciones instaladas"
 echo   - Restos antiguos en %USERPROFILE%\.cargo\bin
 echo.
 echo Las CLIs de Vibe Coding instaladas (opencode, cline...) NO se tocan.
@@ -55,6 +56,25 @@ if exist "%EXE%" (
 )
 
 REM ---------------------------------------------------------------
+REM  Desinstalador del instalador NSIS (accesos directos, PATH, registro)
+REM ---------------------------------------------------------------
+if exist "%BINDIR%\Uninstall.exe" (
+    echo [INFO] Ejecutando el desinstalador de la instalacion...
+    start /wait "" "%BINDIR%\Uninstall.exe" /S
+
+    REM El desinstalador se copia a %%TEMP%% y puede volver antes de terminar:
+    REM se espera (max. 15 s) a que desaparezca el binario.
+    call :wait_uninstall
+
+    if exist "%BINDIR%\compass-go.exe" (
+        echo [WARN] El desinstalador no termino; se limpia el resto a mano.
+    ) else (
+        echo [OK] Desinstalador ejecutado.
+    )
+    echo.
+)
+
+REM ---------------------------------------------------------------
 REM  Quitar %BINDIR% del PATH del usuario (conservando REG_EXPAND_SZ)
 REM ---------------------------------------------------------------
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$d='%BINDIR%'; $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); if($k){$v=[string]$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $parts=@($v -split ';' | Where-Object { $_ -ne '' -and $_ -ne $d }); $k.SetValue('Path',($parts -join ';'),[Microsoft.Win32.RegistryValueKind]::ExpandString); $k.Close()}"
@@ -76,11 +96,16 @@ if errorlevel 1 (
 )
 echo.
 
-echo [INFO] Borrando binario e iconos...
+REM ---------------------------------------------------------------
+REM  Limpieza a mano (idempotente: cubre instalaciones sin NSIS)
+REM ---------------------------------------------------------------
+echo [INFO] Borrando binario, iconos y corekits...
 if exist "%BINDIR%\compass-go.exe" del /f /q "%BINDIR%\compass-go.exe" >nul 2>nul
 if exist "%BINDIR%\Icon.ico"       del /f /q "%BINDIR%\Icon.ico" >nul 2>nul
 if exist "%BINDIR%\Default.ico"    del /f /q "%BINDIR%\Default.ico" >nul 2>nul
 if exist "%BINDIR%\opencode.ico"   del /f /q "%BINDIR%\opencode.ico" >nul 2>nul
+if exist "%BINDIR%\Uninstall.exe"  del /f /q "%BINDIR%\Uninstall.exe" >nul 2>nul
+if exist "%BINDIR%\corekit"        rmdir /s /q "%BINDIR%\corekit" >nul 2>nul
 REM Solo el .exe: los .ico de .cargo\bin los comparten otros tools.
 if exist "%LEGACYBIN%\compass-go.exe" del /f /q "%LEGACYBIN%\compass-go.exe" >nul 2>nul
 REM Borrar la carpeta Keimer si quedo vacia (no falla si no lo esta).
@@ -95,3 +120,12 @@ echo   [OK] Desinstalacion completada
 echo =============================================
 echo.
 exit /b 0
+
+:wait_uninstall
+set /a tries=0
+:wait_uninstall_loop
+if not exist "%BINDIR%\compass-go.exe" exit /b 0
+set /a tries+=1
+if %tries% geq 15 exit /b 0
+timeout /t 1 /nobreak >nul 2>nul
+goto wait_uninstall_loop

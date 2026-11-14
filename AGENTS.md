@@ -25,7 +25,7 @@ autónomo (`dist/CompassGo-Setup.exe`).
 | **Windows** | toda la shell/registro/ConPTY es específica de Windows | — |
 | **PowerShell** | menú contextual y varias tareas lo invocan | viene con Windows |
 | **go-winres** *(opcional)* | embeber icono + versión + manifest en el `.exe` | `go install github.com/tc-hib/go-winres@latest` |
-| **NSIS** *(opcional)* | empaquetar el instalador `CompassGo-Setup.exe` | https://nsis.sourceforge.io/ |
+| **NSIS** (necesario para `install.bat` / `dist.bat`) | empaquetar el instalador `CompassGo-Setup.exe` | https://nsis.sourceforge.io/ |
 
 Si `go-winres` no está instalado, `install.bat` / `dist.bat` compilan igualmente
 pero **sin** los recursos de Windows embebidos (el icono del `.exe` será el
@@ -53,10 +53,9 @@ Compass Go/
 │  ├─ installer.nsi           #   asistente MUI2 (icono, componentes, ejecutar al final)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/Icon.ico
 ├─ dist/                      # GENERADO por dist.bat (payload, installer.nsi, setup); desechable
-├─ bin/                       # GENERADO por install.bat (binario de trabajo); desechable
-├─ install.bat                # compilar + instalar en el sistema
+├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar + empaquetar el instalador en dist/
-├─ uninstall.bat              # desinstalar de la máquina
+├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
 ├─ corekit/                  # core kits canónicos que viajan dentro de Compass (p.ej. whatsapp)
 │  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs, node.exe, node_modules
@@ -67,28 +66,36 @@ Módulo Go: `compass` (imports `compass/internal/...`).
 
 ## Scripts `.bat` (Windows) — uso
 
-Hay **tres scripts**, separados por velocidad de uso: `install.bat` compila e
-instala en la máquina (el ciclo corto de desarrollo), `dist.bat` compila y
-empaqueta el instalador autónomo en `dist\` (solo para distribuir) y
-`uninstall.bat` desinstala.
+Hay **tres scripts**, separados por velocidad de uso: `install.bat` compila y
+genera el instalador, y lo ejecuta en silencio para instalar todo en la
+máquina (el ciclo corto de desarrollo); `dist.bat` compila y empaqueta el
+instalador autónomo en `dist\` (solo para distribuir); `uninstall.bat`
+desinstala.
 
 ### 1. `install.bat` — compilar + instalar (tipo: *install*)
 
-Compila a `bin\compass-go.exe` (integrado: `go-winres` + `go build`), lo instala
-con los iconos en `%LOCALAPPDATA%\Programs\Keimer` (añadido al PATH de usuario),
-elimina la copia antigua de `%USERPROFILE%\.cargo\bin`, registra el **menú
-contextual Compass** y la acción **`.gitignore`**, y configura **Vibe Coding**
-la primera vez. **No** genera nada en `dist\` ni ejecuta NSIS: es el camino
-rápido para probar cambios en tu propia máquina.
+Llama a `dist.bat` (compila con `go-winres` + `go build` y genera
+`dist\CompassGo-Setup.exe`) y después ejecuta ese Setup con `/S` para que el
+instalador NSIS haga la instalación real: binario, iconos, corekits, PATH del
+usuario, menú contextual, accesos directos y (best-effort) anclaje a la barra
+de tareas. Al terminar, `install.bat` define `COMPASS_WHATSAPP_ENGINE` y
+configura **Vibe Coding** la primera vez.
 
 ```bat
 install.bat              # compilar + instalar
-install.bat --force      # rehace también menús y la cascada Vibe Coding
+install.bat --force      # rehace también la cascada Vibe Coding
 install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
 ```
 
 - Cierra `compass-go.exe` en ejecución antes de sobrescribir (Windows no
   deja sobreescribir un `.exe` en uso).
+- Borra el `dist\CompassGo-Setup.exe` anterior antes de compilar: si el
+  empaquetado falla, no se instala un Setup viejo.
+- **Requiere NSIS** (si falta, `install.bat` aborta y sugiere
+  `winget install NSIS.NSIS`).
+- En modo silencioso no se crea el acceso del escritorio (es opcional y está
+  desmarcado por defecto) y el anclaje a la barra de tareas suele quedar
+  bloqueado por Windows; ancla a mano desde el menú Inicio.
 - El menú contextual queda en `HKCU\...\shell\zz_CompassGo` y
   `zz_CompassGitignore`; Vibe Coding en `zz_VibeCoding`.
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
@@ -112,7 +119,9 @@ dist.bat                 # compila + genera dist\CompassGo-Setup.exe
 dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
 ```
 
-- Si falta NSIS, avisa y deja `dist\payload` e `installer.nsi` listos.
+- Si falta NSIS, avisa y deja `dist\payload` e `installer.nsi` listos (no es
+  un error para `dist.bat`; `install.bat` sí aborta en ese caso).
+- Si `makensis` falla, `dist.bat` termina con código 1.
 - Para recompilar el instalador a mano:
   `makensis /DAPPICON=payload\Icon.ico dist\installer.nsi` (añade
   `/DNOHEADER` si no existe `dist\installer_header.bmp`).
@@ -121,10 +130,12 @@ dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
 ### 3. `uninstall.bat` — desinstalar de la máquina (tipo: *uninstall*)
 
 Quita los menús contextuales (Compass + `.gitignore` + cascada Vibe Coding)
-vía el propio binario (`--task context-menu-uninstall` / `opencode-uninstall`)
-y borra `compass-go.exe` e iconos de `%LOCALAPPDATA%\Programs\Keimer` (más
-cualquier resto en `%USERPROFILE%\.cargo\bin`), quitando esa carpeta del PATH
-del usuario.
+vía el propio binario (`--task context-menu-uninstall` / `opencode-uninstall`);
+si existe `%LOCALAPPDATA%\Programs\Keimer\Uninstall.exe` ejecuta además el
+desinstalador NSIS (`/S`), que borra accesos directos, PATH, entradas de
+registro y la carpeta de instalación. Después limpia a mano lo que quede
+(binario, iconos, corekits, restos en `%USERPROFILE%\.cargo\bin`) y elimina
+`COMPASS_WHATSAPP_ENGINE`.
 
 ```bat
 uninstall.bat

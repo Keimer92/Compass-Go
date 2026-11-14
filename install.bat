@@ -8,8 +8,12 @@ echo =============================================
 echo.
 
 REM ---------------------------------------------------------------
-REM  Flags:  install.bat --force   rehace tambien los menus y la cascada
+REM  Flags:  install.bat --force   rehace tambien la cascada Vibe Coding
 REM          install.bat --vibe    vuelve a configurar Vibe Coding
+REM
+REM  Flujo: dist.bat compila y genera dist\CompassGo-Setup.exe, y el
+REM  instalador NSIS hace la instalacion real (binario, iconos, corekits,
+REM  PATH, menu contextual, accesos directos y anclaje a la barra).
 REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
@@ -23,8 +27,7 @@ goto parse
 :parsed
 
 set "BINDIR=%LOCALAPPDATA%\Programs\Keimer"
-set "LEGACYBIN=%USERPROFILE%\.cargo\bin"
-set "BUILDDIR=bin"
+set "SETUP=dist\CompassGo-Setup.exe"
 
 where go >nul 2>nul
 if errorlevel 1 (
@@ -64,74 +67,40 @@ if not errorlevel 1 (
 echo.
 
 REM ---------------------------------------------------------------
-REM  1. Compilar (a bin\, fuera de la instalacion)
+REM  1. Compilar y empaquetar con dist.bat
 REM ---------------------------------------------------------------
-echo [INFO] Compilando en %BUILDDIR%...
-if not exist "%BUILDDIR%" mkdir "%BUILDDIR%"
-where go-winres >nul 2>nul
-if not errorlevel 1 (
-    echo [INFO] Generando recursos de Windows con go-winres...
-    go-winres make --in go-winres.json --out cmd\compass\rsrc --arch amd64,386 >nul
-    if errorlevel 1 echo [WARN] go-winres fallo; se compila sin recursos.
-) else (
-    echo [AVISO] go-winres no encontrado: se compila sin icono ni version.
-)
-go build -o "%BUILDDIR%\compass-go.exe" ./cmd/compass
+REM Se borra el Setup anterior: si dist.bat falla, no se instala uno viejo.
+if exist "%SETUP%" del /f /q "%SETUP%" >nul 2>nul
+echo [INFO] Compilando y generando el instalador (dist.bat)...
+call "%~dp0dist.bat"
 if errorlevel 1 (
-    echo.
-    echo =============================================
-    echo   [ERROR] La compilacion fallo.
-    echo =============================================
-    echo La instalacion actual no se ha tocado.
+    echo [ERROR] dist.bat fallo; no se ha instalado nada.
+    exit /b 1
+)
+if not exist "%SETUP%" (
+    echo [ERROR] No se genero %SETUP%.
+    echo         NSIS es necesario: winget install NSIS.NSIS
     echo.
     pause
     exit /b 1
 )
-echo [OK] %BUILDDIR%\compass-go.exe generado.
-echo.
 
 REM ---------------------------------------------------------------
-REM  2. Copiar binario e iconos
+REM  2. Instalar en silencio con el instalador NSIS
 REM ---------------------------------------------------------------
-if not exist "%BINDIR%" mkdir "%BINDIR%"
-
-echo [INFO] Instalando en %BINDIR%...
-copy /Y "%BUILDDIR%\compass-go.exe" "%BINDIR%\compass-go.exe" >nul
-if errorlevel 1 (
-    echo [ERROR] No se pudo copiar %BUILDDIR%\compass-go.exe a %BINDIR%.
+echo [INFO] Instalando en silencio con %SETUP%...
+start /wait "" "%SETUP%" /S
+if not exist "%BINDIR%\compass-go.exe" (
+    echo [ERROR] El instalador no dejo compass-go.exe en %BINDIR%.
+    echo.
     pause
     exit /b 1
 )
-echo [OK] compass-go.exe instalado.
-
-REM Los iconos se resuelven junto al ejecutable (icon.ico / Default.ico /
-REM opencode.ico); sin ellos el menu contextual muestra el icono generico.
-for %%I in (Icon.ico Default.ico opencode.ico) do (
-    if exist "assets\icon\%%I" copy /Y "assets\icon\%%I" "%BINDIR%\%%I" >nul 2>nul
-)
-if not exist "%BINDIR%\Default.ico" if exist "%BINDIR%\Icon.ico" (
-    copy /Y "%BINDIR%\Icon.ico" "%BINDIR%\Default.ico" >nul 2>nul
-)
-if not exist "%BINDIR%\opencode.ico" if exist "%BINDIR%\Default.ico" (
-    copy /Y "%BINDIR%\Default.ico" "%BINDIR%\opencode.ico" >nul 2>nul
-)
-echo [OK] Iconos copiados.
+echo [OK] Binario, iconos, corekits, PATH, menu contextual y accesos instalados.
 echo.
 
 REM ---------------------------------------------------------------
-REM  2b. Core kits (motores canonicos, p.ej. whatsapp) junto al exe
-REM ---------------------------------------------------------------
-if exist "corekit" (
-    echo [INFO] Copiando core kits a %BINDIR%...
-    xcopy /E /I /Y "corekit" "%BINDIR%\corekit" >nul 2>nul
-    echo [OK] Core kits copiados.
-) else (
-    echo [SKIP] No se encontro la carpeta corekit; se omite.
-)
-echo.
-
-REM ---------------------------------------------------------------
-REM  2c. Variable COMPASS_WHATSAPP_ENGINE (motor canonico)
+REM  3. Variable COMPASS_WHATSAPP_ENGINE (motor canonico)
 REM ---------------------------------------------------------------
 REM Apunta a los proyectos que consumen el motor (p.ej. GymPro en modo
 REM desarrollo) al engine canonico instalado junto al binario, para que lo
@@ -151,49 +120,7 @@ if exist "%BINDIR%\corekit\whatsapp" (
 echo.
 
 REM ---------------------------------------------------------------
-REM  3. Migrar la instalacion antigua en .cargo\bin
-REM ---------------------------------------------------------------
-REM Compass vivia antes en .cargo\bin (carpeta de Rust). Se borra solo
-REM compass-go.exe; los .ico se dejan porque otros tools (code-runner) los
-REM comparten.
-if exist "%LEGACYBIN%\compass-go.exe" (
-    del /f /q "%LEGACYBIN%\compass-go.exe" >nul 2>nul
-    if exist "%LEGACYBIN%\compass-go.exe" (
-        echo [WARN] No se pudo borrar %LEGACYBIN%\compass-go.exe.
-    ) else (
-        echo [OK] Copia antigua de .cargo\bin eliminada.
-    )
-)
-echo.
-
-REM ---------------------------------------------------------------
-REM  4. Asegurar Compass y los shims globales de npm en el PATH del usuario
-REM ---------------------------------------------------------------
-REM Se edita HKCU\Environment\Path conservando el tipo REG_EXPAND_SZ y sin
-REM expandir variables existentes (%USERPROFILE%, etc.).
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$dirs=@('%BINDIR%'); $npm=Join-Path $env:APPDATA 'npm'; if(Test-Path -LiteralPath $npm -PathType Container){$dirs+=$npm}; $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); if($k){$v=[string]$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); foreach($d in $dirs){$paths=@($v -split ';' | ForEach-Object {$_.TrimEnd('\')}); if($paths -notcontains $d.TrimEnd('\')){if($v.TrimEnd(';') -eq ''){$v=$d}else{$v=$v.TrimEnd(';')+';'+$d}}}; $kind=try{$k.GetValueKind('Path')}catch{[Microsoft.Win32.RegistryValueKind]::ExpandString}; $k.SetValue('Path',$v,$kind); $k.Close()}"
-if errorlevel 1 (
-    echo [WARN] No se pudo actualizar el PATH del usuario.
-    echo        Anade manualmente: %BINDIR% y %APPDATA%\npm
-) else (
-    echo [OK] PATH del usuario actualizado. Abre una terminal nueva para verlo.
-)
-echo.
-
-REM ---------------------------------------------------------------
-REM  5. Menu contextual de Compass
-REM ---------------------------------------------------------------
-echo [INFO] Configurando menu contextual de Compass...
-"%BINDIR%\compass-go.exe" --task context-menu-install
-if errorlevel 1 (
-    echo [WARN] No se pudo instalar el menu contextual de Compass.
-) else (
-    echo [OK] Menu contextual de Compass instalado.
-)
-echo.
-
-REM ---------------------------------------------------------------
-REM  6. Vibe Coding (solo la primera vez o con --vibe)
+REM  4. Vibe Coding (solo la primera vez o con --vibe / --force)
 REM ---------------------------------------------------------------
 if "%FORCE%"=="1" set "WITH_VIBE=1"
 reg query "HKCU\Software\Classes\Directory\ContextMenus\VibeCoding" >nul 2>nul
@@ -221,7 +148,7 @@ echo   [OK] Instalacion completada
 echo =============================================
 echo   Binario: %BINDIR%\compass-go.exe
 echo.
-echo Si el menu no aparece, reinicia el Explorador:
-echo   taskkill /f /im explorer.exe ^& start explorer.exe
+echo Abre Compass Go desde el menu Inicio (o ejecuta compass-go).
+echo Si quieres anclarlo: menu Inicio ^> clic derecho ^> Anclar a la barra de tareas.
 echo.
 exit /b 0

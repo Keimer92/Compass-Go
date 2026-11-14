@@ -148,7 +148,9 @@ pushd "dist"
 "%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% installer.nsi >nul
 if errorlevel 1 (
     popd
-    echo [WARN] No se pudo generar el instalador.
+    echo [ERROR] No se pudo generar el instalador.
+    echo.
+    exit /b 1
 ) else (
     popd
     echo [OK] dist\CompassGo-Setup.exe generado.
