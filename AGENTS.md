@@ -97,7 +97,8 @@ install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
   de tareas suele quedar bloqueado por Windows; ancla a mano desde el menú
   Inicio.
 - El menú contextual queda en `HKCU\...\shell\zz_CompassGo` y
-  `zz_CompassGitignore`; Vibe Coding en `zz_VibeCoding`.
+  `zz_VibeGitignore` (entrada "Add gitignore"); Vibe Coding en
+  `zz_VibeCoding`.
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
 
 ### 2. `dist.bat` — generar el instalador en `dist\` (tipo: *package*)
@@ -187,8 +188,8 @@ proyecto concreto:
 | Tarea | Qué hace |
 |-------|----------|
 | `context-menu` | Menú interactivo para instalar/desinstalar menús |
-| `context-menu-install` | Registra `zz_CompassGo` + `zz_CompassGitignore` (también limpia la clave antigua `zz_Compass`) |
-| `context-menu-uninstall` | Quita las claves de Compass (incluye las antiguas `zz_Compass` / `zz_VibeGitignore`) |
+| `context-menu-install` | Registra `zz_CompassGo` + `zz_VibeGitignore` (también limpia la clave antigua `zz_Compass` y la anterior `zz_CompassGitignore`) |
+| `context-menu-uninstall` | Quita las claves de Compass (incluye las antiguas `zz_Compass` / `zz_CompassGitignore`) |
 | `context-gitignore` | Genera/mezcla un `.gitignore` en la carpeta dada (`--path`) |
 | `vibe-setup` | Configura la cascada Vibe Coding (pregunta por las CLIs que falten) |
 | `opencode` / `opencode-configure` | Menú / configuración de OpenCode |
@@ -276,7 +277,7 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 - **Color de pestaña** (`tab_accent`): determinista por ruta de proyecto
   (FNV-1a → 12 tonos → rotación áurea por índice de instancia entre Compass
   vivos vía `CreateToolhelp32Snapshot`).
-- **Menú contextual**: claves `zz_CompassGo` / `zz_CompassGitignore` /
+- **Menú contextual**: claves `zz_CompassGo` / `zz_VibeGitignore` /
   `zz_VibeCoding` en `HKCU`, gestionadas por PowerShell desde Go.
 - **Plataformas soportadas**: solo **Windows** como aplicación de escritorio;
   Android sigue como destino de compilación para los proyectos compatibles.

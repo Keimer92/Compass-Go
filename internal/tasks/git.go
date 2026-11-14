@@ -681,24 +681,36 @@ Thumbs.db
 )
 
 func gitignoreContent(pt project.ProjectType) string {
+	var content string
 	switch pt {
 	case project.TypeRust:
-		return gitignoreRust
+		content = gitignoreRust
 	case project.TypeTauri:
-		return gitignoreTauri
+		content = gitignoreTauri
 	case project.TypeFlutter:
-		return gitignoreFlutter
+		content = gitignoreFlutter
 	case project.TypeKotlin:
-		return gitignoreKotlin
+		content = gitignoreKotlin
 	case project.TypeGoWails:
-		return gitignoreGoWails
+		content = gitignoreGoWails
 	case project.TypeGo:
-		return gitignoreGo
+		content = gitignoreGo
 	case project.TypePython:
-		return gitignorePython
+		content = gitignorePython
 	default:
-		return gitignoreGo
+		content = gitignoreGo
 	}
+	return withTaskCacheRules(content)
+}
+
+// withTaskCacheRules anade el directorio de trabajo de go-task (Taskfile).
+// Task guarda ahi los checksums de cada build (.task/checksum/...) y
+// temporales; nunca contiene fuentes, asi que es seguro ignorarlo en
+// cualquier tipo de proyecto (Wails v3 lo usa por defecto).
+func withTaskCacheRules(content string) string {
+	content = strings.TrimRight(content, "\n \t")
+	content += "\n\n# --- Task (go-task): cache de checksums ---\n.task/\n"
+	return content
 }
 
 func withWindowsRules(content string) string {

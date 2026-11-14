@@ -12,9 +12,11 @@ import (
 
 const (
 	ctxCompassKey   = "zz_CompassGo"
-	ctxGitignoreKey = "zz_CompassGitignore"
-	ctxGitignoreOld = "zz_VibeGitignore"
-	ctxGitignoreLbl = "Compass Go: Add .gitignore"
+	// La clave ordena despues de zz_VibeCoding (Explorer ordena por nombre de
+	// clave), asi que la entrada aparece debajo de Vibe Coding.
+	ctxGitignoreKey = "zz_VibeGitignore"
+	ctxGitignoreOld = "zz_CompassGitignore"
+	ctxGitignoreLbl = "Add gitignore"
 	ctxVibeKey      = "zz_VibeCoding"
 	ctxVibePath     = `Directory\ContextMenus\VibeCoding`
 	ctxMenuStamp    = "CompassStamp"
