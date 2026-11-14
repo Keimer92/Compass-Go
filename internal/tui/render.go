@@ -96,7 +96,7 @@ func renderMenu(s tcell.Screen, st *MenuState, ctx *project.ProjectContext, area
 
 	st.ensureVisible()
 	renderCards(s, ui, st, ctx.ProjectType, th)
-	renderScrollbar(s, ui, st.tabLen(), st.scroll, th)
+	renderScrollbar(s, ui, st.totalRowsFor(ui), st.scroll, th)
 	renderFooter(s, ui.Footer, th, ctx)
 
 	// Modales por encima.
@@ -146,6 +146,10 @@ func tabStyle(base tcell.Style, th *theme.Theme, active bool, accent tcell.Color
 }
 
 func renderCards(s tcell.Screen, ui UiLayout, st *MenuState, pt project.ProjectType, th *theme.Theme) {
+	if groups, cols, ok := groupedLayoutFor(ui, st.tab, st.groups); ok {
+		renderGroupedCards(s, ui, st, pt, th, groups, cols)
+		return
+	}
 	n := st.tabLen()
 	start := st.tabRange().start
 	cols := ui.Cols
@@ -172,6 +176,38 @@ func renderCards(s tcell.Screen, ui UiLayout, st *MenuState, pt project.ProjectT
 
 			// La card se pinta en un lienzo aparte para poder aplicar el halo
 			// encima: tcell no deja leer una celda ya pintada.
+			buf := newCellBuf(rect)
+			drawCard(buf, rect, st.items[idx], selected, hovered, pt, th)
+			if hovered {
+				if phase, ok := st.hoverPhase(); ok {
+					key := st.items[idx].ColorKey()
+					applyHoverGlow(buf, rect, phase, th.CardAccent(key), th.CardBg(key), th.Text)
+				}
+			}
+			buf.blit(s)
+		}
+	}
+}
+
+// renderGroupedCards pinta una columna por grupo (Windows, Android, comun),
+// con las cards apiladas de arriba abajo dentro de su columna.
+func renderGroupedCards(s tcell.Screen, ui UiLayout, st *MenuState, pt project.ProjectType, th *theme.Theme, groups []menuGroup, cols int) {
+	cellW := gridCellW(ui.List.Width, cols)
+	cardW := gridCardW(ui.List.Width, cols)
+	listY := ui.List.Y
+	listBottom := ui.List.Bottom()
+
+	for gi, g := range groups {
+		for row := st.scroll; row < g.end-g.start; row++ {
+			y := listY + (row-st.scroll)*RowH
+			if y+CardH > listBottom {
+				break
+			}
+			idx := g.start + row
+			rect := Rect{ui.List.X + gi*cellW, y, cardW, CardH}
+			selected := st.selected == idx
+			hovered := st.hover == idx
+
 			buf := newCellBuf(rect)
 			drawCard(buf, rect, st.items[idx], selected, hovered, pt, th)
 			if hovered {
@@ -274,11 +310,10 @@ func drawCardParts(s cellSink, r Rect, icon, title, desc, key string, selected, 
 	put(s, x, y, " ", base)
 }
 
-func renderScrollbar(s tcell.Screen, ui UiLayout, count, scroll int, th *theme.Theme) {
-	if ui.Scrollbar.Width == 0 || ui.Cols < 1 {
+func renderScrollbar(s tcell.Screen, ui UiLayout, rows, scroll int, th *theme.Theme) {
+	if ui.Scrollbar.Width == 0 || rows < 1 {
 		return
 	}
-	rows := (count + ui.Cols - 1) / ui.Cols
 	content := rows * RowH
 	if content <= ui.List.Height {
 		return

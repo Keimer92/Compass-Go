@@ -318,7 +318,11 @@ func (s *Submenu[T]) draw(screen tcell.Screen, ctx *project.ProjectContext, th *
 
 	s.ensureVisible()
 	s.renderCards(screen, ui, th)
-	renderScrollbar(screen, ui, len(s.entries), s.scroll, th)
+	cols := ui.Cols
+	if cols < 1 {
+		cols = 1
+	}
+	renderScrollbar(screen, ui, (len(s.entries)+cols-1)/cols, s.scroll, th)
 	s.renderFooter(screen, ui.Footer, ctx, th)
 
 	s.ui = &ui

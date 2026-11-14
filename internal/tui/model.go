@@ -8,7 +8,6 @@ package tui
 
 import (
 	"math"
-	"sort"
 	"time"
 
 	"compass/internal/project"
@@ -574,9 +573,15 @@ type QuitConfirm struct {
 	running int
 }
 
+// menuGroup es una columna de la pestana DEV/MNT (indices globales).
+type menuGroup struct {
+	start, end int
+}
+
 // MenuState es el estado del menu.
 type MenuState struct {
 	items    []MenuItem
+	groups   []menuGroup
 	tabs     [2]TabRange
 	tab      Tab
 	selected int
@@ -597,6 +602,9 @@ type MenuState struct {
 }
 
 // newMenuState construye el estado para un tipo de proyecto.
+//
+// La pestana DEV/MNT se agrupa por plataforma de compilacion (Windows,
+// Android y comun) para pintarla en columnas; CFG va en una sola lista.
 func newMenuState(pt project.ProjectType, th *theme.Theme) *MenuState {
 	base := []MenuItem{
 		WindowsDev, AndroidDev, AndroidHmr, WindowsBuild, AndroidBuildArm64,
@@ -605,36 +613,42 @@ func newMenuState(pt project.ProjectType, th *theme.Theme) *MenuState {
 		ConfigureTerminal, Environment,
 	}
 
-	var items []MenuItem
+	var dev [3][]MenuItem
+	var cfg []MenuItem
 	for _, it := range base {
-		if keepForType(it, pt) {
-			items = append(items, it)
+		// La card suelta de armv7 sobra en todos los tipos.
+		if !keepForType(it, pt) || it == AndroidBuildArmv7 {
+			continue
 		}
+		if it.Tab() == TabCfg {
+			cfg = append(cfg, it)
+			continue
+		}
+		g := menuGroupOf(it, pt)
+		dev[g] = append(dev[g], it)
 	}
-	// La card suelta de armv7 sobra en todos los tipos.
-	filtered := items[:0]
-	for _, it := range items {
-		if it != AndroidBuildArmv7 {
-			filtered = append(filtered, it)
+
+	var items []MenuItem
+	var groups []menuGroup
+	for _, list := range dev {
+		if len(list) == 0 {
+			continue
 		}
+		start := len(items)
+		items = append(items, list...)
+		groups = append(groups, menuGroup{start: start, end: len(items)})
 	}
-	items = filtered
+	devEnd := len(items)
+	items = append(items, cfg...)
 
-	sort.SliceStable(items, func(i, j int) bool {
-		return items[i].Tab() < items[j].Tab()
-	})
-
-	var tabs [2]TabRange
-	for i, it := range items {
-		t := it.Tab().index()
-		if tabs[t].end == tabs[t].start {
-			tabs[t].start = i
-		}
-		tabs[t].end = i + 1
+	tabs := [2]TabRange{
+		{start: 0, end: devEnd},
+		{start: devEnd, end: len(items)},
 	}
 
 	return &MenuState{
 		items:    items,
+		groups:   groups,
 		tabs:     tabs,
 		tab:      TabDevMnt,
 		selected: tabs[0].start,
@@ -643,6 +657,32 @@ func newMenuState(pt project.ProjectType, th *theme.Theme) *MenuState {
 		cols:     1,
 		theme:    th,
 	}
+}
+
+// Grupos de la pestana DEV/MNT (orden de las columnas).
+const (
+	groupWindows = iota
+	groupAndroid
+	groupCommon
+)
+
+// menuGroupOf decide a que columna pertenece una card.
+func menuGroupOf(it MenuItem, pt project.ProjectType) int {
+	switch it {
+	case WindowsDev, WindowsBuild, FlutterProfile:
+		return groupWindows
+	case AndroidDev, AndroidBuildArm64, AndroidBuildArmv7, AndroidBuildAll,
+		InstallDebug, DebugAndroid, Signing:
+		return groupAndroid
+	case AndroidHmr:
+		// En Tauri/Flutter/Kotlin/Wails es HMR de Android; en Go/Python es
+		// el reload del servidor de desarrollo (comun).
+		switch pt {
+		case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+			return groupAndroid
+		}
+	}
+	return groupCommon
 }
 
 // keepForType replica el filtro por tipo de proyecto de MenuState::new.
@@ -739,26 +779,84 @@ func (s *MenuState) hoverAnimating() bool {
 	return s.hover >= 0 && !s.hoverStarted.IsZero()
 }
 
+// groupedLayoutFor indica si la pestana actual debe pintarse en columnas por
+// plataforma y devuelve sus grupos. Necesita ancho suficiente para que cada
+// columna mantenga el ancho minimo de card; si no, se usa la rejilla normal.
+func groupedLayoutFor(ui UiLayout, tab Tab, groups []menuGroup) ([]menuGroup, int, bool) {
+	if tab != TabDevMnt || len(groups) < 2 {
+		return nil, 0, false
+	}
+	cols := len(groups)
+	if gridCardW(ui.List.Width, cols) < cardMinW {
+		return nil, 0, false
+	}
+	return groups, cols, true
+}
+
+// grouped devuelve el layout agrupado segun el ultimo render.
+func (s *MenuState) grouped() ([]menuGroup, int, bool) {
+	if s.ui == nil {
+		return nil, 0, false
+	}
+	return groupedLayoutFor(*s.ui, s.tab, s.groups)
+}
+
+// totalRowsFor calcula las filas de contenido para la barra de scroll.
+func (s *MenuState) totalRowsFor(ui UiLayout) int {
+	n := s.tabLen()
+	if n == 0 {
+		return 0
+	}
+	if groups, _, ok := groupedLayoutFor(ui, s.tab, s.groups); ok {
+		rows := 0
+		for _, g := range groups {
+			if l := g.end - g.start; l > rows {
+				rows = l
+			}
+		}
+		return rows
+	}
+	cols := ui.Cols
+	if cols < 1 {
+		cols = 1
+	}
+	return (n + cols - 1) / cols
+}
+
 func (s *MenuState) ensureVisible() {
 	n := s.tabLen()
 	if n == 0 || s.vh < CardH {
 		s.scroll = 0
 		return
 	}
-	cols := s.cols
-	if cols < 1 {
-		cols = 1
-	}
 	rows := visibleRows(s.vh)
 	if rows < 1 {
 		rows = 1
 	}
-	i := s.localSelected()
-	if i > n-1 {
-		i = n - 1
+
+	var row, totalRows int
+	if groups, _, ok := s.grouped(); ok {
+		for _, g := range groups {
+			if s.selected >= g.start && s.selected < g.end {
+				row = s.selected - g.start
+			}
+			if l := g.end - g.start; l > totalRows {
+				totalRows = l
+			}
+		}
+	} else {
+		cols := s.cols
+		if cols < 1 {
+			cols = 1
+		}
+		i := s.localSelected()
+		if i > n-1 {
+			i = n - 1
+		}
+		row = i / cols
+		totalRows = (n + cols - 1) / cols
 	}
-	row := i / cols
-	totalRows := (n + cols - 1) / cols
+
 	maxScroll := totalRows - rows
 	if maxScroll < 0 {
 		maxScroll = 0
@@ -820,6 +918,28 @@ func (s *MenuState) moveSelection(delta int) {
 	if len(s.items) == 0 {
 		return
 	}
+	// En columnas por plataforma, ←/→ cambia de columna manteniendo la fila.
+	if groups, _, ok := s.grouped(); ok {
+		for gi, g := range groups {
+			if s.selected < g.start || s.selected >= g.end {
+				continue
+			}
+			row := s.selected - g.start
+			next := gi + delta
+			if next < 0 {
+				next = 0
+			} else if next >= len(groups) {
+				next = len(groups) - 1
+			}
+			target := groups[next]
+			if last := target.end - target.start - 1; row > last {
+				row = last
+			}
+			s.selected = target.start + row
+			s.ensureVisible()
+			return
+		}
+	}
 	max := len(s.items) - 1
 	next := s.selected + delta
 	if next < 0 {
@@ -834,6 +954,24 @@ func (s *MenuState) moveRow(delta int) {
 	n := s.tabLen()
 	if n == 0 {
 		return
+	}
+	// En columnas por plataforma, ↑/↓ recorre solo la columna actual.
+	if groups, _, ok := s.grouped(); ok {
+		for _, g := range groups {
+			if s.selected < g.start || s.selected >= g.end {
+				continue
+			}
+			row := s.selected - g.start + delta
+			if row < 0 {
+				row = 0
+			}
+			if last := g.end - g.start - 1; row > last {
+				row = last
+			}
+			s.selected = g.start + row
+			s.ensureVisible()
+			return
+		}
 	}
 	step := s.cols
 	if step < 1 {
@@ -858,11 +996,44 @@ func (s *MenuState) hoverAt(col, row int) int {
 	if ui == nil {
 		return -1
 	}
+	if groups, cols, ok := s.grouped(); ok {
+		if idx, ok := groupedIndexAt(*ui, s.scroll, groups, cols, col, row); ok {
+			return idx
+		}
+		return -1
+	}
 	local, ok := gridIndexAt(*ui, s.scroll, s.tabLen(), col, row)
 	if !ok {
 		return -1
 	}
 	return s.tabRange().start + local
+}
+
+// groupedIndexAt traduce coordenadas a un indice global en el layout por
+// columnas (una columna por grupo, de arriba abajo).
+func groupedIndexAt(ui UiLayout, scroll int, groups []menuGroup, cols, col, row int) (int, bool) {
+	if !ui.List.Contains(col, row) || cols < 1 {
+		return 0, false
+	}
+	cellW := gridCellW(ui.List.Width, cols)
+	cardW := gridCardW(ui.List.Width, cols)
+
+	xOff := col - ui.List.X
+	gi := xOff / cellW
+	if gi >= cols || xOff%cellW >= cardW {
+		return 0, false
+	}
+
+	yOff := (row - ui.List.Y) + scroll*RowH
+	if yOff%RowH >= CardH {
+		return 0, false
+	}
+	r := yOff / RowH
+	g := groups[gi]
+	if r >= g.end-g.start {
+		return 0, false
+	}
+	return g.start + r, true
 }
 
 // gridIndexAt devuelve el indice local de card bajo unas coordenadas.

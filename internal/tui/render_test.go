@@ -100,3 +100,76 @@ func TestGridHitTesting(t *testing.T) {
 		t.Errorf("hoverAt primera card = %d, queria %d", idx, st.tabRange().start)
 	}
 }
+
+// labelX devuelve la columna donde empieza `label` en el screen.
+func labelX(sim tcell.SimulationScreen, label string) (int, bool) {
+	cells, w, h := sim.GetContents()
+	want := []rune(label)
+	for y := 0; y < h; y++ {
+		row := make([]rune, w)
+		for x := 0; x < w; x++ {
+			c := cells[y*w+x]
+			if len(c.Runes) > 0 {
+				row[x] = c.Runes[0]
+			} else {
+				row[x] = ' '
+			}
+		}
+		for x := 0; x+len(want) <= w; x++ {
+			match := true
+			for i, r := range want {
+				if row[x+i] != r {
+					match = false
+					break
+				}
+			}
+			if match {
+				return x, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func TestMenuGroupsByPlatformInColumns(t *testing.T) {
+	sim := newTestScreen(t) // 100x30: cabe el layout de 3 columnas
+	ctx := &project.ProjectContext{ScriptDir: `C:\p`, ProjectType: project.TypeGoWails}
+	st := newMenuState(ctx.ProjectType, theme.Default())
+	renderMenu(sim, st, ctx, Rect{0, 0, 100, 30})
+	sim.Show()
+
+	if groups, cols, ok := st.grouped(); !ok || cols != 3 || len(groups) != 3 {
+		t.Fatalf("esperaba 3 columnas agrupadas, got ok=%v cols=%d groups=%d", ok, cols, len(groups))
+	}
+
+	winX, ok1 := labelX(sim, "Windows")
+	andX, ok2 := labelX(sim, "And. Dev")
+	comX, ok3 := labelX(sim, "Clean")
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("faltan etiquetas en el render (win=%v and=%v com=%v)", ok1, ok2, ok3)
+	}
+	if !(winX < andX && andX < comX) {
+		t.Errorf("columnas mal ordenadas: Windows=%d Android=%d Comun=%d", winX, andX, comX)
+	}
+
+	// Navegacion: ↓ dentro de la columna, → entre columnas.
+	if st.items[st.selected] != WindowsDev {
+		t.Fatalf("seleccion inicial = %v, queria WindowsDev", st.items[st.selected])
+	}
+	st.moveRow(1)
+	if st.items[st.selected] != WindowsBuild {
+		t.Errorf("↓ desde WindowsDev = %v, queria WindowsBuild", st.items[st.selected])
+	}
+	st.moveRow(-1)
+	if st.items[st.selected] != WindowsDev {
+		t.Errorf("↑ desde WindowsBuild = %v, queria WindowsDev", st.items[st.selected])
+	}
+	st.moveSelection(1)
+	if st.items[st.selected] != AndroidDev {
+		t.Errorf("→ desde WindowsDev = %v, queria AndroidDev", st.items[st.selected])
+	}
+	st.moveSelection(1)
+	if st.items[st.selected] != Clean {
+		t.Errorf("→ desde AndroidDev = %v, queria Clean", st.items[st.selected])
+	}
+}
