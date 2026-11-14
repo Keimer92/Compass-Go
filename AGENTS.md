@@ -49,6 +49,9 @@ Compass Go/
 │  ├─ console/                # Ctrl-C handler y bloqueo de cierre (Windows)
 │  ├─ prompts/  ui/           # prompts y helpers de UI
 ├─ assets/icon/               # Icon.ico, Default.ico, opencode.ico
+├─ packaging/                 # plantilla del instalador NSIS + generador de cabecera
+│  ├─ installer.nsi           #   asistente MUI2 (icono, componentes, ejecutar al final)
+│  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/Icon.ico
 ├─ dist/                      # GENERADO por dist.bat (payload, installer.nsi, setup); desechable
 ├─ bin/                       # GENERADO por install.bat (binario de trabajo); desechable
 ├─ install.bat                # compilar + instalar en el sistema
@@ -92,9 +95,17 @@ install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
 
 ### 2. `dist.bat` — generar el instalador en `dist\` (tipo: *package*)
 
-Compila a `dist\payload\compass-go.exe` (con iconos), regenera
-`dist\installer.nsi` y, si NSIS está instalado, produce el instalador autónomo
-`dist\CompassGo-Setup.exe`. Todo lo generado vive en `dist\` y es desechable.
+Compila a `dist\payload\compass-go.exe` (con iconos), copia la plantilla
+`packaging\installer.nsi` a `dist\installer.nsi` (generando antes la cabecera
+del asistente desde el icono de la app) y, si NSIS está instalado, produce el
+instalador autónomo `dist\CompassGo-Setup.exe`. Todo lo generado vive en
+`dist\` y es desechable.
+
+El asistente usa Modern UI 2 con la marca de Compass Go (icono y cabecera,
+como el instalador de Firefox) y ofrece, además de la instalación base, acceso
+directo en el menú Inicio, acceso en el escritorio, anclaje a la barra de
+tareas (best-effort: Windows 10 1903+ puede bloquearlo y se avisa al usuario)
+y la casilla **Ejecutar Compass Go** al terminar.
 
 ```bat
 dist.bat                 # compila + genera dist\CompassGo-Setup.exe
@@ -102,6 +113,9 @@ dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
 ```
 
 - Si falta NSIS, avisa y deja `dist\payload` e `installer.nsi` listos.
+- Para recompilar el instalador a mano:
+  `makensis /DAPPICON=payload\Icon.ico dist\installer.nsi` (añade
+  `/DNOHEADER` si no existe `dist\installer_header.bmp`).
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
 
 ### 3. `uninstall.bat` — desinstalar de la máquina (tipo: *uninstall*)
