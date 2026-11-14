@@ -31,6 +31,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import readline from "readline";
 import fs from "fs";
 import path from "path";
+import https from "https";
 
 // Log de archivo DESACTIVADO (no se genera whatsapp_engine.log).
 // Los errores críticos se reportan solo por stderr (visible en whatsapp.log de Rust).
@@ -60,7 +61,28 @@ import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaile
 import pino from "pino";
 import qrImage from 'qr-image';
 
-/** Salida inmediata al sidecar (stdout en pipe va bufferizado con console.log/write). */
+// Logger de Baileys hacia stderr, filtrado: sin esto no se ve por qué una
+// subida de imagen se queda colgada (Baileys lo cuenta a nivel debug/warn).
+// Se descarta el ruido de mensajes normales para no inundar el log.
+const baileysLogger = pino(
+    {
+        level: 'debug',
+        hooks: {
+            logMethod(args, method) {
+                let text = '';
+                try {
+                    text = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+                } catch (_) {
+                    text = 'log';
+                }
+                if (/upload|media|connection|stream error|socket/i.test(text)) {
+                    method.apply(this, args);
+                }
+            }
+        }
+    },
+    pino.destination({ dest: 2, sync: false })
+);
 function emit(line) {
     fs.writeSync(1, `${line}\n`);
 }
@@ -140,6 +162,38 @@ function getActiveSocket() {
         return null;
     }
     return activeSock;
+}
+
+// ---- Comprobación del host de subida de archivos ----
+// Baileys sube imágenes/videos a mmg.whatsapp.net por HTTPS, aparte del
+// WebSocket. Si el firewall/antivirus de un equipo bloquea ese host, el socket
+// conecta bien pero `sendMessage(image)` se queda colgado hasta el timeout.
+// Comprobarlo antes evita 40 s de espera y da un error que se entiende.
+let mediaHostCache = { at: 0, ok: true, detail: '' };
+
+function checkMediaHost(timeoutMs = 8000) {
+    if (Date.now() - mediaHostCache.at < 60_000) return Promise.resolve(mediaHostCache);
+    return new Promise((resolve) => {
+        const started = Date.now();
+        let done = false;
+        const finish = (ok, detail) => {
+            if (done) return;
+            done = true;
+            mediaHostCache = { at: Date.now(), ok, detail };
+            resolve({ ...mediaHostCache, ms: Date.now() - started });
+        };
+        try {
+            const req = https.request(
+                { host: 'mmg.whatsapp.net', port: 443, path: '/', method: 'HEAD', timeout: timeoutMs },
+                (res) => { res.resume(); finish(true, `HTTP ${res.statusCode}`); }
+            );
+            req.on('timeout', () => { req.destroy(new Error(`timeout ${timeoutMs}ms`)); });
+            req.on('error', (e) => finish(false, e.code || e.message));
+            req.end();
+        } catch (e) {
+            finish(false, e.message || String(e));
+        }
+    });
 }
 
 // ---- Tracking de ACK del servidor ----
@@ -359,9 +413,14 @@ async function start() {
             version,
             auth: state,
             printQRInTerminal: false,
-            logger: pino({ level: 'silent' }),
+            logger: baileysLogger,
             browser: CONFIG.browser,
             connectTimeoutMs: CONFIG.connectTimeoutMs,
+            // Sin este límite, axios deja la subida de la imagen abierta para
+            // siempre y el envío nunca termina (ni con error ni con confirmación).
+            // 30 s cubre un recibo de ~200 KB incluso en subidas lentas; si el
+            // host falla, Baileys pasa al siguiente sin agotar el timeout total.
+            mediaUploadTimeoutMs: 30000,
             keepAliveIntervalMs: 30000,
             emitOwnEvents: true,
             syncFullHistory: false,
@@ -638,13 +697,36 @@ async function start() {
                             return;
                         }
 
-                        try {
-                            const sentImg = await withTimeout(sock.sendMessage(jid, {
-                                image: imageBuffer,
-                                caption: data.caption || ''
-                            }), 40000, 'sendMessage(image)');
+                        // La subida va a mmg.whatsapp.net: si el equipo la bloquea,
+                        // no tiene sentido esperar por un timeout largo.
+                        const media = await checkMediaHost();
+                        elog(`media host check: ok=${media.ok} (${media.detail}) ${media.ms}ms`);
+                        if (!media.ok) {
+                            emit(`IMAGE_ERROR:No se pudo subir el archivo a WhatsApp (mmg.whatsapp.net: ${media.detail}). Revisa firewall, antivirus o proxy de este equipo.`);
+                            return;
+                        }
+
+                        let sentImg = null;
+                        let lastErr = null;
+                        for (let attempt = 1; attempt <= 2; attempt++) {
+                            const started = Date.now();
+                            try {
+                                elog(`image send attempt ${attempt} -> ${cleanNumber} (${imageBuffer.length} bytes)`);
+                                sentImg = await withTimeout(sock.sendMessage(jid, {
+                                    image: imageBuffer,
+                                    caption: data.caption || ''
+                                }), 60000, `sendMessage(image) intento ${attempt}`);
+                                elog(`image send OK -> ${cleanNumber} en ${Date.now() - started}ms`);
+                                break;
+                            } catch (sendErr) {
+                                lastErr = sendErr;
+                                elog(`image send attempt ${attempt} FAILED -> ${cleanNumber} tras ${Date.now() - started}ms: ${sendErr.message || sendErr}`);
+                                if (attempt === 1) await wait(1500);
+                            }
+                        }
+
+                        if (sentImg) {
                             const imgId = sentImg?.key?.id || '';
-                            elog(`image send OK -> ${cleanNumber} msg=${imgId}`);
                             // Confirmar inmediatamente: el mensaje llegó a los servidores de WhatsApp.
                             // watchAck solo registra el ACK para logs (no emite errores).
                             emit(`IMAGE_SENT_CONFIRM:${cleanNumber}`);
@@ -652,9 +734,9 @@ async function start() {
                                 (ackLabel) => elog(`image ACK received -> ${cleanNumber}: ${ackLabel}`),
                                 () => elog(`image ACK missing -> ${cleanNumber} (no delivery receipt, but message was sent)`),
                                 () => elog(`image ACK pending -> ${cleanNumber}`));
-                        } catch (sendErr) {
-                            elog(`image send ERROR -> ${cleanNumber}: ${sendErr.message || sendErr}`);
-                            emit(`IMAGE_ERROR:${sendErr.message || sendErr}`);
+                        } else {
+                            elog(`image send ERROR -> ${cleanNumber}: ${lastErr?.message || lastErr}`);
+                            emit(`IMAGE_ERROR:${lastErr?.message || lastErr}`);
                         }
                     });
                 } else if (data.type === 'pair') {
