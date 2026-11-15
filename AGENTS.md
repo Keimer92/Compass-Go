@@ -110,6 +110,12 @@ del asistente desde el icono de la app) y, si NSIS está instalado, produce el
 instalador autónomo `dist\CompassGo-Setup.exe`. Todo lo generado vive en
 `dist\` y es desechable.
 
+Al copiar `corekit/` al payload se excluyen los artefactos de build del motor
+(`node_modules`, `out`, `examples`): en ejecución solo hacen falta `node.exe` +
+`whatsapp-engine-bundle`. El payload pasa de ~165 MB / 2418 archivos a ~83 MB /
+35 archivos, y la instalación silenciosa de ~15 s a ~5 s. El instalador además
+borra esos artefactos de instalaciones anteriores antes de extraer.
+
 El asistente usa Modern UI 2 con la marca de Compass Go (icono y cabecera,
 como el instalador de Firefox) y ofrece, además de la instalación base, acceso
 directo en el menú Inicio, acceso en el escritorio, anclaje a la barra de
@@ -224,15 +230,18 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
      dentro del propio Compass); para en cuanto encuentra una coincidencia.
   El criterio 3 es el principal: basta con que el código del proyecto importe el
   paquete WhatsApp para que Compass etaje el motor, sin marcadores manuales.
-- **Auto-instalación de dependencias**: durante el etapado, si `package.json`
-  es más reciente que `node_modules`, Compass ejecuta `npm install` en el kit
-  antes de reconstruir el bundle (así un clon limpio queda funcional).
+- **Auto-instalación de dependencias**: solo cuando hay que reconstruir el
+  bundle (falta `index.js` o `engine.js` es más nuevo), y si `package.json` es
+  más reciente que `node_modules`, Compass ejecuta `npm install` en el kit. La
+  copia instalada no lleva `node_modules` (el bundle ya viene compilado); si
+  faltara y hubiera que reconstruir, se avisa y se usa el bundle existente.
 - **Etapado en build**: `stageWhatsappEngine` (llamado desde `windowsArtifacts`
   en el release de escritorio) reconstruye el bundle si `engine.js` cambió y
   copia `node.exe` + `whatsapp-engine-bundle` al `bin/resources/` del proyecto
   (o al `resources/` de Tauri/Flutter/Kotlin según tipo).
 - **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
-- `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador.
+- `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador
+  (sin los artefactos de build del motor: `node_modules`, `out`, `examples`).
 - **Variable de entorno en la instalación**: `install.bat` define
   `COMPASS_WHATSAPP_ENGINE` (ámbito Usuario) apuntando al corekit instalado
   (`%LOCALAPPDATA%\Programs\Keimer\corekit\whatsapp`), para que los proyectos

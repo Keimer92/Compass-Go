@@ -89,6 +89,14 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
   SectionIn RO
 
   SetOutPath "$INSTDIR"
+
+  ; Limpieza de artefactos de build de versiones anteriores del motor de
+  ; WhatsApp. El runtime solo necesita node.exe + whatsapp-engine-bundle; el
+  ; resto (node_modules, out, examples) ya no viaja en el payload.
+  RMDir /r "$INSTDIR\corekit\whatsapp\node_modules"
+  RMDir /r "$INSTDIR\corekit\whatsapp\out"
+  RMDir /r "$INSTDIR\corekit\whatsapp\examples"
+
   File /r "payload\*"
 
   ; Migracion: eliminar la copia antigua de .cargo\bin.

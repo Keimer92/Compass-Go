@@ -132,22 +132,28 @@ func stageWhatsappEngine(ctx *project.ProjectContext) {
 		return
 	}
 
-	// Instala dependencias solo si package.json cambió o node_modules falta,
-	// para no relentizar cada build.
-	if isNewer(filepath.Join(src, "package.json"), filepath.Join(src, "node_modules")) {
+	// ¿Hay que reconstruir el bundle? Solo entonces hacen falta las
+	// dependencias (node_modules), que en la copia instalada no se envian:
+	// el bundle ya viene compilado y es autocontenido.
+	bundleSrc := filepath.Join(src, "whatsapp-engine-bundle")
+	indexJs := filepath.Join(bundleSrc, "index.js")
+	engineJs := filepath.Join(src, "engine.js")
+	needRebuild := !fileExists(indexJs) || isNewer(engineJs, indexJs)
+
+	if needRebuild && isNewer(filepath.Join(src, "package.json"), filepath.Join(src, "node_modules")) {
 		fmt.Println("[INFO] Instalando dependencias del motor de WhatsApp canónico...")
 		shell.RunNpmInstall(src)
 	}
 
-	// Reconstruye el bundle si falta o está desactualizado respecto a engine.js.
-	bundleSrc := filepath.Join(src, "whatsapp-engine-bundle")
-	indexJs := filepath.Join(bundleSrc, "index.js")
-	engineJs := filepath.Join(src, "engine.js")
-	if !fileExists(indexJs) || isNewer(engineJs, indexJs) {
+	if needRebuild {
 		fmt.Println("[INFO] Compilando motor de WhatsApp canónico (ncc)...")
 		if err := shell.RunInDirStatus("node", src, "bundle.mjs"); err != nil {
-			fmt.Printf("[WARN] No se pudo compilar el motor canónico: %v\n", err)
-			return
+			if fileExists(indexJs) {
+				fmt.Printf("[WARN] No se pudo recompilar el bundle; se usa el existente: %v\n", err)
+			} else {
+				fmt.Printf("[WARN] No se pudo compilar el motor canónico: %v\n", err)
+				return
+			}
 		}
 	}
 

@@ -102,10 +102,21 @@ echo.
 
 REM Core kits (motores canonicos, p.ej. whatsapp) viajan dentro del payload;
 REM el instalador ya empaqueta payload\* con File /r.
+REM
+REM Se excluyen los artefactos de BUILD del motor (node_modules, out, examples):
+REM en tiempo de ejecucion solo hacen falta node.exe + whatsapp-engine-bundle,
+REM que ya viene compilado y es autocontenido. Esto reduce el payload de
+REM ~2418 archivos a ~30 y la instalacion de ~15 s a unos pocos segundos.
+REM Se borra la copia previa porque /MIR + /XD no purga las carpetas excluidas.
 if exist "corekit" (
-    echo [INFO] Copiando core kits a dist\payload...
-    xcopy /E /I /Y "corekit" "dist\payload\corekit" >nul 2>nul
-    echo [OK] Core kits copiados.
+    echo [INFO] Copiando core kits a dist\payload sin artefactos de build...
+    if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
+    robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
+    if errorlevel 8 (
+        echo [WARN] robocopy devolvio un error al copiar corekit; revisa dist\payload\corekit.
+    ) else (
+        echo [OK] Core kits copiados.
+    )
 ) else (
     echo [SKIP] No se encontro la carpeta corekit; se omite.
 )
