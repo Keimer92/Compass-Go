@@ -1,7 +1,7 @@
 # Genera la cabecera del asistente NSIS (150x57 BMP) con la marca de Compass Go.
-# Uso: powershell -File packaging\make_header.ps1 -Icon assets\icon\Icon.ico -Out dist\installer_header.bmp
+# Uso: powershell -File packaging\make_header.ps1 -Icon assets\icon\CompassGo.ico -Out dist\installer_header.bmp
 param(
-    [string]$Icon = "assets\icon\Icon.ico",
+    [string]$Icon = "assets\icon\CompassGo.ico",
     [string]$Out  = "dist\installer_header.bmp"
 )
 

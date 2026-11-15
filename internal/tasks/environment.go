@@ -92,10 +92,6 @@ func envEntries() []envAction {
 			Icon: "\U0001f4c2", Label: "Abrir respaldos",
 			Description: "Carpeta de respaldos de Compass", ColorKey: "git",
 		}, runOpenBackups},
-		{"back", tui.SubItem{
-			Icon: "\u21a9", Label: "Volver al menu principal",
-			Description: "Regresa al menu principal", ColorKey: "terminal",
-		}, nil},
 	}
 }
 
@@ -130,7 +126,7 @@ func EnvManage(ctx *project.ProjectContext) error {
 		if err != nil {
 			return err
 		}
-		if !ok || choice == "back" {
+		if !ok {
 			return nil
 		}
 		for _, e := range entries {

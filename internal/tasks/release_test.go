@@ -45,7 +45,6 @@ func TestWindowsEntriesAreOfferedOnlyByDesktopArchTypes(t *testing.T) {
 		"Todos",
 		"Windows x86",
 		"Windows ARM64",
-		"Volver al menu principal",
 	}
 	for _, kind := range []project.ProjectType{
 		project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails,
@@ -56,9 +55,6 @@ func TestWindowsEntriesAreOfferedOnlyByDesktopArchTypes(t *testing.T) {
 		}
 		if entries[0].key != archKeyX64 || entries[1].key != archKeyAll {
 			t.Errorf("%s: Windows x64 y Todos deben ser las primeras opciones", kind.Label())
-		}
-		if entries[len(entries)-1].key != archKeyBack {
-			t.Errorf("%s: la última card debe ser back", kind.Label())
 		}
 	}
 	for _, kind := range []project.ProjectType{
@@ -76,7 +72,6 @@ func TestAndroidEntriesDependOnTheToolchain(t *testing.T) {
 		"Android armv7",
 		"Android universal",
 		"Todos",
-		"Volver al menu principal",
 	}
 	for _, kind := range []project.ProjectType{
 		project.TypeTauri, project.TypeFlutter, project.TypeGoWails,
@@ -87,7 +82,7 @@ func TestAndroidEntriesDependOnTheToolchain(t *testing.T) {
 	}
 
 	kotlin := androidEntries(releaseCtx(t, project.TypeKotlin))
-	wantKotlin := []string{"Android universal", "Volver al menu principal"}
+	wantKotlin := []string{"Android universal"}
 	if got := releaseLabels(kotlin); !equalStrings(got, wantKotlin) {
 		t.Errorf("Kotlin sin jniLibs: %v, quiero %v", got, wantKotlin)
 	}
@@ -116,8 +111,8 @@ func TestAndroidEntriesIncludeAbisWhenKotlinHasJniLibs(t *testing.T) {
 
 	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeKotlin}
 	entries := androidEntries(ctx)
-	if len(entries) != 5 {
-		t.Fatalf("entradas = %d, quiero 5", len(entries))
+	if len(entries) != 4 {
+		t.Fatalf("entradas = %d, quiero 4", len(entries))
 	}
 	if entries[3].key != archKeyAll {
 		t.Fatalf("la card Todos debe ser 'all', es %q", entries[3].key)
@@ -185,15 +180,18 @@ func TestWindowsTriplesAndGoarchsMatchRealTargets(t *testing.T) {
 	}
 }
 
-func TestReleaseBackIsTheLastEntryInBothSubmenus(t *testing.T) {
+// TestReleaseEntriesHaveNoBackCard: cerrar el submenú es cosa de la pestaña
+// (F12 / ×), así que no se ofrece una card "Volver al menu principal".
+func TestReleaseEntriesHaveNoBackCard(t *testing.T) {
 	ctx := releaseCtx(t, project.TypeTauri)
 	for name, entries := range map[string][]releaseEntry{
 		"windows": windowsEntries(ctx),
 		"android": androidEntries(ctx),
 	} {
-		last := entries[len(entries)-1]
-		if last.key != archKeyBack {
-			t.Errorf("%s: última entrada = %q", name, last.key)
+		for _, e := range entries {
+			if e.key == "back" || e.card.Label == "Volver al menu principal" {
+				t.Errorf("%s: sobra la card de volver", name)
+			}
 		}
 	}
 }

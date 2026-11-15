@@ -46,6 +46,11 @@ func init() {
 }
 
 // colorOf traduce un color de vt10x a tcell; los "default" usan el del tema.
+//
+// vt10x codifica los colores de 24 bits como el RGB crudo (r<<16|g<<8|b), un
+// valor entre 256 y 1<<24. Sin esta rama, los submenus (que dibujan dentro de
+// una pestana ConPTY con truecolor) perderian todos sus acentos y fondos y se
+// verian planos frente al menu principal.
 func colorOf(c vt10x.Color, def tcell.Color) tcell.Color {
 	switch {
 	case c == vt10x.DefaultFG || c == vt10x.DefaultBG || c == vt10x.DefaultCursor:
@@ -54,6 +59,8 @@ func colorOf(c vt10x.Color, def tcell.Color) tcell.Color {
 		return ansi16[c]
 	case c < 256:
 		return xterm256[c]
+	case c < 1<<24:
+		return tcell.NewHexColor(int32(c))
 	default:
 		return def
 	}

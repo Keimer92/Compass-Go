@@ -1,7 +1,7 @@
 // ============================================================================
 //  INTEGRACIÓN FLUTTER (Dart) — WhatsApp Engine centralizado
 //  ----------------------------------------------------------------------------
-//  El motor canónico vive en: D:\Mis Proyectos\WhatsApp Engine
+//  El motor canónico vive en: D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp
 //  Empaquetar para Flutter:  node bundle.mjs --single   (UN solo index.js)
 //  Copiar index.js a:  whatsapp_engine/index.js  (carpeta junto al ejecutable)
 //  La sesión se guarda en WHATSAPP_AUTH_DIR (evita "logged in elsewhere").

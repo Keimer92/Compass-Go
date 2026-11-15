@@ -183,6 +183,11 @@ func renderCards(s tcell.Screen, ui UiLayout, st *MenuState, pt project.ProjectT
 					key := st.items[idx].ColorKey()
 					applyHoverGlow(buf, rect, phase, th.CardAccent(key), th.CardBg(key), th.Text)
 				}
+			} else if selected {
+				if phase, ok := st.selectPhase(); ok {
+					key := st.items[idx].ColorKey()
+					applyHoverGlow(buf, rect, phase, th.CardAccent(key), th.CardBg(key), th.Text)
+				}
 			}
 			buf.blit(s)
 		}
@@ -212,6 +217,11 @@ func renderGroupedCards(s tcell.Screen, ui UiLayout, st *MenuState, pt project.P
 			drawCard(buf, rect, st.items[idx], selected, hovered, pt, th)
 			if hovered {
 				if phase, ok := st.hoverPhase(); ok {
+					key := st.items[idx].ColorKey()
+					applyHoverGlow(buf, rect, phase, th.CardAccent(key), th.CardBg(key), th.Text)
+				}
+			} else if selected {
+				if phase, ok := st.selectPhase(); ok {
 					key := st.items[idx].ColorKey()
 					applyHoverGlow(buf, rect, phase, th.CardAccent(key), th.CardBg(key), th.Text)
 				}
@@ -427,14 +437,15 @@ func renderHeader(s tcell.Screen, area Rect, ctx *project.ProjectContext, th *th
 	}
 }
 
-func renderFooter(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.ProjectContext) {
-	base := bgStyle(th)
+// footerSeg es un tramo del pie: texto y color.
+type footerSeg struct {
+	text string
+	col  tcell.Color
+}
 
-	type seg struct {
-		text string
-		col  tcell.Color
-	}
-	segs := []seg{
+// renderFooter pinta el pie del menu principal.
+func renderFooter(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.ProjectContext) {
+	renderFooterSegs(s, area, th, ctx, []footerSeg{
 		{"  Tab", th.Text},
 		{" pestañas   ", th.Muted},
 		{"\u2190\u2192\u2191\u2193", th.Text},
@@ -444,7 +455,26 @@ func renderFooter(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.Proje
 		{"Esc", th.Text},
 		{" salir   ", th.Muted},
 		{fmt.Sprintf("Ctrl+T temas: %s  ", th.Name), th.Brand},
-	}
+	})
+}
+
+// renderSubmenuFooter pinta el pie de un submenu con sus propias teclas, pero
+// con el mismo estilo, posicion y ruta que el menu principal.
+func renderSubmenuFooter(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.ProjectContext) {
+	renderFooterSegs(s, area, th, ctx, []footerSeg{
+		{"  \u2190\u2192\u2191\u2193", th.Text},
+		{" navegar   ", th.Muted},
+		{"Enter", th.Text},
+		{" ejecutar   ", th.Muted},
+		{"Esc", th.Text},
+		{" volver   ", th.Muted},
+		{fmt.Sprintf("Ctrl+T temas: %s  ", th.Name), th.Brand},
+	})
+}
+
+// renderFooterSegs pinta los atajos a la izquierda y la ruta a la derecha.
+func renderFooterSegs(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.ProjectContext, segs []footerSeg) {
+	base := bgStyle(th)
 
 	x := area.X
 	for _, sg := range segs {

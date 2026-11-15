@@ -779,6 +779,24 @@ func (s *MenuState) hoverAnimating() bool {
 	return s.hover >= 0 && !s.hoverStarted.IsZero()
 }
 
+// selectPhase devuelve una fase continua basada en el reloj para que la card
+// seleccionada mantenga el halo giratorio exactamente igual que la card bajo
+// el puntero. Asi la card activa (p. ej. en un submenu de release) muestra el
+// mismo efecto luminoso que la card seleccionada de la TUI principal, no solo
+// al pasar el raton por encima.
+func (s *MenuState) selectPhase() (float32, bool) {
+	if s.selected < 0 {
+		return 0, false
+	}
+	p := float64(time.Now().UnixNano()) / float64(hoverCycle.Nanoseconds())
+	return float32(p - math.Floor(p)), true
+}
+
+// selectAnimating indica si hay una card seleccionada cuyo halo debe animarse.
+func (s *MenuState) selectAnimating() bool {
+	return s.selected >= 0
+}
+
 // groupedLayoutFor indica si la pestana actual debe pintarse en columnas por
 // plataforma y devuelve sus grupos. Necesita ancho suficiente para que cada
 // columna mantenga el ancho minimo de card; si no, se usa la rejilla normal.

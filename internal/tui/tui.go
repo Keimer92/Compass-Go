@@ -136,7 +136,7 @@ func Run(ctx *project.ProjectContext) error {
 			case <-time.After(frame):
 				continue
 			}
-		case st.hoverAnimating():
+		case st.hoverAnimating() || st.selectAnimating():
 			// Halo de hover en curso: mismo ritmo de fotogramas.
 			select {
 			case ev = <-events:

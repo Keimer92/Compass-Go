@@ -37,24 +37,37 @@ func exeDir() string {
 	return "."
 }
 
+// resolveIcon devuelve una ruta a un .ico que EXISTE de verdad. Un icono de
+// registro que apunta a un fichero inexistente (p.ej. tras mover la instalacion)
+// se traduce en "sin icono" en el Explorador, asi que nunca devolvemos una ruta
+// rota: probamos el icono propio, luego Default.ico junto al exe y, por ultimo,
+// el propio .exe (que lleva el icono de Compass embebido).
 func resolveIcon(name string) string {
 	dir := exeDir()
-	custom := filepath.Join(dir, name)
-	fallback := filepath.Join(dir, "Default.ico")
-	if fileExists(custom) {
-		return custom
-	}
-	if fileExists(fallback) {
-		return fallback
+	candidates := []string{
+		filepath.Join(dir, name),
+		filepath.Join(dir, "Default.ico"),
 	}
 	if home := homeDir(); home != "" {
-		return filepath.Join(home, ".cargo", "bin", "Default.ico")
+		candidates = append(candidates, filepath.Join(home, ".cargo", "bin", "Default.ico"))
 	}
-	return "Default.ico"
+	for _, c := range candidates {
+		if fileExists(c) {
+			return c
+		}
+	}
+	if exe, err := os.Executable(); err == nil && fileExists(exe) {
+		return exe
+	}
+	return filepath.Join(dir, name)
 }
 
-func iconPath() string     { return resolveIcon("icon.ico") }
-func opencodeIcon() string { return resolveIcon("opencode.ico") }
+// Iconos del menu contextual: la entrada Compass Go, la cascada Vibe Coding y
+// la accion Add gitignore usan cada una su propio .ico (generados desde los
+// .png de assets/icon con packaging/make_icons.ps1).
+func iconPath() string      { return resolveIcon("CompassGo.ico") }
+func vibeIcon() string      { return resolveIcon("VibeCoding.ico") }
+func gitignoreIcon() string { return resolveIcon("Git.ico") }
 
 func exePath() string {
 	name := "compass-go.exe"
@@ -63,6 +76,42 @@ func exePath() string {
 		return cand
 	}
 	return name
+}
+
+// refreshContextIcons reescribe el valor `Icon` de las entradas del menu que ya
+// existan para que apunten a los .ico actuales. No crea ni borra entradas: solo
+// refresca el icono. Asi, mover la instalacion o cambiar los .ico no deja rutas
+// absolutas obsoletas (que el Explorador muestra como "sin icono").
+func refreshContextIcons() {
+	compass := shell.PsQuote(iconPath())
+	vibe := shell.PsQuote(vibeIcon())
+	git := shell.PsQuote(gitignoreIcon())
+
+	setIcon := func(root, key, icon string) string {
+		path := fmt.Sprintf(`%s\shell\%s`, root, key)
+		return fmt.Sprintf(`if (Test-Path '%s') { Set-ItemProperty -Path '%s' -Name 'Icon' -Type String -Value %s -Force }; `,
+			path, path, icon)
+	}
+
+	var ps strings.Builder
+	for _, key := range []string{ctxCompassKey, ctxGitignoreKey, ctxVibeKey} {
+		icon := compass
+		switch key {
+		case ctxGitignoreKey:
+			icon = git
+		case ctxVibeKey:
+			icon = vibe
+		}
+		ps.WriteString(setIcon(`HKCU:\Software\Classes\Directory`, key, icon))
+		ps.WriteString(setIcon(`HKCU:\Software\Classes\Directory\Background`, key, icon))
+	}
+
+	// Subentradas de Vibe Coding: todas comparten el icono de la cascada.
+	ps.WriteString(fmt.Sprintf(
+		`$b='HKCU:\Software\Classes\%s\shell'; if (Test-Path $b) { Get-ChildItem $b | ForEach-Object { Set-ItemProperty -Path $_.PSPath -Name 'Icon' -Type String -Value %s -Force } }; `,
+		ctxVibePath, vibe))
+
+	_, _ = shell.RunPS(ps.String())
 }
 
 // ── Compass (entrada principal) ──────────────────────────────────────────────
@@ -79,6 +128,10 @@ func contextMenuInstall() error {
 		if err := installGitignoreActionWindows(); err != nil {
 			return err
 		}
+		// Refresca el icono de las entradas existentes (Compass y Vibe Coding)
+		// aunque el comando ya sea el actual: mover la instalacion deja rutas
+		// absolutas obsoletas que el Explorador pinta como "sin icono".
+		refreshContextIcons()
 		removeOldCodeRunnerEntry()
 		return nil
 	}
@@ -113,6 +166,10 @@ New-Item -Path 'HKCU:\Software\Classes\Directory\shell\%s' -Force | Out-Null; `+
 		return err
 	}
 
+	// Deja al dia el icono de las entradas que ya existieran (p.ej. Vibe Coding
+	// con una ruta vieja) sin recrearlas.
+	refreshContextIcons()
+
 	fmt.Println("[OK] Menu contextual Compass Go instalado.")
 	fmt.Printf("  Ruta: %s\n", exe)
 	fmt.Printf("  Icono: %s\n", icon)
@@ -132,7 +189,7 @@ func removeOldCodeRunnerEntry() {
 
 func installGitignoreActionWindows() error {
 	exe := exePath()
-	icon := iconPath()
+	icon := gitignoreIcon()
 	shellName := shell.ShellPath()
 	folderCommand := gitignoreContextCommand(shellName, exe, "%1")
 	backgroundCommand := gitignoreContextCommand(shellName, exe, "%V")
@@ -349,7 +406,7 @@ func vibeContextCommand(shellName, title, cmdline string) string {
 }
 
 func installVibeCoding() error {
-	icon := opencodeIcon()
+	icon := vibeIcon()
 	removeVibeOldKeys()
 	removeVibeCtxTree()
 

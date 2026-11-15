@@ -975,10 +975,6 @@ func gitEntries() []gitItem {
 			Icon: "\U0001f4ca", Label: "Ver estado",
 			Description: "Rama, remoto y cambios", ColorKey: "debug",
 		}, showGitStatus},
-		{"back", tui.SubItem{
-			Icon: "\u21a9", Label: "Volver al menu principal",
-			Description: "Regresa al menu principal", ColorKey: "terminal",
-		}, nil},
 	}
 }
 
@@ -1000,7 +996,7 @@ func GitManage(ctx *project.ProjectContext) error {
 		if err != nil {
 			return err
 		}
-		if !ok || choice == "back" {
+		if !ok {
 			return nil
 		}
 		for _, e := range entries {

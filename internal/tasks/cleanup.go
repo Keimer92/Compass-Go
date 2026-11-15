@@ -517,10 +517,6 @@ func cleanupEntries() []cleanupItem {
 			Icon: "\U0001f4ca", Label: "Ver tamaños",
 			Description: "Mide sin borrar nada", ColorKey: "profile",
 		}, reportSizes},
-		{"back", tui.SubItem{
-			Icon: "\u21a9", Label: "Volver al menu principal",
-			Description: "Regresa al menu principal", ColorKey: "git",
-		}, nil},
 	}
 }
 
@@ -533,7 +529,7 @@ func CleanupManage(ctx *project.ProjectContext) error {
 	for i, e := range entries {
 		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
 	}
-	menu := tui.NewSubmenu("LIMPIEZA", "MNT", cards).WithAndroidWarning(false)
+	menu := tui.NewSubmenu("LIMPIEZA", "MNT", cards)
 	th := theme.Load()
 
 	for {
@@ -541,7 +537,7 @@ func CleanupManage(ctx *project.ProjectContext) error {
 		if err != nil {
 			return err
 		}
-		if !ok || choice == "back" {
+		if !ok {
 			return nil
 		}
 		for _, e := range entries {

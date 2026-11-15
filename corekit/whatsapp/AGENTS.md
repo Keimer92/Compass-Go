@@ -2,7 +2,7 @@
 
 > **Propósito:** Servir como referencia única para integrar el motor de WhatsApp en **cualquier proyecto** (Tauri/Rust, Flutter/Dart, Node, Python...). Un solo `engine.js` = lógica centralizada; cada proyecto empaqueta y lanza su propio bundle.
 > **Versión:** 2.0.0
-> **Ubicación canónica:** `D:\Mis Proyectos\Core Station\Whatsapp`
+> **Ubicación canónica:** `D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp`
 > **Dependencias:** Node.js (lado runtime) · `@whiskeysockets/baileys` · `pino` · `qr-image` · `@vercel/ncc` (build)
 
 ---
@@ -20,7 +20,7 @@ La lógica vive **una sola vez** aquí. Cada proyecto:
 3. Lo lanza con `node <bundle>` y se comunica por **stdin/stdout**.
 
 **Regla de edición:** todos los cambios al motor y a su protocolo empiezan en
-`D:\Mis Proyectos\Core Station\Whatsapp\engine.js`. Los bundles dentro de GymPro,
+`D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp\engine.js`. Los bundles dentro de GymPro,
 Tauri u otros proyectos son artefactos generados: no se editan manualmente.
 Para GymPro Go/Wails, compila con `node bundle.mjs --asset` y copia el contenido
 completo de `out\whatsapp-engine-bundle\` a
@@ -31,7 +31,7 @@ completo de `out\whatsapp-engine-bundle\` a
 ## 2. Estructura del directorio
 
 ```
-D:\Mis Proyectos\Core Station\Whatsapp\
+D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp\
 ├─ engine.js           ← MOTOR CANÓNICO (merge de GymPro + School Tracker)
 ├─ bundle.mjs          ← Compilador (modos --asset / --single)
 ├─ package.json        ← Dependencias (baileys, pino, qr-image, ncc)
@@ -167,7 +167,7 @@ Fue el mero que originó la centralización (cuenta baneada tras ráfaga de 12 r
 ## 8. Build y empaquetado
 
 ```bash
-cd "D:\Mis Proyectos\Core Station\Whatsapp"
+cd "D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp"
 npm install                     # solo la 1er vez
 node bundle.mjs --asset         # → out/whatsapp-engine-bundle/   (Tauri: carpeta con assets)
 node bundle.mjs --single        # → out/single/index.js           (Flutter: un solo archivo)
@@ -214,7 +214,7 @@ central y no se copian al proyecto consumidor.
 | **Flutter (Dart)** | `whatsapp_engine/` en la raíz del proyecto | `Process.start` con `WHATSAPP_AUTH_DIR`; busca `index.js` relativo a cwd → executable dir → app docs |
 | **GymPro Go/Wails** | `resources/whatsapp-engine-bundle/` | Resuelto por `internal/whatsapp` desde el directorio de trabajo de la app |
 
-> Para GymPro, la fuente canónica siempre es `D:\Mis Proyectos\Core Station\Whatsapp`.
+> Para GymPro, la fuente canónica siempre es `D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp`.
 > Regenera el bundle desde allí y sincroniza la carpeta completa; nunca edites a mano
 > el bundle generado dentro de `resources\whatsapp-engine-bundle`.
 

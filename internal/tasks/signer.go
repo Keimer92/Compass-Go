@@ -534,10 +534,6 @@ func signingEntries() []signingItem {
 			Icon: "\u2705", Label: "Verificar APK",
 			Description: "apksigner vs keystore configurado", ColorKey: "test",
 		}, verifyApk},
-		{"back", tui.SubItem{
-			Icon: "\u21a9", Label: "Volver al menu principal",
-			Description: "Regresa al menu principal", ColorKey: "git",
-		}, nil},
 	}
 }
 
@@ -567,7 +563,7 @@ func SigningManage(ctx *project.ProjectContext) error {
 		if err != nil {
 			return err
 		}
-		if !ok || choice == "back" {
+		if !ok {
 			return nil
 		}
 		for _, e := range entries {

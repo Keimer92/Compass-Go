@@ -3,6 +3,11 @@ package tui
 import (
 	"testing"
 	"time"
+
+	"compass/internal/project"
+	"compass/internal/theme"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 func testSubmenu(n int) *Submenu[int] {
@@ -79,5 +84,55 @@ func TestSubmenuHoverFollowsThePointer(t *testing.T) {
 	s.setHover(-1)
 	if s.hoverAnimating() {
 		t.Fatal("sin hover no hay animacion")
+	}
+}
+
+// TestSubmenuUsesThemedCards comprueba que las cards del submenu salen con el
+// mismo estilo que las del menu principal: borde en el acento de la card y
+// fondo del acento atenuado cuando esta seleccionada.
+func TestSubmenuUsesThemedCards(t *testing.T) {
+	th := theme.Themes[0]
+	ctx := &project.ProjectContext{ProjectType: project.TypeGoWails, AndroidHome: "x", ScriptDir: "C:/tmp/proj"}
+	entries := []SubEntry[int]{
+		{Value: 0, Item: SubItem{Icon: "\U0001F5A5", Label: "Windows x64", Description: "amd64", ColorKey: "run"}},
+		{Value: 1, Item: SubItem{Icon: "\U0001F5A5", Label: "Windows arm64", Description: "arm64", ColorKey: "build"}},
+	}
+	s := NewSubmenu("RELEASE WINDOWS", "DEV", entries)
+	s.theme = th
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	defer screen.Fini()
+	screen.SetSize(100, 30)
+
+	s.draw(screen, ctx)
+
+	ui := layout(Rect{0, 0, 100, 30}, showAndroidWarning(ctx), false)
+	cardW := gridCardW(ui.List.Width, ui.Cols)
+	first := Rect{ui.List.X, ui.List.Y, cardW, CardH}
+
+	// Esquina del borde de la card seleccionada: el halo gira sobre el acento,
+	// asi que el color varia por fotograma; lo estable es el fondo del acento
+	// atenuado y que el borde no sea el texto plano del tema.
+	_, _, st, _ := screen.GetContent(first.X, first.Y)
+	fg, bg, _ := st.Decompose()
+	if bg != th.CardBg("run") {
+		t.Errorf("fondo de la card seleccionada = %v, queria %v", bg, th.CardBg("run"))
+	}
+	if fg == th.Text {
+		t.Errorf("borde de la card seleccionada = %v, queria el acento de la card", fg)
+	}
+
+	// La segunda card no esta seleccionada: su fondo es el del tema.
+	second := Rect{first.X + gridCellW(ui.List.Width, ui.Cols), first.Y, cardW, CardH}
+	_, _, st2, _ := screen.GetContent(second.X, second.Y)
+	fg2, bg2, _ := st2.Decompose()
+	if fg2 != th.CardAccent("build") {
+		t.Errorf("borde 2 fg = %v, queria %v", fg2, th.CardAccent("build"))
+	}
+	if bg2 != th.Background {
+		t.Errorf("fondo de la card sin seleccionar = %v, queria %v", bg2, th.Background)
 	}
 }

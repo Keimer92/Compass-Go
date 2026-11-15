@@ -47,26 +47,22 @@ type Submenu[T comparable] struct {
 	ui           *UiLayout
 	prevBtn      tcell.ButtonMask
 
-	// warnAndroid reserva la fila de aviso de Android si el SDK no esta
-	// configurado. Lo apagan los submenus que no compilan Android.
-	warnAndroid bool
+	// theme es el tema con el que se pinta; el selector Ctrl+T lo cambia en
+	// vivo igual que en el menu principal. th es el puntero del llamador: se
+	// actualiza para que el siguiente Run conserve el tema elegido.
+	theme  *theme.Theme
+	th     *theme.Theme
+	picker *ThemePicker
 }
 
 // NewSubmenu crea un submenu con sus entradas.
 func NewSubmenu[T comparable](title, section string, entries []SubEntry[T]) *Submenu[T] {
 	return &Submenu[T]{
-		title:       title,
-		section:     section,
-		entries:     entries,
-		hover:       -1,
-		warnAndroid: true,
+		title:   title,
+		section: section,
+		entries: entries,
+		hover:   -1,
 	}
-}
-
-// WithAndroidWarning activa o desactiva la fila de aviso de Android.
-func (s *Submenu[T]) WithAndroidWarning(on bool) *Submenu[T] {
-	s.warnAndroid = on
-	return s
 }
 
 // Len es el numero de entradas.
@@ -98,6 +94,17 @@ func (s *Submenu[T]) hoverPhase() (float32, bool) {
 
 func (s *Submenu[T]) hoverAnimating() bool {
 	return s.hover >= 0 && !s.hoverStarted.IsZero()
+}
+
+// selectPhase devuelve una fase continua basada en el reloj para que la card
+// seleccionada del submenu mantenga el mismo halo giratorio que la TUI
+// principal (ver MenuState.selectPhase).
+func (s *Submenu[T]) selectPhase() (float32, bool) {
+	if s.selected < 0 {
+		return 0, false
+	}
+	p := float64(time.Now().UnixNano()) / float64(hoverCycle.Nanoseconds())
+	return float32(p - math.Floor(p)), true
 }
 
 // ensureVisible ajusta el scroll (en filas) para que la card seleccionada
@@ -180,6 +187,8 @@ func (s *Submenu[T]) cardAt(x, y int) (int, bool) {
 // pulso Esc (volver al menu principal).
 func (s *Submenu[T]) Run(ctx *project.ProjectContext, th *theme.Theme) (T, bool, error) {
 	var zero T
+	s.theme = th
+	s.th = th
 
 	screen, err := tcell.NewScreen()
 	if err != nil {
@@ -211,11 +220,11 @@ func (s *Submenu[T]) Run(ctx *project.ProjectContext, th *theme.Theme) (T, bool,
 	}()
 
 	for {
-		s.draw(screen, ctx, th)
+		s.draw(screen, ctx)
 		screen.Show()
 
 		var ev tcell.Event
-		if s.hoverAnimating() {
+		if s.picker != nil || s.hoverAnimating() || s.selected >= 0 {
 			select {
 			case ev = <-events:
 			case <-time.After(animFrame):
@@ -232,10 +241,18 @@ func (s *Submenu[T]) Run(ctx *project.ProjectContext, th *theme.Theme) (T, bool,
 		case *tcell.EventResize:
 			screen.Sync()
 		case *tcell.EventKey:
+			// El modal de temas captura el teclado, como en el menu principal.
+			if s.picker != nil {
+				s.handlePickerKey(e)
+				continue
+			}
 			s.setHover(-1)
 			switch e.Key() {
 			case tcell.KeyEsc:
 				return zero, false, nil
+			case tcell.KeyCtrlT:
+				orig := *s.theme
+				s.picker = &ThemePicker{index: theme.IndexOf(s.theme.Name), original: &orig}
 			case tcell.KeyEnter:
 				if s.selected >= 0 && s.selected < len(s.entries) {
 					return s.entries[s.selected].Value, true, nil
@@ -263,6 +280,9 @@ func (s *Submenu[T]) Run(ctx *project.ProjectContext, th *theme.Theme) (T, bool,
 				}
 			}
 		case *tcell.EventMouse:
+			if s.picker != nil {
+				continue
+			}
 			prev := s.prevBtn
 			s.handleMouse(e)
 			// El clic se resuelve al soltar, como en el menu principal.
@@ -294,13 +314,47 @@ func (s *Submenu[T]) handleMouse(e *tcell.EventMouse) {
 	s.prevBtn = btn
 }
 
+// handlePickerKey procesa el modal de temas: flechas previsualizan, Enter
+// guarda y Esc/Ctrl+T restauran. Igual que en el menu principal.
+func (s *Submenu[T]) handlePickerKey(e *tcell.EventKey) {
+	switch e.Key() {
+	case tcell.KeyEsc, tcell.KeyCtrlT:
+		s.applyTheme(s.picker.original)
+		s.picker = nil
+	case tcell.KeyEnter:
+		theme.Save(s.theme)
+		s.picker = nil
+	case tcell.KeyUp, tcell.KeyLeft:
+		s.previewTheme(theme.Prev(s.theme.Name))
+	case tcell.KeyDown, tcell.KeyRight:
+		s.previewTheme(theme.Next(s.theme.Name))
+	}
+}
+
+// previewTheme aplica un tema sin guardarlo.
+func (s *Submenu[T]) previewTheme(t *theme.Theme) {
+	if s.picker != nil {
+		s.picker.index = theme.IndexOf(t.Name)
+	}
+	s.applyTheme(t)
+}
+
+// applyTheme cambia el tema activo y lo refleja en el puntero del llamador.
+func (s *Submenu[T]) applyTheme(t *theme.Theme) {
+	s.theme = t
+	if s.th != nil {
+		*s.th = *t
+	}
+}
+
 // draw pinta cabecera, seccion, rejilla con halo, scroll y pie.
-func (s *Submenu[T]) draw(screen tcell.Screen, ctx *project.ProjectContext, th *theme.Theme) {
+func (s *Submenu[T]) draw(screen tcell.Screen, ctx *project.ProjectContext) {
+	th := s.theme
 	w, h := screen.Size()
 	area := Rect{0, 0, w, h}
 	fillRect(screen, area, ' ', bgStyle(th))
 
-	ui := layout(area, s.warnAndroid && showAndroidWarning(ctx), false)
+	ui := layout(area, showAndroidWarning(ctx), false)
 	s.vh = ui.List.Height
 	s.cols = ui.Cols
 
@@ -323,13 +377,17 @@ func (s *Submenu[T]) draw(screen tcell.Screen, ctx *project.ProjectContext, th *
 		cols = 1
 	}
 	renderScrollbar(screen, ui, (len(s.entries)+cols-1)/cols, s.scroll, th)
-	s.renderFooter(screen, ui.Footer, ctx, th)
+	renderSubmenuFooter(screen, ui.Footer, th, ctx)
+
+	if s.picker != nil {
+		renderThemePicker(screen, area, th, *s.picker)
+	}
 
 	s.ui = &ui
 }
 
-// renderSection pinta la fila de seccion con la misma forma que las pestanas
-// del menu principal: " <titulo> <n> " en el acento de su seccion.
+// renderSection pinta la fila de seccion con la misma forma que la pestana
+// activa del menu principal: " <titulo> " en el acento de su seccion.
 func (s *Submenu[T]) renderSection(screen tcell.Screen, area Rect, th *theme.Theme) {
 	text := fmt.Sprintf(" %s %d ", s.title, len(s.entries))
 	st := bgStyle(th).Foreground(th.Section(s.section)).Bold(true)
@@ -367,45 +425,12 @@ func (s *Submenu[T]) renderCards(screen tcell.Screen, ui UiLayout, th *theme.The
 				if phase, ok := s.hoverPhase(); ok {
 					applyHoverGlow(buf, rect, phase, th.CardAccent(item.ColorKey), th.CardBg(item.ColorKey), th.Text)
 				}
+			} else if selected {
+				if phase, ok := s.selectPhase(); ok {
+					applyHoverGlow(buf, rect, phase, th.CardAccent(item.ColorKey), th.CardBg(item.ColorKey), th.Text)
+				}
 			}
 			buf.blit(screen)
 		}
 	}
-}
-
-// renderFooter pinta los atajos a la izquierda y la ruta a la derecha.
-func (s *Submenu[T]) renderFooter(screen tcell.Screen, area Rect, ctx *project.ProjectContext, th *theme.Theme) {
-	base := bgStyle(th)
-	x := area.X
-	seg := func(text string, st tcell.Style) {
-		put(screen, x, area.Y, text, st)
-		x += unisegWidth(text)
-	}
-	seg("  ←→↑↓", base.Foreground(th.Text))
-	seg(" navegar   ", base.Foreground(th.Muted))
-	seg("Enter", base.Foreground(th.Text))
-	seg(" ejecutar   ", base.Foreground(th.Muted))
-	seg("Esc", base.Foreground(th.Text))
-	seg(" volver   ", base.Foreground(th.Muted))
-
-	leftW := x - area.X
-	if leftW > area.Width {
-		leftW = area.Width
-	}
-
-	full := ctx.ScriptDir
-	rightW := area.Width - leftW
-	shown := full
-	if unisegWidth(full) > rightW && rightW >= 2 {
-		runes := []rune(full)
-		keep := rightW - 1
-		if keep < len(runes) {
-			shown = "…" + string(runes[len(runes)-keep:])
-		}
-	}
-	shownW := unisegWidth(shown)
-	if shownW > area.Width {
-		shownW = area.Width
-	}
-	put(screen, area.Right()-shownW, area.Y, shown, base.Foreground(th.Muted))
 }

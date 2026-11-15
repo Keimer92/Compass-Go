@@ -1,7 +1,7 @@
 // ============================================================================
 //  INTEGRACIÓN TAURI (Rust) — WhatsApp Engine centralizado
 //  ----------------------------------------------------------------------------
-//  El motor canónico vive en: D:\Mis Proyectos\WhatsApp Engine
+//  El motor canónico vive en: D:\Mis Proyectos\Go + Wails v3\Compass Go\corekit\whatsapp
 //  Empaquetar para Tauri:  node bundle.mjs --asset   (genera carpeta con assets)
 //  Copiar la carpeta generada a:  src-tauri/resources/whatsapp-engine-bundle/
 //  Este snippet asume que el bundle ya está en resources y usa tauri-plugin-shell.

@@ -48,10 +48,11 @@ Compass Go/
 │  ├─ window/                 # trae al frente la ventana de otra instancia abierta
 │  ├─ console/                # Ctrl-C handler y bloqueo de cierre (Windows)
 │  ├─ prompts/  ui/           # prompts y helpers de UI
-├─ assets/icon/               # Icon.ico, Default.ico, opencode.ico
+├─ assets/icon/               # Compass Go.png, Vibe Coding.png, Git.png (+ .ico generados), Default.ico
 ├─ packaging/                 # plantilla del instalador NSIS + generador de cabecera
 │  ├─ installer.nsi           #   asistente MUI2 (icono, componentes, ejecutar al final)
-│  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/Icon.ico
+│  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
+│  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload, installer.nsi, setup); desechable
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar + empaquetar el instalador en dist/
@@ -133,7 +134,7 @@ dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
   un error para `dist.bat`; `install.bat` sí aborta en ese caso).
 - Si `makensis` falla, `dist.bat` termina con código 1.
 - Para recompilar el instalador a mano:
-  `makensis /DAPPICON=payload\Icon.ico dist\installer.nsi` (añade
+  `makensis /DAPPICON=payload\CompassGo.ico dist\installer.nsi` (añade
   `/DNOHEADER` si no existe `dist\installer_header.bmp`).
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
 
@@ -241,6 +242,241 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   staging: la ventana nueva hereda el entorno de Compass, así que basta con
   reiniciar Compass tras la instalación para que el proyecto vea el engine.
 
+## Guía de integración del WhatsApp Engine (para agentes de IA)
+
+Cómo hacer que un proyecto consumidor (p.ej. **GymPro**) use el motor de
+WhatsApp canónico de Compass, de forma **dinámica y robusta a cambios de ruta**
+(mover Compass o el proyecto no debe romper la integración). La referencia del
+protocolo stdin/stdout está en `corekit/whatsapp/AGENTS.md`.
+
+### Modelo mental
+- El motor **canónico** vive en `corekit/whatsapp/` dentro de Compass Go: única
+  fuente de verdad (`engine.js`, `bundle.mjs`, `node.exe`, `node_modules/`).
+- Cada proyecto consumidor recibe **su propia copia** del bundle generado
+  (`whatsapp-engine-bundle/`) en su carpeta de recursos. **Nunca** se edita a
+  mano el bundle dentro del proyecto: se regenera desde el canónico.
+- El motor corre como proceso hijo `node` y se comunica por stdin/stdout.
+
+### Resolución dinámica de la ruta del motor (sin hardcodear disco)
+`whatsappEngineSource()` en `internal/tasks/whatsapp_engine.go` prueba en orden:
+1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
+2. `<dir del exe>/corekit/whatsapp`;
+3. `<cwd>/corekit/whatsapp`.
+
+Ninguna capa usa una letra de unidad fija, por tanto:
+- Si **instalas** Compass, `install.bat` fija `COMPASS_WHATSAPP_ENGINE` a
+  `%LOCALAPPDATA%\Programs\Keimer\corekit\whatsapp` (ruta **relativa a la
+  máquina**: sobrevive a mover el repo).
+- Si trabajas **solo desde el repo** (`go run` / `wails dev`), la variable puede
+  estar ausente y la resolución cae a `<cwd>/corekit/whatsapp` (encuentra el
+  motor dentro del repo).
+- **Nunca** apuntes la env var a una ruta absoluta del repo
+  (`D:\...\Compass Go\corekit\whatsapp`): se rompería al volver a mover la
+  carpeta. Usa siempre la ruta de instalación relativa o deja que Compass la
+  resuelva por cwd/exe.
+
+### Detección automática en el proyecto consumidor
+Un proyecto recibe el runtime si cumple **cualquiera**:
+1. tiene carpeta `whatsapp_engine/` local (motor propio);
+2. tiene el marcador `use-whatsapp-engine` en su raíz;
+3. **escaneo automático**: sus `.go` importan un paquete cuya ruta contiene
+   `whatsapp` (p.ej. `internal/whatsapp`). Es el caso normal de GymPro.
+
+Para integrar un proyecto nuevo basta con que importe el paquete `whatsapp`;
+Compass etapará el motor solo. No hace falta marcador manual.
+
+### Pasos operativos (integrar / actualizar)
+1. **Editar el motor canónico** solo en `corekit/whatsapp/engine.js` (y
+   `bundle.mjs` si cambia el empaquetado). No tocar los bundles generados.
+2. **Regenerar el bundle** (lo hace Compass al ejecutar la tarea `whatsapp`, o
+   manual):
+   ```bat
+   cd corekit\whatsapp
+   npm install
+   node bundle.mjs --asset      # Go/Wails y Tauri  → whatsapp-engine-bundle/
+   node bundle.mjs --single     # Flutter           → out/single/index.js
+   ```
+3. **Etapar al proyecto** con la tarea de Compass:
+   ```bat
+   compass-go.exe -p "RUTA_DEL_PROYECTO" -t whatsapp
+   ```
+   Copia `node.exe` + `whatsapp-engine-bundle/` a `resources/whatsapp-engine-bundle/`
+   del proyecto (Go/Wails), o a la ruta de recursos según el tipo.
+4. **Dev en vivo** (sin re-etapar en cada cambio): asegúrate de que
+   `COMPASS_WHATSAPP_ENGINE` apunte a la instalación (`install.bat` lo deja
+   listo). El modo `windows-dev` hereda el entorno y el proyecto ve el engine.
+   Tras mover Compass, re-ejecuta `install.bat` para re-fijar la variable.
+
+### Por framework (dónde va el bundle)
+| Framework | Destino del bundle | Resolución en runtime |
+|---|---|---|
+| Go + Wails v3 | `resources/whatsapp-engine-bundle/` | `internal/whatsapp` desde el cwd de la app |
+| Tauri (Rust) | `src-tauri/resources/whatsapp-engine-bundle/` | `BaseDirectory::Resource` |
+| Flutter | `whatsapp_engine/index.js` (modo single) | cwd → exe dir → app docs |
+| Kotlin / Rust puro | carpeta de recursos del framework | según launcher |
+
+### Ejemplo concreto: GymPro (Go + Wails v3)
+
+Extracto fiel y simplificado de `GymPro/internal/whatsapp` (el paquete real
+vive en `supervisor.go`, `exec.go`, `instance_windows.go`, `console_windows.go`
+y `logger.go`). La integración se resume en: (a) resolver `node.exe` y el
+bundle, (b) lanzar `node <bundle>` con los streams conectados y cwd en el
+directorio de datos, (c) mandar `CONFIG` por stdin y (d) parsear stdout por
+prefijos.
+
+```go
+// internal/whatsapp/engine.go
+package whatsapp
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// findFirst devuelve la 1ª ruta existente entre los candidatos relativos al
+// cwd de la app y al engine canónico (COMPASS_WHATSAPP_ENGINE).
+func findFirst(rel ...string) string {
+	if eng := strings.TrimSpace(os.Getenv("COMPASS_WHATSAPP_ENGINE")); eng != "" {
+		for _, r := range rel {
+			if p := filepath.Join(eng, r); fileExists(p) {
+				return p
+			}
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		for _, r := range rel {
+			if p := filepath.Join(cwd, r); fileExists(p) {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// resolveEngine localiza node.exe y el bundle generado.
+func resolveEngine() (node, bundle string) {
+	node = findFirst("node.exe", "resources/node.exe", "bin/node.exe",
+		"resources/node-x86_64-pc-windows-msvc.exe")
+	bundle = findFirst("whatsapp-engine-bundle/index.js",
+		"resources/whatsapp-engine-bundle/index.js")
+	return
+}
+
+// startEngine lanza `node <bundle>` con los 3 streams conectados y cwd en el
+// directorio de datos (donde el motor crea `whatsapp_auth`).
+func startEngine(node, bundle, workDir string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
+	cmd := exec.Command(node, bundle)
+	cmd.Dir = workDir
+	hideConsoleWindow(cmd) // Windows: evita que node.exe abra su propia consola
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return cmd, stdin, stdout, stderr, nil
+}
+
+// Run arranca el motor, lo configura y procesa sus eventos.
+func Run() error {
+	node, bundle := resolveEngine()
+	if node == "" || bundle == "" {
+		return errors.New("motor no encontrado: define COMPASS_WHATSAPP_ENGINE o eta el bundle en resources/")
+	}
+	// workDir = directorio de datos de la app (allí el motor guarda whatsapp_auth)
+	appData, _ := os.UserConfigDir()
+
+	cmd, stdin, stdout, _, err := startEngine(node, bundle, appData)
+	if err != nil {
+		return err
+	}
+	defer cmd.Process.Kill()
+
+	// (1) CONFIG por stdin: browser, authDir y rate-limit anti-ban.
+	cfg, _ := json.Marshal(map[string]any{
+		"type":    "config",
+		"browser": []string{"GymPro", "Chrome", "121.0.6167.160"},
+		"authDir": "whatsapp_auth",
+		"rate":    map[string]any{"sendDelayMs": 5000, "maxWindowSends": 20, "windowMs": 60000},
+	})
+	if _, err := stdin.Write(append(cfg, '\n')); err != nil {
+		return err
+	}
+
+	// (2) Eventos por stdout (una línea JSON o con prefijo STATUS:/QR_DATA_URL:/...).
+	sc := bufio.NewScanner(stdout)
+	for sc.Scan() {
+		line := sc.Text()
+		switch {
+		case strings.HasPrefix(line, "QR_DATA_URL:"):
+			showQR(strings.TrimPrefix(line, "QR_DATA_URL:")) // p.ej. mostrar en la UI
+		case strings.HasPrefix(line, "STATUS:connected:"):
+			onConnected(strings.TrimPrefix(line, "STATUS:connected:"))
+		case strings.HasPrefix(line, "STATUS:disconnected:"):
+			onDisconnected()
+		case strings.HasPrefix(line, "SENT_CONFIRM:"):
+			onSent(strings.TrimPrefix(line, "SENT_CONFIRM:"))
+		}
+	}
+	return nil
+}
+
+// SendText despacha un mensaje; la cola serial + rate-limit las gestiona el motor.
+func SendText(stdin io.Writer, number, text string) error {
+	msg, _ := json.Marshal(map[string]string{"type": "send", "number": number, "text": text})
+	_, err := stdin.Write(append(msg, '\n'))
+	return err
+}
+```
+
+> Notas de GymPro reales que un agente debe respetar:
+> - `instance_windows.go` adquiere un mutex con nombre
+>   (`Local\GymPro-WhatsApp-Engine`) para que **dos procesos de GymPro no
+>   lancen el motor sobre la misma carpeta de sesión** (evita "Bad MAC" y envíos
+>   colgados). Mantener ese candado.
+> - `logger.go` auto-genera el bundle con `node bundle.mjs` **dentro del engine
+>   canónico** (`COMPASS_WHATSAPP_ENGINE`) si falta, usando el `node.exe` del
+>   propio engine (no el del sistema).
+> - `resources/whatsapp-engine-bundle/` de GymPro es la copia etapada por
+>   Compass; **no se edita a mano**.
+
+Para (re)etapar el motor en GymPro tras cambiar `engine.js`:
+
+```bat
+compass-go.exe -p "D:\Mis Proyectos\Go + Wails v3\GymPro" -t whatsapp
+```
+
+### Errores que un agente NO debe cometer
+- ❌ Hardcodear `D:\...` en código o en la env var. Usa rutas relativas /
+  `%LOCALAPPDATA%`.
+- ❌ Editar el bundle dentro de `resources/whatsapp-engine-bundle/` del
+  proyecto. Regenera desde el canónico.
+- ❌ Asumir que en producción el engine se lee desde la máquina de dev. Cada
+  instalador debe embeber su propia copia (Tauri: declarar `resources` y
+  `externalBin` en `tauri.conf.json`; incluir `node.exe` como sidecar).
+- ❌ Dejar `COMPASS_WHATSAPP_ENGINE` apuntando a una instalación vieja tras
+  mover Compass. Re-ejecuta `install.bat`.
+
 ## Desarrollo
 
 ```bat
@@ -278,6 +514,17 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
   (FNV-1a → 12 tonos → rotación áurea por índice de instancia entre Compass
   vivos vía `CreateToolhelp32Snapshot`).
 - **Menú contextual**: claves `zz_CompassGo` / `zz_VibeGitignore` /
-  `zz_VibeCoding` en `HKCU`, gestionadas por PowerShell desde Go.
+  `zz_VibeCoding` en `HKCU`, gestionadas por PowerShell desde Go. Cada entrada
+  usa su propio `.ico` (`CompassGo.ico`, `VibeCoding.ico`, `Git.ico`) generado
+  desde los `.png` de `assets/icon` con `packaging/make_icons.ps1`.
+  `refreshContextIcons` reescribe el `Icon` de las entradas existentes en cada
+  `context-menu-install`, de modo que mover la instalación no deja rutas
+  absolutas obsoletas (que el Explorador pinta como "sin icono").
+- **Instalador de proyectos**: los releases de Windows de **Go puro** y **Rust
+  puro** generan además `<Nombre> v<ver> [arch] Setup.exe` (plantilla NSIS
+  embebida en `internal/tasks/assets/app-installer.nsi`, compilada con
+  `makensis`). La página final ofrece "Crear un acceso directo en el
+  escritorio" y "Ejecutar ahora". Tauri y Go+Wails siguen usando el instalador
+  nativo de su framework (necesario para WebView2).
 - **Plataformas soportadas**: solo **Windows** como aplicación de escritorio;
   Android sigue como destino de compilación para los proyectos compatibles.

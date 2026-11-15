@@ -101,6 +101,9 @@ REM  Limpieza a mano (idempotente: cubre instalaciones sin NSIS)
 REM ---------------------------------------------------------------
 echo [INFO] Borrando binario, iconos y corekits...
 if exist "%BINDIR%\compass-go.exe" del /f /q "%BINDIR%\compass-go.exe" >nul 2>nul
+if exist "%BINDIR%\CompassGo.ico"  del /f /q "%BINDIR%\CompassGo.ico" >nul 2>nul
+if exist "%BINDIR%\VibeCoding.ico" del /f /q "%BINDIR%\VibeCoding.ico" >nul 2>nul
+if exist "%BINDIR%\Git.ico"        del /f /q "%BINDIR%\Git.ico" >nul 2>nul
 if exist "%BINDIR%\Icon.ico"       del /f /q "%BINDIR%\Icon.ico" >nul 2>nul
 if exist "%BINDIR%\Default.ico"    del /f /q "%BINDIR%\Default.ico" >nul 2>nul
 if exist "%BINDIR%\opencode.ico"   del /f /q "%BINDIR%\opencode.ico" >nul 2>nul

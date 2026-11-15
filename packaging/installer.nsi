@@ -6,7 +6,7 @@
 ;  se sobrescribe en cada build.
 ;
 ;  Define opcionales que pasa dist.bat:
-;    /DAPPICON=payload\Icon.ico   icono de marca (asistente + .exe)
+;    /DAPPICON=payload\CompassGo.ico   icono de marca (asistente + .exe)
 ;    /DNOHEADER                   omite la cabecera grafica si no se genero
 ; ============================================================================
 

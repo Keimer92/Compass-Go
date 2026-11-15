@@ -29,7 +29,6 @@ const (
 	iconAndroid   = "\U0001f4f1"
 	iconUniversal = "\U0001f4e6"
 	iconAll       = "\u2705"
-	iconBack      = "\u21a9"
 )
 
 // Claves de arquitectura compartidas por ambos submenús.
@@ -40,7 +39,6 @@ const (
 	archKeyArmv7     = "armv7"
 	archKeyUniversal = "universal"
 	archKeyAll       = "all"
-	archKeyBack      = "back"
 )
 
 // revealMode decide qué se resalta al terminar un lote.
@@ -123,13 +121,6 @@ type releaseEntry struct {
 	card tui.SubItem
 }
 
-func releaseBack() releaseEntry {
-	return releaseEntry{archKeyBack, tui.SubItem{
-		Icon: iconBack, Label: "Volver al menu principal",
-		Description: "Regresa al menu principal", ColorKey: "git",
-	}}
-}
-
 // windowsEntries son las cards del release de escritorio.
 func windowsEntries(ctx *project.ProjectContext) []releaseEntry {
 	if !windowsSupported(ctx.ProjectType) {
@@ -142,7 +133,7 @@ func windowsEntries(ctx *project.ProjectContext) []releaseEntry {
 		}},
 		{archKeyAll, tui.SubItem{
 			Icon: iconAll, Label: "Todos",
-			Description: "Compila x86 + x64 + ARM64", ColorKey: "profile",
+			Description: "Compila x86 + x64 + ARM64", ColorKey: "test",
 		}},
 		{archKeyX86, tui.SubItem{
 			Icon: iconDesktop, Label: "Windows x86",
@@ -150,9 +141,8 @@ func windowsEntries(ctx *project.ProjectContext) []releaseEntry {
 		}},
 		{archKeyArm64, tui.SubItem{
 			Icon: iconDesktop, Label: "Windows ARM64",
-			Description: "Snapdragon X · bajo consumo", ColorKey: "reload",
+			Description: "Snapdragon X · bajo consumo", ColorKey: "install",
 		}},
-		releaseBack(),
 	}
 }
 
@@ -171,7 +161,6 @@ func androidEntries(ctx *project.ProjectContext) []releaseEntry {
 				Icon: iconUniversal, Label: "Android universal",
 				Description: "Sin libs nativas · sirve para todas las ABIs", ColorKey: "apk",
 			}},
-			releaseBack(),
 		}
 	}
 
@@ -192,7 +181,6 @@ func androidEntries(ctx *project.ProjectContext) []releaseEntry {
 			Icon: iconAll, Label: "Todos",
 			Description: "Compila las tres APK en serie", ColorKey: "aab",
 		}},
-		releaseBack(),
 	}
 }
 
@@ -207,7 +195,7 @@ func ReleaseWindows(ctx *project.ProjectContext) error {
 		if ctx.ProjectType == project.TypeGoWails {
 			reveal = revealBinFolder
 		}
-		return runReleaseMenu(ctx, releaseTitleWindows, windowsEntries(ctx), false, reveal,
+		return runReleaseMenu(ctx, releaseTitleWindows, windowsEntries(ctx), reveal,
 			func(key string) ([]string, error) { return windowsArtifacts(ctx, key) })
 	case project.TypeFlutter:
 		return FlutterBuildWindows(ctx)
@@ -233,7 +221,7 @@ func ReleaseAndroid(ctx *project.ProjectContext) error {
 		reveal = revealBinFolder
 	}
 
-	return runReleaseMenu(ctx, releaseTitleAndroid, androidEntries(ctx), true, reveal,
+	return runReleaseMenu(ctx, releaseTitleAndroid, androidEntries(ctx), reveal,
 		func(key string) ([]string, error) { return androidArtifacts(ctx, key) })
 }
 
@@ -243,7 +231,6 @@ func runReleaseMenu(
 	ctx *project.ProjectContext,
 	title string,
 	entries []releaseEntry,
-	warnAndroid bool,
 	reveal revealMode,
 	exec func(string) ([]string, error),
 ) error {
@@ -251,7 +238,7 @@ func runReleaseMenu(
 	for i, e := range entries {
 		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
 	}
-	menu := tui.NewSubmenu(title, "DEV", cards).WithAndroidWarning(warnAndroid)
+	menu := tui.NewSubmenu(title, "DEV", cards)
 	th := theme.Load()
 
 	for {
@@ -259,7 +246,7 @@ func runReleaseMenu(
 		if err != nil {
 			return err
 		}
-		if !ok || choice == archKeyBack {
+		if !ok {
 			return nil
 		}
 
@@ -343,13 +330,23 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 		if !ok {
 			return nil, fmt.Errorf("[ERROR] Arquitectura sin triple.")
 		}
-		return singleArtifact(rustBuildArch(ctx, triple, windowsLabel(key)))
+		exe, err := rustBuildArch(ctx, triple, windowsLabel(key))
+		if err != nil {
+			return nil, err
+		}
+		name, version := readCargoMeta(ctx)
+		return withAppInstaller(ctx, name, version, windowsLabel(key), exe), nil
 	case project.TypeGo:
 		target, ok := goArchOf(key)
 		if !ok {
 			return nil, fmt.Errorf("[ERROR] Arquitectura sin GOARCH.")
 		}
-		return singleArtifact(GoBuildArch(ctx, target))
+		exe, err := GoBuildArch(ctx, target)
+		if err != nil {
+			return nil, err
+		}
+		name := strings.TrimSuffix(executableName(ctx.ScriptDir), ".exe")
+		return withAppInstaller(ctx, name, "", target.label(), exe), nil
 	case project.TypeGoWails:
 		target, ok := desktopArchOf(key)
 		if !ok {

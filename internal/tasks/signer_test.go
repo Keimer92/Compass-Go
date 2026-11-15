@@ -249,13 +249,10 @@ func TestFingerprintParsingAndNormalization(t *testing.T) {
 	}
 }
 
-func TestSigningEntriesCoverEveryItemWithBackLast(t *testing.T) {
+func TestSigningEntriesCoverEveryItem(t *testing.T) {
 	entries := signingEntries()
-	if len(entries) != 11 {
-		t.Fatalf("entradas = %d, quiero 11", len(entries))
-	}
-	if entries[len(entries)-1].key != "back" {
-		t.Fatalf("la última entrada debe ser 'back', es %q", entries[len(entries)-1].key)
+	if len(entries) != 10 {
+		t.Fatalf("entradas = %d, quiero 10", len(entries))
 	}
 	seen := map[string]bool{}
 	for _, e := range entries {
@@ -263,7 +260,7 @@ func TestSigningEntriesCoverEveryItemWithBackLast(t *testing.T) {
 			t.Errorf("clave duplicada %q", e.key)
 		}
 		seen[e.key] = true
-		if e.key != "back" && e.run == nil {
+		if e.run == nil {
 			t.Errorf("%q no tiene acción", e.key)
 		}
 	}
