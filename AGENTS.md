@@ -42,6 +42,8 @@ Compass Go/
 │  ├─ tasks/                  # ejecutores por plataforma + menús contextuales Windows + global tasks
 │  │  └─ assets/              # plantillas PowerShell (env-backup, opencode)
 │  ├─ theme/                  # 20 temas + persistencia
+│  ├─ settings/               # opciones globales persistidas (settings.json)
+│  ├─ sound/                  # aviso sonoro de fin de build (Beep de kernel32)
 │  ├─ project/                # detección de tipo de proyecto
 │  ├─ shell/                  # envoltorio PowerShell / cmd
 │  ├─ lock/                   # instancia única por proyecto (LockFileEx, Windows)
@@ -204,6 +206,23 @@ proyecto concreto:
 | `cline-install` / `cline-uninstall` | Ídem para Cline |
 | `kilo-install` / `kilo-uninstall` | Ídem para Kilo Code |
 | `antigravity-install` / `antigravity-uninstall` | Ídem para Antigravity |
+
+### Opciones globales y aviso sonoro
+
+- **Aviso sonoro de fin de build (siempre activo)**: al terminar cualquier
+  compilación release (`windows-release`, `android-release`, `android-aab`,
+  `windows-build`, …) suena una triada ascendente justo antes de la cuenta
+  atrás que cierra la pestaña; si el build falla suenan dos tonos graves.
+  Se emite desde `shell.PauseFor` (éxito) y `shell.RunBuildAndRevealWithEnv` /
+  `runReleaseMenu` (fallo), usando `Beep` de `kernel32` (`internal/sound`), sin
+  WAV ni PowerShell. No se puede desactivar.
+- **Abrir carpeta de salida (opcional)**: en el menú principal, `Ctrl+O` abre
+  el modal **Opciones** con la casilla "Abrir la carpeta de salida al terminar
+  un build". Se guarda al instante en
+  `%LOCALAPPDATA%\compass\settings.json` (`internal/settings`) y afecta a
+  `shell.ShowArtifact`, `revealArtifact`, `finishRelease` y al build de
+  escritorio de Wails. Desactivada, el artefacto se lista pero el Explorer no
+  se abre.
 
 ## Core kits (motores canónicos)
 

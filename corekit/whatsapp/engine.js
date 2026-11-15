@@ -60,6 +60,7 @@ process.on('exit', code => {
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import pino from "pino";
 import qrImage from 'qr-image';
+import { Jimp, ResizeStrategy } from 'jimp';
 
 // Logger de Baileys hacia stderr, filtrado: sin esto no se ve por qué una
 // subida de imagen se queda colgada (Baileys lo cuenta a nivel debug/warn).
@@ -194,6 +195,27 @@ function checkMediaHost(timeoutMs = 8000) {
             finish(false, e.message || String(e));
         }
     });
+}
+
+// ---- Miniatura de la imagen ----
+// Baileys 6.7.24 no genera miniatura con jimp (su comprobación
+// `typeof lib.jimp.Jimp === 'object'` nunca se cumple) y sharp es nativo, así
+// que no viaja en el bundle. Resultado: "No image processing library available"
+// en cada recibo. La generamos aquí y la pasamos en el propio mensaje; Baileys
+// conserva el `jpegThumbnail` que ya viene en `uploadData` cuando su intento
+// falla (solo lo sobreescribe si consigue generarlo).
+async function buildImageThumb(imageBuffer, width = 32) {
+    try {
+        const img = await Jimp.read(imageBuffer);
+        const original = { width: img.width, height: img.height };
+        const thumb = await img
+            .resize({ w: width, mode: ResizeStrategy.BILINEAR })
+            .getBuffer('image/jpeg', { quality: 50 });
+        return { thumbnail: thumb.toString('base64'), ...original };
+    } catch (e) {
+        elog(`thumbnail generation failed: ${e?.message || e}`);
+        return null;
+    }
 }
 
 // ---- Tracking de ACK del servidor ----
@@ -780,16 +802,27 @@ async function start() {
                             return;
                         }
 
+                        // Miniatura propia: evita el error de Baileys y permite que
+                        // WhatsApp muestre la vista previa del recibo.
+                        const thumb = await buildImageThumb(imageBuffer);
+                        if (thumb) elog(`image thumbnail OK (${thumb.width}x${thumb.height})`);
+
                         let sentImg = null;
                         let lastErr = null;
                         for (let attempt = 1; attempt <= 2; attempt++) {
                             const started = Date.now();
                             try {
                                 elog(`image send attempt ${attempt} -> ${cleanNumber} (${imageBuffer.length} bytes)`);
-                                sentImg = await withTimeout(sock.sendMessage(jid, {
+                                const payload = {
                                     image: imageBuffer,
                                     caption: data.caption || ''
-                                }), 60000, `sendMessage(image) intento ${attempt}`);
+                                };
+                                if (thumb) {
+                                    payload.jpegThumbnail = thumb.thumbnail;
+                                    payload.width = thumb.width;
+                                    payload.height = thumb.height;
+                                }
+                                sentImg = await withTimeout(sock.sendMessage(jid, payload), 60000, `sendMessage(image) intento ${attempt}`);
                                 elog(`image send OK -> ${cleanNumber} en ${Date.now() - started}ms`);
                                 break;
                             } catch (sendErr) {

@@ -17,6 +17,7 @@ import (
 
 	"compass/internal/project"
 	"compass/internal/prompts"
+	"compass/internal/settings"
 	"compass/internal/shell"
 	"compass/internal/ui"
 )
@@ -612,7 +613,9 @@ func WailsBuildDesktop(ctx *project.ProjectContext) error {
 	for _, a := range artifacts {
 		fmt.Printf("  - %s\n", a)
 	}
-	shell.OpenFolder(wailsBinDir(ctx))
+	if settings.Load().OpenOutputDir {
+		shell.OpenFolder(wailsBinDir(ctx))
+	}
 	ui.PauseFor(10)
 	return nil
 }

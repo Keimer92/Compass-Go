@@ -13,6 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"compass/internal/settings"
+	"compass/internal/sound"
 )
 
 // ExitCloseTab es el codigo de salida con el que una tarea pide que su pestana
@@ -314,6 +317,7 @@ func RunBuildAndRevealWithEnv(command, dir, folder string, exts []string, rename
 	if success {
 		artifact = revealArtifact(folder, exts, renameTo)
 	} else {
+		sound.Failure()
 		fmt.Println()
 		fmt.Println("[ERROR] El build fallo.")
 	}
@@ -429,7 +433,9 @@ func revealArtifact(folder string, exts []string, renameTo string) string {
 	if artifact == "" {
 		fmt.Println()
 		fmt.Println("[OK] Build exitoso (artefacto no encontrado en la carpeta)")
-		OpenFolder(folder)
+		if settings.Load().OpenOutputDir {
+			OpenFolder(folder)
+		}
 		return ""
 	}
 	if renameTo != "" {
@@ -439,12 +445,15 @@ func revealArtifact(folder string, exts []string, renameTo string) string {
 	return artifact
 }
 
-// ShowArtifact muestra y resalta en el Explorer el artefacto construido.
+// ShowArtifact muestra el artefacto construido y, si el usuario lo tiene
+// activado en las opciones globales, lo resalta en el Explorer.
 func ShowArtifact(path string) {
 	fmt.Println()
 	fmt.Printf("[OK] Build exitoso: %s\n", filepath.Base(path))
 	fmt.Printf("[INFO] Artefacto: %s\n", path)
-	OpenInExplorer(path)
+	if settings.Load().OpenOutputDir {
+		OpenInExplorer(path)
+	}
 }
 
 func windowsPathForExplorer(path string) string {
@@ -520,6 +529,9 @@ func Pause() {
 // PauseFor hace una cuenta regresiva y, dentro del contenedor, pide cerrar la
 // pestana (el proceso sale con ExitCloseTab).
 func PauseFor(seconds uint) {
+	// Todas las tareas de build terminan aqui: el aviso sonoro suena al
+	// instante, antes de la cuenta atras y del cierre de la pestana.
+	sound.Success()
 	for remaining := int(seconds); remaining >= 1; remaining-- {
 		fmt.Printf("\r  Cerrando en %d s...  ", remaining)
 		time.Sleep(time.Second)

@@ -225,7 +225,28 @@ func handleKey(st *MenuState, ctx *project.ProjectContext, panes *container.Cont
 		return false, nil
 	}
 
+	// Modal de opciones globales: Enter/Espacio alterna la casilla, Esc cierra.
+	if st.settings != nil {
+		switch e.Key() {
+		case tcell.KeyEsc:
+			st.settings = nil
+		case tcell.KeyEnter:
+			st.settings.toggle()
+		case tcell.KeyRune:
+			if e.Rune() == ' ' {
+				st.settings.toggle()
+			}
+		}
+		return false, nil
+	}
+
 	st.setHover(-1)
+
+	// Ctrl+O abre las opciones globales.
+	if e.Key() == tcell.KeyCtrlO {
+		st.settings = newSettingsModal()
+		return false, nil
+	}
 
 	// Ctrl+T abre el modal de temas.
 	if e.Key() == tcell.KeyCtrlT {

@@ -103,6 +103,9 @@ func renderMenu(s tcell.Screen, st *MenuState, ctx *project.ProjectContext, area
 	if st.picker != nil {
 		renderThemePicker(s, area, th, *st.picker)
 	}
+	if st.settings != nil {
+		renderSettingsModal(s, area, th, *st.settings)
+	}
 	if st.quit != nil {
 		renderQuitConfirm(s, area, th, *st.quit)
 	}
@@ -454,6 +457,7 @@ func renderFooter(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.Proje
 		{" ejecutar   ", th.Muted},
 		{"Esc", th.Text},
 		{" salir   ", th.Muted},
+		{"Ctrl+O opciones  ", th.Brand},
 		{fmt.Sprintf("Ctrl+T temas: %s  ", th.Name), th.Brand},
 	})
 }
@@ -501,6 +505,39 @@ func renderFooterSegs(s tcell.Screen, area Rect, th *theme.Theme, ctx *project.P
 		shownW = area.Width
 	}
 	put(s, area.Right()-shownW, area.Y, shown, base.Foreground(th.Muted))
+}
+
+func renderSettingsModal(s tcell.Screen, area Rect, th *theme.Theme, m SettingsModal) {
+	w := 66
+	if w > area.Width {
+		w = area.Width
+	}
+	h := 7
+	if h > area.Height {
+		h = area.Height
+	}
+	x := area.X + (area.Width-w)/2
+	y := area.Y + (area.Height-h)/2
+	rect := Rect{x, y, w, h}
+
+	base := bgStyle(th)
+	fillRect(s, rect, ' ', base)
+	drawBox(s, rect, base.Foreground(th.Brand))
+	put(s, rect.X+2, rect.Y, " Opciones ", base.Foreground(th.Text).Bold(true))
+
+	check := "[ ]"
+	if m.openOutputDir {
+		check = "[x]"
+	}
+	markStyle := base.Foreground(th.Muted)
+	if m.openOutputDir {
+		markStyle = base.Foreground(th.Success).Bold(true)
+	}
+	put(s, rect.X+2, rect.Y+2, check, markStyle)
+	put(s, rect.X+6, rect.Y+2, "Abrir la carpeta de salida al terminar un build", base.Foreground(th.Text))
+
+	put(s, rect.X+2, rect.Y+4, "El aviso sonoro al terminar un build siempre esta activo.", base.Foreground(th.Muted))
+	put(s, rect.X+1, rect.Bottom()-1, " Espacio/Enter alternar  Esc cerrar ", base.Foreground(th.Muted))
 }
 
 func renderThemePicker(s tcell.Screen, area Rect, th *theme.Theme, picker ThemePicker) {

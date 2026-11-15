@@ -598,6 +598,7 @@ type MenuState struct {
 	theme            *theme.Theme
 	picker           *ThemePicker
 	quit             *QuitConfirm
+	settings         *SettingsModal
 	opencodeReminder bool
 }
 

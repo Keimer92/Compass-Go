@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"compass/internal/project"
+	"compass/internal/settings"
 	"compass/internal/shell"
+	"compass/internal/sound"
 	"compass/internal/theme"
 	"compass/internal/tui"
 	"compass/internal/ui"
@@ -252,6 +254,7 @@ func runReleaseMenu(
 
 		artifacts, err := exec(choice)
 		if err != nil {
+			sound.Failure()
 			fmt.Println()
 			fmt.Println(err)
 			fmt.Println()
@@ -278,9 +281,13 @@ func finishRelease(ctx *project.ProjectContext, artifacts []string, reveal revea
 		}
 		switch reveal {
 		case revealLastArtifact:
-			shell.ShowArtifact(artifacts[len(artifacts)-1])
+			if settings.Load().OpenOutputDir {
+				shell.ShowArtifact(artifacts[len(artifacts)-1])
+			}
 		case revealBinFolder:
-			shell.OpenFolder(releaseBinDir(ctx))
+			if settings.Load().OpenOutputDir {
+				shell.OpenFolder(releaseBinDir(ctx))
+			}
 		}
 	}
 	ui.PauseFor(10)

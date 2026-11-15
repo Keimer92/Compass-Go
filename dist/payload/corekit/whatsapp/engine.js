@@ -60,6 +60,7 @@ process.on('exit', code => {
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import pino from "pino";
 import qrImage from 'qr-image';
+import { Jimp, ResizeStrategy } from 'jimp';
 
 // Logger de Baileys hacia stderr, filtrado: sin esto no se ve por qué una
 // subida de imagen se queda colgada (Baileys lo cuenta a nivel debug/warn).
@@ -196,19 +197,78 @@ function checkMediaHost(timeoutMs = 8000) {
     });
 }
 
+// ---- Miniatura de la imagen ----
+// Baileys 6.7.24 no genera miniatura con jimp (su comprobación
+// `typeof lib.jimp.Jimp === 'object'` nunca se cumple) y sharp es nativo, así
+// que no viaja en el bundle. Resultado: "No image processing library available"
+// en cada recibo. La generamos aquí y la pasamos en el propio mensaje; Baileys
+// conserva el `jpegThumbnail` que ya viene en `uploadData` cuando su intento
+// falla (solo lo sobreescribe si consigue generarlo).
+async function buildImageThumb(imageBuffer, width = 32) {
+    try {
+        const img = await Jimp.read(imageBuffer);
+        const original = { width: img.width, height: img.height };
+        const thumb = await img
+            .resize({ w: width, mode: ResizeStrategy.BILINEAR })
+            .getBuffer('image/jpeg', { quality: 50 });
+        return { thumbnail: thumb.toString('base64'), ...original };
+    } catch (e) {
+        elog(`thumbnail generation failed: ${e?.message || e}`);
+        return null;
+    }
+}
+
 // ---- Tracking de ACK del servidor ----
 // sendMessage() resuelve al escribir en el socket, NO cuando WhatsApp lo acepta.
 // Si la cuenta está restringida en silencio (spam), el servidor descarta el mensaje
 // sin error. Estos watchers detectan si llega SERVER_ACK (aceptado) o no.
-// onAck: se invoca al llegar SERVER_ACK/DELIVERY_ACK (status > 0).
-// onMissing: se invoca si el servidor no confirma en ackTimeoutMs (posible bloqueo silencioso).
-// onPending: se invoca a los 30s si aún no hay ACK (posible demora de entrega, NO bloqueo).
+// onAck: se invoca al llegar SERVER_ACK/DELIVERY_ACK/READ (status > 0).
+// onMissing: se invoca si el servidor RECHAZA el mensaje (status 0 = ERROR) o si
+//            no confirma en ackTimeoutMs. El motivo del rechazo se pasa como
+//            argumento cuando existe.
+// onPending: se invoca a los 30s si aún no hay ACK (posible demora, NO bloqueo).
+//
+// Baileys emite `messages.update` como { key, update: { status } }. La lectura
+// anterior (`u.status`) siempre daba undefined -> 0 y el ACK nunca se cerraba,
+// por eso todos los envíos acababan en "posible bloqueo silencioso".
+const ACK_STATUS_LABELS = ['ERROR', 'PENDING', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED'];
 const ackWatchers = new Map();
+// El ACK puede llegar antes de que sendMessage resuelva y registremos el
+// watcher; se guarda un instante para no perderlo.
+const earlyAcks = new Map();
+const EARLY_ACK_TTL_MS = 60000;
 const ACK_TIMEOUT_MS = 90000;    // 90 s para bloqueo silencioso real
 const ACK_PENDING_MS = 30000;    // 30 s para warning de demora (no es bloqueo)
 
+function ackLabel(status) {
+    return ACK_STATUS_LABELS[status] ?? `status_${status}`;
+}
+
+function pruneEarlyAcks() {
+    const cut = Date.now() - EARLY_ACK_TTL_MS;
+    for (const [id, ack] of earlyAcks) {
+        if (ack.at >= cut) break;
+        earlyAcks.delete(id);
+    }
+    if (earlyAcks.size > 500) {
+        earlyAcks.delete(earlyAcks.keys().next().value);
+    }
+}
+
 function watchAck(msgId, label, onAck, onMissing, onPending) {
     if (!msgId || ackWatchers.has(msgId)) return;
+
+    const early = earlyAcks.get(msgId);
+    if (early) {
+        earlyAcks.delete(msgId);
+        elog(`ACK ${label} -> ${early.label} (llegó antes de registrar el watcher)`);
+        if (early.status > 0) {
+            if (typeof onAck === 'function') onAck(early.label);
+        } else if (typeof onMissing === 'function') {
+            onMissing(early.reason);
+        }
+        return;
+    }
 
     // Timer intermedio: avisa a los 30s que el ACK tarda (posible entrega lenta)
     const pendingTimer = setTimeout(() => {
@@ -225,45 +285,66 @@ function watchAck(msgId, label, onAck, onMissing, onPending) {
         if (typeof onMissing === 'function') onMissing();
     }, ACK_TIMEOUT_MS);
 
-    ackWatchers.set(msgId, { label, timer, pendingTimer, onAck });
+    ackWatchers.set(msgId, { label, timer, pendingTimer, onAck, onMissing });
 }
 
 function handleMessagesUpdate(updates) {
     for (const u of updates) {
         const id = u.key?.id;
-        if (!id || !ackWatchers.has(id)) continue;
-        const status = u.status ?? 0;
-        const label = ['PENDING', 'SERVER_ACK', 'DELIVERY_ACK', 'READ_ACK'][status] ?? `status_${status}`;
+        if (!id) continue;
+
+        const status = u.update?.status;
+        // Updates sin estado (ediciones, borrados, etc.) no son ACK.
+        if (typeof status !== 'number') continue;
+
+        const label = ackLabel(status);
+        const reason = u.update?.messageStubParameters?.[0];
         const w = ackWatchers.get(id);
-        elog(`ACK ${w.label} -> ${label}`);
+
+        if (!w) {
+            pruneEarlyAcks();
+            earlyAcks.set(id, { status, label, reason, at: Date.now() });
+            continue;
+        }
+
+        elog(`ACK ${w.label} -> ${label}${reason ? ` (motivo: ${reason})` : ''}`);
+        clearTimeout(w.timer);
+        clearTimeout(w.pendingTimer);
+        ackWatchers.delete(id);
+
         if (status > 0) {
-            clearTimeout(w.timer);
-            clearTimeout(w.pendingTimer);
-            ackWatchers.delete(id);
             if (typeof w.onAck === 'function') w.onAck(label);
+        } else if (typeof w.onMissing === 'function') {
+            // status 0 = ERROR: el servidor rechazó el mensaje.
+            w.onMissing(reason || 'el servidor rechazó el mensaje');
         }
     }
 }
 
-// Verifica que el número destino exista en WhatsApp (método onWhatsApp de Baileys).
-// Si el chequeo falla por red o la API no responde, NO bloquea el envío (retorna true).
-async function isNumberOnWhatsApp(sock, cleanNumber) {
+// Verifica que el número destino exista en WhatsApp (método onWhatsApp de Baileys)
+// y devuelve el JID con el que hay que enviar. Baileys 6.7 puede devolver el JID
+// con direccionamiento LID; usar el que devuelve el servidor evita que un envío
+// a un número migrado a LID sea rechazado.
+// Si el chequeo falla por red o la API no responde, NO bloquea el envío.
+async function resolveRecipient(sock, cleanNumber) {
+    const fallbackJid = `${cleanNumber}@s.whatsapp.net`;
     try {
         const results = await withTimeout(sock.onWhatsApp(cleanNumber), 15000, 'onWhatsApp');
         if (!Array.isArray(results)) {
             elog(`onWhatsApp: respuesta inesperada para ${cleanNumber}, no bloqueo el envío`);
-            return true;
+            return { ok: true, jid: fallbackJid };
         }
         const found = results.find(r => r?.jid?.split('@')[0] === cleanNumber);
         if (!found) {
             elog(`onWhatsApp: número NO registrado -> ${cleanNumber}`);
-        } else {
-            elog(`onWhatsApp: número registrado -> ${cleanNumber}`);
+            return { ok: false, jid: fallbackJid };
         }
-        return Boolean(found);
+        const jid = found.jid || fallbackJid;
+        elog(`onWhatsApp: número registrado -> ${cleanNumber} (jid=${jid}${found.lid ? ` lid=${found.lid}` : ''})`);
+        return { ok: true, jid };
     } catch (e) {
         elog(`onWhatsApp check error -> ${cleanNumber}: ${e?.message || e} (continúo sin validar)`);
-        return true;
+        return { ok: true, jid: fallbackJid };
     }
 }
 
@@ -600,7 +681,7 @@ async function start() {
                 if (data.type === 'send') {
                     enqueueSend(async () => {
                         let cleanNumber = data.number.toString().replace(/[+\-\s]/g, '');
-                        const jid = `${cleanNumber}@s.whatsapp.net`;
+                        let jid = `${cleanNumber}@s.whatsapp.net`;
 
                         elog(`send text -> ${cleanNumber}`);
                         emit(`SENDING:${cleanNumber}`);
@@ -616,23 +697,30 @@ async function start() {
                         if (!sock) return;
 
                         // Validar que el número destino exista en WhatsApp (evita falso "enviado")
-                        const onWa = await isNumberOnWhatsApp(sock, cleanNumber);
-                        if (!onWa) {
+                        const target = await resolveRecipient(sock, cleanNumber);
+                        if (!target.ok) {
                             elog(`send text BLOCKED (not on WhatsApp) -> ${cleanNumber}`);
                             emit(`SEND_ERROR:El número ${cleanNumber} no está registrado en WhatsApp`);
                             return;
                         }
+                        jid = target.jid;
 
                         try {
                             const sentMsg = await withTimeout(sock.sendMessage(jid, { text: data.text || '' }), 40000, 'sendMessage(text)');
                             const msgId = sentMsg?.key?.id || '';
                             elog(`send text OK -> ${cleanNumber} msg=${msgId}`);
                             // Confirmar inmediatamente: el mensaje llegó a los servidores de WhatsApp.
-                            // watchAck solo registra el ACK para logs (no emite errores).
                             emit(`SENT_CONFIRM:${cleanNumber}`);
                             watchAck(msgId, `text->${cleanNumber}`,
                                 (ackLabel) => elog(`text ACK received -> ${cleanNumber}: ${ackLabel}`),
-                                () => elog(`text ACK missing -> ${cleanNumber} (no delivery receipt, but message was sent)`),
+                                (reason) => {
+                                    if (reason) {
+                                        elog(`text REJECTED by server -> ${cleanNumber}: ${reason}`);
+                                        emit(`SEND_ERROR:WhatsApp rechazó el mensaje: ${reason}`);
+                                    } else {
+                                        elog(`text ACK missing -> ${cleanNumber} (no delivery receipt, but message was sent)`);
+                                    }
+                                },
                                 () => elog(`text ACK pending -> ${cleanNumber}`));
                         } catch (sendErr) {
                             elog(`send text ERROR -> ${cleanNumber}: ${sendErr.message || sendErr}`);
@@ -648,7 +736,14 @@ async function start() {
                                     emit(`SENT_RETRY_OK:${cleanNumber}`);
                                     watchAck(retryId, `text-retry->${cleanNumber}`,
                                         (ackLabel) => elog(`text-retry ACK received -> ${cleanNumber}: ${ackLabel}`),
-                                        () => elog(`text-retry ACK missing -> ${cleanNumber}`),
+                                        (reason) => {
+                                            if (reason) {
+                                                elog(`text-retry REJECTED by server -> ${cleanNumber}: ${reason}`);
+                                                emit(`SEND_ERROR:WhatsApp rechazó el mensaje: ${reason}`);
+                                            } else {
+                                                elog(`text-retry ACK missing -> ${cleanNumber}`);
+                                            }
+                                        },
                                         () => elog(`text-retry ACK pending -> ${cleanNumber}`));
                                 } else {
                                     emit('SEND_RETRY_FAILED:Socket still not ready');
@@ -662,7 +757,7 @@ async function start() {
                 } else if (data.type === 'send_image') {
                     enqueueSend(async () => {
                         let cleanNumber = data.number.toString().replace(/[+\-\s]/g, '');
-                        const jid = `${cleanNumber}@s.whatsapp.net`;
+                        let jid = `${cleanNumber}@s.whatsapp.net`;
 
                         if (!fs.existsSync(data.imagePath)) {
                             elog(`image FILE NOT FOUND -> ${cleanNumber}: ${data.imagePath}`);
@@ -690,12 +785,13 @@ async function start() {
                         }
 
                         // Validar que el número destino exista en WhatsApp (evita falso "enviado")
-                        const onWa = await isNumberOnWhatsApp(sock, cleanNumber);
-                        if (!onWa) {
+                        const target = await resolveRecipient(sock, cleanNumber);
+                        if (!target.ok) {
                             elog(`image BLOCKED (not on WhatsApp) -> ${cleanNumber}`);
                             emit(`IMAGE_ERROR:El número ${cleanNumber} no está registrado en WhatsApp`);
                             return;
                         }
+                        jid = target.jid;
 
                         // La subida va a mmg.whatsapp.net: si el equipo la bloquea,
                         // no tiene sentido esperar por un timeout largo.
@@ -706,16 +802,27 @@ async function start() {
                             return;
                         }
 
+                        // Miniatura propia: evita el error de Baileys y permite que
+                        // WhatsApp muestre la vista previa del recibo.
+                        const thumb = await buildImageThumb(imageBuffer);
+                        if (thumb) elog(`image thumbnail OK (${thumb.width}x${thumb.height})`);
+
                         let sentImg = null;
                         let lastErr = null;
                         for (let attempt = 1; attempt <= 2; attempt++) {
                             const started = Date.now();
                             try {
                                 elog(`image send attempt ${attempt} -> ${cleanNumber} (${imageBuffer.length} bytes)`);
-                                sentImg = await withTimeout(sock.sendMessage(jid, {
+                                const payload = {
                                     image: imageBuffer,
                                     caption: data.caption || ''
-                                }), 60000, `sendMessage(image) intento ${attempt}`);
+                                };
+                                if (thumb) {
+                                    payload.jpegThumbnail = thumb.thumbnail;
+                                    payload.width = thumb.width;
+                                    payload.height = thumb.height;
+                                }
+                                sentImg = await withTimeout(sock.sendMessage(jid, payload), 60000, `sendMessage(image) intento ${attempt}`);
                                 elog(`image send OK -> ${cleanNumber} en ${Date.now() - started}ms`);
                                 break;
                             } catch (sendErr) {
@@ -728,11 +835,17 @@ async function start() {
                         if (sentImg) {
                             const imgId = sentImg?.key?.id || '';
                             // Confirmar inmediatamente: el mensaje llegó a los servidores de WhatsApp.
-                            // watchAck solo registra el ACK para logs (no emite errores).
                             emit(`IMAGE_SENT_CONFIRM:${cleanNumber}`);
                             watchAck(imgId, `image->${cleanNumber}`,
                                 (ackLabel) => elog(`image ACK received -> ${cleanNumber}: ${ackLabel}`),
-                                () => elog(`image ACK missing -> ${cleanNumber} (no delivery receipt, but message was sent)`),
+                                (reason) => {
+                                    if (reason) {
+                                        elog(`image REJECTED by server -> ${cleanNumber}: ${reason}`);
+                                        emit(`IMAGE_ERROR:WhatsApp rechazó la imagen: ${reason}`);
+                                    } else {
+                                        elog(`image ACK missing -> ${cleanNumber} (no delivery receipt, but message was sent)`);
+                                    }
+                                },
                                 () => elog(`image ACK pending -> ${cleanNumber}`));
                         } else {
                             elog(`image send ERROR -> ${cleanNumber}: ${lastErr?.message || lastErr}`);
