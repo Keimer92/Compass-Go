@@ -102,7 +102,7 @@ func NewTerminal(p *Palette) *Terminal {
 	}
 	return &Terminal{
 		shaper:     text.NewShaper(text.WithCollection(emoji)),
-		font:       font.Font{Typeface: "Consolas, Segoe UI Emoji"},
+		font:       font.Font{Typeface: "Cascadia Mono, Consolas, Segoe UI Emoji"},
 		size:       14,
 		glyphCache: make(map[rune][]text.Glyph),
 		palette:    p,

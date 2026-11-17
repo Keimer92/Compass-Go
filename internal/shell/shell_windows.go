@@ -11,6 +11,16 @@ import (
 
 // const CREATE_NEW_CONSOLE = 0x00000010
 const createNewConsole = 0x00000010
+const createNoWindow = 0x08000000
+
+// noWindowAttrs evita que los procesos de tareas abran una consola nueva cuando
+// Corren dentro de la ConPTY de Compass (el exe es una app GUI sin consola).
+func noWindowAttrs() *syscall.SysProcAttr {
+	if Embedded() {
+		return &syscall.SysProcAttr{CreationFlags: createNoWindow}
+	}
+	return nil
+}
 
 // WindowScript construye el script de una ventana nueva: titulo y comando.
 func WindowScript(title, command string, interactive bool) string {

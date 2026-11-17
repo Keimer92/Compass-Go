@@ -14,6 +14,8 @@ import (
 
 	"gioui.org/layout"
 	"gioui.org/op/clip"
+	"gioui.org/op/paint"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -180,16 +182,30 @@ func gitChanges(root string) []GitChange {
 	return changes
 }
 
-func gitColor(code string, p Palette) color.NRGBA {
+// gitStatusInfo traduce el codigo porcelain de git a una letra, un estado
+// legible y un color, como hace la vista de Source Control de VS Code.
+func gitStatusInfo(code string, p Palette) (letter, status string, col color.NRGBA) {
+	// git porcelain: columna 0 = indice (staged), columna 1 = working tree.
+	idx, work := byte(' '), byte(' ')
+	if len(code) > 0 {
+		idx = code[0]
+	}
+	if len(code) > 1 {
+		work = code[1]
+	}
 	switch {
-	case strings.Contains(code, "?"):
-		return p.Success
-	case strings.Contains(code, "M"), strings.Contains(code, "A"):
-		return p.Warning
-	case strings.Contains(code, "D"):
-		return p.Brand
+	case idx == '?' || work == '?':
+		return "U", "Untracked", p.Success
+	case work == 'D' || idx == 'D':
+		return "D", "Deleted", color.NRGBA{R: 0xff, G: 0x6b, B: 0x6b, A: 0xff}
+	case work == 'M':
+		return "M", "Modified", p.Warning
+	case idx == 'M':
+		return "M", "Staged", p.Warning
+	case idx == 'A':
+		return "A", "Added", p.Success
 	default:
-		return p.Muted
+		return "?", "Changed", p.Muted
 	}
 }
 
@@ -301,17 +317,39 @@ func (e *Explorer) fileRow(gtx layout.Context, th *material.Theme,
 func changeRow(gtx layout.Context, th *material.Theme, p Palette,
 	ch GitChange) layout.Dimensions {
 
-	return layout.Inset{Left: unit.Dp(12), Top: unit.Dp(1), Bottom: unit.Dp(1)}.Layout(gtx,
+	letter, status, col := gitStatusInfo(ch.Code, p)
+	return layout.Inset{Left: unit.Dp(10), Top: unit.Dp(2), Bottom: unit.Dp(2)}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Caption(th, ch.Code)
-					lbl.Color = gitColor(ch.Code, p)
-					return lbl.Layout(gtx)
+					sz := gtx.Dp(unit.Dp(17))
+					s := clip.RRect{
+						Rect: image.Rect(0, 0, sz, sz),
+						SE: sz / 2, SW: sz / 2, NE: sz / 2, NW: sz / 2,
+					}.Push(gtx.Ops)
+					paint.Fill(gtx.Ops, blend(p.Background, col, 0.55))
+					s.Pop()
+					lbl := material.Caption(th, letter)
+					lbl.Color = col
+					lbl.Alignment = text.Middle
+					ig := gtx
+					ig.Constraints = layout.Exact(image.Pt(sz, sz))
+					lbl.Layout(ig)
+					return layout.Dimensions{Size: image.Pt(sz, sz)}
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Caption(th, " "+filepath.Base(ch.Path))
-					lbl.Color = p.Text
+					return layout.Inset{Left: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						lbl := material.Caption(th, filepath.Base(ch.Path))
+						lbl.Color = p.Text
+						return lbl.Layout(gtx)
+					})
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return layout.Dimensions{Size: gtx.Constraints.Min}
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					lbl := material.Caption(th, status)
+					lbl.Color = col
 					return lbl.Layout(gtx)
 				}),
 			)

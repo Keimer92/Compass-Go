@@ -417,6 +417,10 @@ func (a *Application) handleInput(gtx layout.Context) {
 		ev, ok := gtx.Event(pointer.Filter{
 			Target: &a.inputTag,
 			Kinds:  pointer.Scroll | pointer.Press | pointer.Drag | pointer.Release,
+			// Sin estos rangos (0..0 por defecto) Gio no entrega NINGUN
+			// evento de rueda: por eso el scrollback no respondia.
+			ScrollX: pointer.ScrollRange{Min: -100, Max: 100},
+			ScrollY: pointer.ScrollRange{Min: -100, Max: 100},
 		})
 		if !ok {
 			return

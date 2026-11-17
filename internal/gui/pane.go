@@ -6,6 +6,7 @@ import (
 	"compass/internal/container"
 
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
@@ -100,15 +101,11 @@ func (a *Application) closePane(i int) {
 	}
 }
 
-// reapFinished cierra las pestanas que pidieron cerrarse y marca el resto como
-// terminadas (✓) para conservar su ultima pantalla como historial.
+// reapFinished marca las pestanas terminadas (✓) y conserva su ultima pantalla.
+// No las cierra automaticamente: asi el usuario puede leer la salida de un
+// dev server que murio rapido y cerrarlas con la X cuando quiera.
 func (a *Application) reapFinished() {
-	for i := len(a.panes) - 1; i >= 0; i-- {
-		p := a.panes[i]
-		if p.Session.CloseRequested() {
-			a.closePane(i)
-			continue
-		}
+	for _, p := range a.panes {
 		if p.Session.Exited() {
 			p.Done = true
 		}
@@ -139,37 +136,47 @@ func (a *Application) tabButtonWidget(gtx layout.Context, p Palette, i int) layo
 	pane := a.panes[i]
 	active := i == a.activePane
 
-	lblText := pane.Title
-	if pane.Done {
-		lblText += " ✓"
-	}
-	lbl := material.Caption(a.th, lblText)
+	lbl := material.Caption(a.th, pane.Title)
 	if active {
 		lbl.Color = p.Text
 	} else {
 		lbl.Color = p.Muted
 	}
 
-	return layout.Inset{Right: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return pane.tabBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					dims := lbl.Layout(gtx)
-					if active {
-						bar := image.Rect(0, dims.Size.Y-1, dims.Size.X, dims.Size.Y)
-						s := clip.Rect(bar).Push(gtx.Ops)
-						paint.Fill(gtx.Ops, p.Brand)
-						s.Pop()
-					}
-					return dims
-				})
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				x := material.Caption(a.th, "×")
-				x.Color = p.Muted
-				return pane.closeBtn.Layout(gtx, x.Layout)
-			}),
-		)
+	return layout.Inset{Right: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return pane.tabBtn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			m := op.Record(gtx.Ops)
+			dims := layout.Inset{
+				Left: unit.Dp(12), Right: unit.Dp(8),
+				Top: unit.Dp(5), Bottom: unit.Dp(5),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+					layout.Rigid(lbl.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return layout.Inset{Left: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return tabCloseButton(gtx, a.th, p, &pane.closeBtn)
+						})
+					}),
+				)
+			})
+			call := m.Stop()
+
+			bg := blend(p.Background, p.Border, 0.25)
+			if active {
+				bg = blend(p.Background, p.Accent, 0.28)
+			} else if pane.tabBtn.Hovered() {
+				bg = blend(p.Background, p.Accent, 0.15)
+			}
+			rad := gtx.Dp(unit.Dp(9))
+			stack := clip.RRect{
+				Rect: image.Rectangle{Max: dims.Size},
+				SE: rad, SW: rad, NE: rad, NW: rad,
+			}.Push(gtx.Ops)
+			paint.Fill(gtx.Ops, bg)
+			stack.Pop()
+			call.Add(gtx.Ops)
+			return dims
+		})
 	})
 }
 

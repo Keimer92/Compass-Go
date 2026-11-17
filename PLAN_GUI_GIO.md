@@ -332,6 +332,42 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
       estado del CLI (`> build ...`, herramientas, ``` fences...).
 - [x] Mensaje de reserva también en inglés.
 
+## Ajustes finales de terminal
+
+- [x] **Scrollback con rueda**: `pointer.Filter` tenia `ScrollX/ScrollY` en
+      0..0 (valor por defecto), con lo que Gio **no entregaba ningun evento de
+      rueda**. Se pusieron rangos -100..100.
+- [x] **X de pestaña**: ahora es un circulo rojo con cruz blanca de 22 dp
+      (antes un "×" de texto diminuto).
+- [x] **Tareas de desarrollo**: las pestañas ya no se cierran automaticamente
+      al terminar el proceso (se marcan ✓ y se conserva la salida).
+- [x] **Sin flashes de consola en tareas embebidas**: `shell.runShellStatus`
+      marca `CREATE_NO_WINDOW` cuando `COMPASS_EMBEDDED=1`.
+- [x] Renderizado de banners: la fuente del terminal pasó de Consolas a
+      **Cascadia Mono, Consolas, Segoe UI Emoji** (instalada en Windows). Con
+      Consolas los caracteres de caja (`┌ ─ │ └`) casi no se dibujaban; con
+      Cascadia Mono el banner "VERSIONADOR DE PROYECTO" se ve completo y
+      alineado. Queda algún detalle mínimo en las esquinas (`┐`/`┘`).
+
+## Formato de commit y pestañas (ajuste final)
+
+- [x] Commit: cabecera `tipo(alcance): resumen` + **3 o 4 viñetas cortas**,
+      en inglés y basadas **solo en la lista de cambios** (el prompt prohíbe
+      explorar el repo, para evitar el mensaje genérico repetido).
+      Ejemplo real generado:
+      ```
+      feat(gui): update GUI components and shell utilities
+      - Modify internal/gui/pane.go for improved layout
+      - Refactor internal/gui/explorer.go navigation logic
+      - Restructure internal/gui/commit.go workflow
+      - Update internal/shell/shell_windows.go Windows support
+      ```
+- [x] Pestañas del terminal: se eliminó el ✓ y ahora son pastillas redondeadas
+      con estado activo/hover, igual que las de la cabecera central.
+- [x] Explorador Git type VS Code: insignia con letra de color (U/A/M/D),
+      nombre de archivo y estado a la derecha (`Untracked`, `Staged`,
+      `Modified`, `Deleted`).
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar

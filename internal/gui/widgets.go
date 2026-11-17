@@ -17,7 +17,20 @@ import (
 func closeButton(gtx layout.Context, th *material.Theme, p Palette,
 	btn *widget.Clickable) layout.Dimensions {
 
-	size := gtx.Dp(unit.Dp(32))
+	return closeButtonSize(gtx, th, p, btn, unit.Dp(32))
+}
+
+// tabCloseButton es la X de una pestana de terminal, mas pequena.
+func tabCloseButton(gtx layout.Context, th *material.Theme, p Palette,
+	btn *widget.Clickable) layout.Dimensions {
+
+	return closeButtonSize(gtx, th, p, btn, unit.Dp(22))
+}
+
+func closeButtonSize(gtx layout.Context, th *material.Theme, p Palette,
+	btn *widget.Clickable, dpSize unit.Dp) layout.Dimensions {
+
+	size := gtx.Dp(dpSize)
 	red := color.NRGBA{R: 0xff, G: 0x5f, B: 0x57, A: 0xff}
 	return btn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		rad := size / 2

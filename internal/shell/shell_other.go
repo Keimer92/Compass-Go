@@ -2,7 +2,12 @@
 
 package shell
 
-import "fmt"
+import (
+	"fmt"
+	"syscall"
+)
+
+func noWindowAttrs() *syscall.SysProcAttr { return nil }
 
 func SpawnNewWindowAutoexit(title, dir, command string) error {
 	return fmt.Errorf("Compass solo tiene soporte para Windows")

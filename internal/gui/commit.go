@@ -73,11 +73,13 @@ func generateCommitMessage(root, model string) (string, error) {
 	if strings.TrimSpace(summary) == "" {
 		return "", errors.New("no hay cambios para commitear")
 	}
-	prompt := "Write a detailed git commit message in ENGLISH using Conventional Commits.\n" +
-		"Line 1: type(scope): short imperative summary (max 72 chars).\n" +
-		"Then a blank line and 2-3 bullet points with '- ' explaining WHAT changed and WHY.\n" +
-		"Output ONLY the commit message, no markdown fences, no quotes, no commentary.\n\n" +
-		"Changes:\n" + summary
+	prompt := "Write a git commit message in ENGLISH. Do NOT explore the repository.\n" +
+		"Use ONLY the change list below. Output exactly this format:\n" +
+		"Line 1: type(scope): imperative summary (max 72 chars).\n" +
+		"Then 3 or 4 short bullet lines starting with '- ' (max 90 chars each),\n" +
+		"each describing a concrete change from the list (mention filenames when useful).\n" +
+		"No blank lines, no markdown, no quotes, no explanation.\n\n" +
+		"Change list:\n" + summary
 
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return "", errors.New("opencode no está en el PATH")
@@ -137,11 +139,16 @@ func cleanCommitMessage(raw string) string {
 	for len(out) > 0 && out[len(out)-1] == "" {
 		out = out[:len(out)-1]
 	}
-	msg := strings.Join(out, "\n")
-	if len(msg) > 1200 {
-		msg = msg[:1200]
+	// Cabecera + 3 o 4 viñetas cortas, recortadas.
+	if len(out) > 5 {
+		out = out[:5]
 	}
-	return msg
+	for i, line := range out {
+		if len(line) > 95 {
+			out[i] = line[:95]
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // fallbackCommitMessage genera un mensaje util sin agente, a partir del resumen
@@ -204,7 +211,7 @@ func (a *Application) layoutCommitPanel(gtx layout.Context) {
 						txt = "Generando..."
 					}
 					return layout.Inset{Top: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return a.commit.genBtn.Layout(gtx, pillText(a.th, txt, a.palette.Accent))
+						return a.pillButton(gtx, &a.palette, txt, &a.commit.genBtn, false)
 					})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -226,7 +233,7 @@ func (a *Application) layoutCommitPanel(gtx layout.Context) {
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Top: unit.Dp(20)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return a.commit.commitBtn.Layout(gtx, pillText(a.th, "Commit", a.palette.Success))
+						return a.pillButton(gtx, &a.palette, "Commit", &a.commit.commitBtn, false)
 					})
 				}),
 			)

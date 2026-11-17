@@ -290,6 +290,7 @@ func runShellStatus(command string, dir string, envs map[string]string) bool {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+	c.SysProcAttr = noWindowAttrs()
 	c.Env = mergeEnv(envs)
 	err := c.Run()
 	return err == nil
