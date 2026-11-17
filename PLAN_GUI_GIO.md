@@ -239,6 +239,19 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
       terminal reducida a 26 dp para evitar que el TUI hijo pierda filas
       superiores.
 
+## Cambio del binario principal
+
+- [x] `dist.bat` compila ahora `./cmd/compass-gui` como `compass-go.exe` (antes
+      `./cmd/compass`, la TUI). `go-winres` genera los recursos en
+      `cmd/compass-gui/rsrc` para que el exe siga llevando icono y versión.
+- [x] `cmd/compass-gui/main.go` despacha también las **tareas globales**
+      (`vibe-setup`, menú contextual, opencode, vibe coding…) y
+      `context-gitignore`, además del `--task` de proyecto que ya tenía.
+      Así `install.bat` y el menú contextual siguen funcionando con el exe nuevo.
+- [x] `--pick` y `-p` se mantienen.
+- La TUI clásica sigue disponible con `go run ./cmd/compass` como respaldo,
+      pero ya no es el binario que instala el instalador.
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar

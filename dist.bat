@@ -67,12 +67,12 @@ if not exist "dist\payload" mkdir "dist\payload"
 where go-winres >nul 2>nul
 if not errorlevel 1 (
     echo [INFO] Generando recursos de Windows con go-winres...
-    go-winres make --in go-winres.json --out cmd\compass\rsrc --arch amd64,386 >nul
+    go-winres make --in go-winres.json --out cmd\compass-gui\rsrc --arch amd64,386 >nul
     if errorlevel 1 echo [WARN] go-winres fallo; se compila sin recursos.
 ) else (
     echo [AVISO] go-winres no encontrado: se compila sin icono ni version.
 )
-go build -o "dist\payload\compass-go.exe" ./cmd/compass
+go build -o "dist\payload\compass-go.exe" ./cmd/compass-gui
 if errorlevel 1 (
     echo.
     echo =============================================
