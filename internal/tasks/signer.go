@@ -22,9 +22,9 @@ import (
 )
 
 func init() {
-	// En Rust el despachador manda "sign"/"signing"/"sha1"/"keystore" a
-	// signer::manage para *cualquier* tipo de proyecto; los tipos sin Android
-	// reciben el aviso "No aplicable".
+	// El despachador manda "sign"/"signing"/"sha1"/"keystore" a SigningManage
+	// para *cualquier* tipo de proyecto; los tipos sin Android reciben el aviso
+	// "No aplicable".
 	for _, pt := range allTypes() {
 		Register("sign", pt, SigningManage)
 		Register("signing", pt, SigningManage)
@@ -36,7 +36,7 @@ func init() {
 // Props representa los campos de keystore.properties / key.properties.
 //
 // Es el equivalente de src/tasks/signer.rs::Props: la fuente de verdad del
-// parseo de la firma release, reutilizada por los builds de Kotlin/Flutter/Tauri.
+// parseo de la firma release, reutilizada por los builds de Kotlin/Flutter.
 type Props struct {
 	StoreFile     string
 	StorePassword string
@@ -45,7 +45,7 @@ type Props struct {
 }
 
 // parseProps tolera los alias de clave de Flutter (storePassword/keyPassword/
-// keyAlias/storeFile) y los de Tauri/KMP (storepass/keypass/alias).
+// keyAlias/storeFile) y los de KMP (storepass/keypass/alias).
 func parseProps(text string) Props {
 	var p Props
 	for _, line := range strings.Split(text, "\n") {
@@ -70,7 +70,7 @@ func parseProps(text string) Props {
 	return p
 }
 
-// Render devuelve el contenido del .properties en el mismo orden que Rust.
+// Render devuelve el contenido del .properties en el orden canónico.
 func (p Props) Render() string {
 	return fmt.Sprintf(
 		"storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=%s\n",
@@ -102,7 +102,7 @@ func resolveKeystore(signingDir, storeFile string) string {
 // AndroidLayout indica dónde vive la firma de un proyecto Android.
 type AndroidLayout struct {
 	// ModuleDir es el directorio del módulo Android (android/app,
-	// src-tauri/gen/android/app, composeApp, app o build/android/app).
+	// composeApp, app o build/android/app).
 	ModuleDir string
 	// PropsName es key.properties (Flutter) o keystore.properties.
 	PropsName string
@@ -119,12 +119,9 @@ func (l AndroidLayout) PropsPath() string {
 	return filepath.Join(l.SigningDir, l.PropsName)
 }
 
-// androidLayout devuelve el layout del proyecto; ok=false para Rust/Python/Go.
+// androidLayout devuelve el layout del proyecto; ok=false para Python/Go.
 func androidLayout(ctx *project.ProjectContext) (AndroidLayout, bool) {
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		dir := filepath.Join(ctx.ScriptDir, "src-tauri", "gen", "android", "app")
-		return AndroidLayout{ModuleDir: dir, PropsName: "keystore.properties", SigningDir: dir, PatchGradle: true}, true
 	case project.TypeFlutter:
 		dir := filepath.Join(ctx.ScriptDir, "android", "app")
 		return AndroidLayout{ModuleDir: dir, PropsName: "key.properties", SigningDir: dir, PatchGradle: true}, true
@@ -539,10 +536,9 @@ func signingEntries() []signingItem {
 
 // SigningManage es el punto de entrada de las tareas sign/signing/sha1/keystore.
 //
-// Tras ejecutar una acción se vuelve al submenú, como en Rust.
+// Tras ejecutar una acción se vuelve al submenú.
 func SigningManage(ctx *project.ProjectContext) error {
-	if ctx.ProjectType == project.TypeRust ||
-		ctx.ProjectType == project.TypePython ||
+	if ctx.ProjectType == project.TypePython ||
 		ctx.ProjectType == project.TypeGo {
 		shell.ClearScreen()
 		fmt.Println("[INFO] No aplicable a este tipo de proyecto.")
@@ -586,7 +582,7 @@ func SigningManage(ctx *project.ProjectContext) error {
 func requireLayout(ctx *project.ProjectContext) (AndroidLayout, error) {
 	layout, ok := androidLayout(ctx)
 	if !ok {
-		fmt.Fprintln(os.Stderr, "[ERROR] No aplicable a proyectos Rust.")
+		fmt.Fprintln(os.Stderr, "[ERROR] No aplicable a este tipo de proyecto.")
 		ui.Pause()
 		return AndroidLayout{}, fmt.Errorf("proyecto sin Android")
 	}
@@ -635,7 +631,7 @@ func showSigningStatus(ctx *project.ProjectContext) error {
 			fmt.Println("         ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD,")
 			fmt.Println("         ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD")
 		} else {
-			fmt.Println("[INFO] No aplicable a proyectos Rust.")
+			fmt.Println("[INFO] No aplicable a este tipo de proyecto.")
 		}
 		ui.Pause()
 		return nil
@@ -785,7 +781,7 @@ func showFingerprints(ctx *project.ProjectContext) error {
 			fmt.Println("  Usa la opción 2 o 3 para crearla.")
 		}
 	} else {
-		fmt.Println("  [INFO] No aplicable a proyectos Rust.")
+		fmt.Println("  [INFO] No aplicable a este tipo de proyecto.")
 	}
 
 	fmt.Println()
@@ -840,9 +836,8 @@ func createKeystore(ctx *project.ProjectContext) error {
 	}
 
 	fmt.Println("\n  Generando keystore (esto puede tardar unos segundos)...")
-	// `CN=Tauri App` se mantiene por compatibilidad histórica; no afecta a la
-	// firma, sólo a los metadatos del certificado.
-	const dname = "CN=Tauri App, OU=Development, O=Developer, L=City, ST=State, C=US"
+	// El CN sólo afecta a los metadatos del certificado, no a la firma.
+	const dname = "CN=Compass App, OU=Development, O=Developer, L=City, ST=State, C=US"
 	genkey := func(a string) *exec.Cmd {
 		return exec.Command(keytool,
 			"-genkey", "-v",
@@ -1322,7 +1317,7 @@ func showSecrets(ctx *project.ProjectContext) error {
 
 	info, ok := detectSigning(ctx)
 	if !ok {
-		fmt.Println("[INFO] No aplicable a proyectos Rust.")
+		fmt.Println("[INFO] No aplicable a este tipo de proyecto.")
 		ui.Pause()
 		return nil
 	}

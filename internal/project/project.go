@@ -1,8 +1,8 @@
 // Package project detecta el tipo de proyecto y construye el ProjectContext.
 //
 // Es el equivalente de src/utils/context.rs en Rust: clasifica un directorio
-// como Tauri / Flutter / Kotlin / Python / Rust / Go / Go+Wails, localiza el
-// Android SDK y rellena los campos que las tareas necesitan.
+// como Flutter / Kotlin / Python / Go / Go+Wails, localiza el Android SDK y
+// rellena los campos que las tareas necesitan.
 package project
 
 import (
@@ -16,11 +16,9 @@ import (
 type ProjectType int
 
 const (
-	TypeTauri ProjectType = iota
-	TypeFlutter
+	TypeFlutter ProjectType = iota
 	TypeKotlin
 	TypePython
-	TypeRust
 	TypeGo
 	// TypeGoWails es Go + Wails v3 (go.mod con wailsapp/wails + Taskfile.yml).
 	TypeGoWails
@@ -28,16 +26,12 @@ const (
 
 func (t ProjectType) Label() string {
 	switch t {
-	case TypeTauri:
-		return "Tauri"
 	case TypeFlutter:
 		return "Flutter"
 	case TypeKotlin:
 		return "Kotlin"
 	case TypePython:
 		return "Python"
-	case TypeRust:
-		return "Rust"
 	case TypeGo:
 		return "Go"
 	case TypeGoWails:
@@ -49,19 +43,12 @@ func (t ProjectType) Label() string {
 
 // WhatsappPath devuelve la ruta del motor de WhatsApp segun el tipo de proyecto.
 func (t ProjectType) WhatsappPath(root string) string {
-	switch t {
-	case TypeTauri:
-		return filepath.Join(root, "src-tauri", "whatsapp-engine")
-	default:
-		return filepath.Join(root, "whatsapp_engine")
-	}
+	return filepath.Join(root, "whatsapp_engine")
 }
 
 // WhatsappBundlePath devuelve la ruta del bundle compilado del motor WhatsApp.
 func (t ProjectType) WhatsappBundlePath(root string) string {
 	switch t {
-	case TypeTauri:
-		return filepath.Join(root, "src-tauri", "resources", "whatsapp-engine-bundle")
 	case TypeKotlin:
 		return filepath.Join(root, "composeApp", "resources", "whatsapp-engine-bundle")
 	default:
@@ -145,8 +132,6 @@ func Detect() (*ProjectContext, error) {
 // generado, segun su tipo.
 func androidProjectPresent(pt ProjectType, root string) bool {
 	switch pt {
-	case TypeTauri:
-		return gradlewAt(filepath.Join(root, "src-tauri", "gen", "android"))
 	case TypeFlutter:
 		return gradlewAt(filepath.Join(root, "android"))
 	case TypeKotlin:
@@ -167,9 +152,6 @@ func ClassifyDir(d string) (ProjectType, bool) {
 	if fileExists(filepath.Join(d, "pubspec.yaml")) {
 		return TypeFlutter, true
 	}
-	if fileExists(filepath.Join(d, "tauri.conf.json")) {
-		return TypeTauri, true
-	}
 	if isWailsV3(d) {
 		return TypeGoWails, true
 	}
@@ -177,17 +159,11 @@ func ClassifyDir(d string) (ProjectType, bool) {
 	if gradlewAt(d) && fileExists(filepath.Join(d, "settings.gradle.kts")) {
 		return TypeKotlin, true
 	}
-	if fileExists(filepath.Join(d, "package.json")) {
-		return TypeTauri, true
-	}
 	if isPythonProject(d) {
 		return TypePython, true
 	}
 	if fileExists(filepath.Join(d, "go.mod")) {
 		return TypeGo, true
-	}
-	if fileExists(filepath.Join(d, "Cargo.toml")) {
-		return TypeRust, true
 	}
 	return 0, false
 }
@@ -232,8 +208,8 @@ func detectProjectRoot(start string) (string, ProjectType, error) {
 		}
 		dir = parent
 	}
-	return "", 0, &DetectError{Msg: "No se encontró un proyecto Tauri, Flutter/Dart, " +
-		"Kotlin Multiplatform, Go, Python o Rust en este directorio ni en sus padres.\n" +
+	return "", 0, &DetectError{Msg: "No se encontró un proyecto Flutter/Dart, " +
+		"Kotlin Multiplatform, Go, Python o Go + Wails en este directorio ni en sus padres.\n" +
 		"   Usa el selector con 'compass --pick' para elegir la carpeta del proyecto."}
 }
 

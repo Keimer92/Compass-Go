@@ -394,19 +394,19 @@ func menuItemToTask(item MenuItem, pt project.ProjectType) string {
 		}
 	case WindowsBuild:
 		switch pt {
-		case project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails:
+		case project.TypeGo, project.TypeGoWails:
 			return "windows-release"
 		default:
 			return "windows-build"
 		}
 	case AndroidBuildArm64:
 		switch pt {
-		case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+		case project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
 			return "android-release"
 		}
 	case AndroidBuildAll:
 		switch pt {
-		case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+		case project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
 			return "android-aab"
 		}
 	case InstallDebug:

@@ -32,8 +32,9 @@ func TestCompassSubmenusE2E(t *testing.T) {
 	exe := compassExe(t)
 
 	project := t.TempDir()
-	conf := `{"productName":"Fixture","version":"1.0.0"}`
-	if err := os.WriteFile(filepath.Join(project, "tauri.conf.json"), []byte(conf), 0644); err != nil {
+	// Un proyecto Flutter da acceso a las tareas de firmas y release Android.
+	pubspec := "name: fixture\nversion: 1.0.0+1\n"
+	if err := os.WriteFile(filepath.Join(project, "pubspec.yaml"), []byte(pubspec), 0644); err != nil {
 		t.Fatal(err)
 	}
 

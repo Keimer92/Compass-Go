@@ -3,10 +3,13 @@ package tasks
 import (
 	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strconv"
+	"strings"
 
 	"compass/internal/project"
 	"compass/internal/shell"
@@ -23,10 +26,6 @@ const whatsappEngineMarker = "use-whatsapp-engine"
 
 // errScanStop corta el WalkDir cuando ya se encontró la señal.
 var errScanStop = errors.New("stop scan")
-
-// whatsappImportRe detecta una cadena de importación de Go cuya ruta contiene
-// "whatsapp" tras una barra (p.ej. "miproyecto/internal/whatsapp").
-var whatsappImportRe = regexp.MustCompile(`"[^"]*/[^"]*whatsapp[^"]*"`)
 
 // whatsappEngineSource devuelve la ruta del motor de WhatsApp canónico.
 // Orden de resolución:
@@ -95,13 +94,19 @@ func projectImportsWhatsapp(root string) bool {
 		if filepath.Ext(path) != ".go" {
 			return nil
 		}
-		data, rerr := os.ReadFile(path)
-		if rerr != nil {
+		// Parsear solo los imports evita falsos positivos con literales de
+		// texto (p.ej. los propios mensajes de Compass que dicen
+		// "resources/whatsapp-engine-bundle/").
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
 			return nil
 		}
-		if whatsappImportRe.Match(data) {
-			found = true
-			return errScanStop
+		for _, imp := range file.Imports {
+			importPath, err := strconv.Unquote(imp.Path.Value)
+			if err == nil && strings.Contains(importPath, "whatsapp") {
+				found = true
+				return errScanStop
+			}
 		}
 		return nil
 	})

@@ -3,7 +3,6 @@ package tasks
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -72,41 +71,6 @@ func sanitizeAppName(name string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-// readCargoMeta lee name/version de [package] en Cargo.toml.
-func readCargoMeta(ctx *project.ProjectContext) (string, string) {
-	data, err := os.ReadFile(filepath.Join(ctx.ScriptDir, "Cargo.toml"))
-	if err != nil {
-		return "app", ""
-	}
-	var name, version string
-	inPackage := false
-	for _, line := range strings.Split(string(data), "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "[") {
-			inPackage = t == "[package]"
-			continue
-		}
-		if !inPackage {
-			continue
-		}
-		if k, v, ok := strings.Cut(t, "="); ok {
-			k = strings.TrimSpace(k)
-			v = strings.TrimSpace(v)
-			v = strings.Trim(v, "\"'")
-			switch k {
-			case "name":
-				name = v
-			case "version":
-				version = v
-			}
-		}
-	}
-	if name == "" {
-		name = "app"
-	}
-	return name, version
-}
-
 // readPubspecMeta lee name/version de pubspec.yaml (Flutter).
 func readPubspecMeta(ctx *project.ProjectContext) (string, string) {
 	data, err := os.ReadFile(filepath.Join(ctx.ScriptDir, "pubspec.yaml"))
@@ -131,55 +95,6 @@ func readPubspecMeta(ctx *project.ProjectContext) (string, string) {
 		name = sanitizeAppName(filepath.Base(ctx.ScriptDir))
 	}
 	return name, version
-}
-
-// readTauriMeta lee productName/version de src-tauri/tauri.conf.json.
-func readTauriMeta(ctx *project.ProjectContext) (string, string) {
-	path := filepath.Join(ctx.ScriptDir, "src-tauri", "tauri.conf.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return filepath.Base(ctx.ScriptDir), ""
-	}
-	name := extractJSONField(string(data), "productName")
-	version := extractJSONField(string(data), "version")
-	return name, version
-}
-
-// extractJSONField extrae un valor de cadena de un JSON plano (sin estructuras).
-func extractJSONField(jsonStr, key string) string {
-	// Busca "key": "value" de forma tolerante.
-	idx := strings.Index(jsonStr, "\""+key+"\"")
-	if idx < 0 {
-		return ""
-	}
-	rest := jsonStr[idx+len(key)+3:] // salta "key":
-	if i := strings.Index(rest, "\""); i >= 0 {
-		end := strings.Index(rest[i+1:], "\"")
-		if end >= 0 {
-			return rest[i+1 : i+1+end]
-		}
-	}
-	return ""
-}
-
-// tauriCommand construye el comando del CLI de Tauri (npx para v2, cargo como
-// fallback).
-func tauriCommand(ctx *project.ProjectContext, sub string) string {
-	if dirExists(filepath.Join(ctx.ScriptDir, "node_modules", "@tauri-apps", "cli")) {
-		return "npx tauri " + sub
-	}
-	return "cargo tauri " + sub
-}
-
-// tauriEnsure verifica que el CLI de Tauri esta disponible.
-func tauriEnsure(ctx *project.ProjectContext) error {
-	if dirExists(filepath.Join(ctx.ScriptDir, "node_modules", "@tauri-apps", "cli")) {
-		return nil
-	}
-	if _, err := exec.LookPath("cargo"); err == nil {
-		return nil
-	}
-	return fmt.Errorf("no se encontro el CLI de Tauri (node_modules/@tauri-apps/cli ni cargo tauri)")
 }
 
 func dirExists(p string) bool {
@@ -259,15 +174,13 @@ func commandPath(name string) string {
 	return path
 }
 
-// allTypes devuelve los 7 tipos de proyecto reconocidos (para registrar tareas
+// allTypes devuelve los 5 tipos de proyecto reconocidos (para registrar tareas
 // globales por tipo).
 func allTypes() []project.ProjectType {
 	return []project.ProjectType{
-		project.TypeTauri,
 		project.TypeFlutter,
 		project.TypeKotlin,
 		project.TypePython,
-		project.TypeRust,
 		project.TypeGo,
 		project.TypeGoWails,
 	}

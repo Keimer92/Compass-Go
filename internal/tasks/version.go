@@ -14,11 +14,9 @@ import (
 )
 
 func init() {
-	Register("version", project.TypeTauri, VersionBump)
 	Register("version", project.TypeFlutter, VersionBump)
 	Register("version", project.TypeKotlin, VersionBump)
 	Register("version", project.TypePython, VersionBump)
-	Register("version", project.TypeRust, VersionBump)
 	Register("version", project.TypeGo, VersionBump)
 	Register("version", project.TypeGoWails, VersionBump)
 }
@@ -155,7 +153,7 @@ func VersionBump(ctx *project.ProjectContext) error {
 		}
 		if sf.format == fmtTOML {
 			if !rePackage.MatchString(text) {
-				return fmt.Errorf("Cargo.toml sin version y sin seccion [package]:\n  no se puede insertar de forma segura: %s", sf.path)
+				return fmt.Errorf("TOML sin version y sin seccion [package]:\n  no se puede insertar de forma segura: %s", sf.path)
 			}
 		} else {
 			if !strings.HasPrefix(strings.TrimSpace(text), "{") {
@@ -244,14 +242,6 @@ func versionConfigs(ctx *project.ProjectContext) []sourceFile {
 		return sourceFile{path: filepath.Join(root, rel), format: f, source: s}
 	}
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		return []sourceFile{
-			mk("package.json", fmtJSON, srcRequired),
-			mk("src-tauri/tauri.conf.json", fmtJSON, srcRequired),
-			mk("src-tauri/Cargo.toml", fmtTOML, srcRequired),
-		}
-	case project.TypeRust:
-		return []sourceFile{mk("Cargo.toml", fmtTOML, srcRequired)}
 	case project.TypeGoWails:
 		return []sourceFile{
 			mk("build/config.yml", fmtYAML, srcRequired),
@@ -434,8 +424,6 @@ func jsonIsObject(text string) bool {
 
 func projectTypeLabel(pt project.ProjectType) string {
 	switch pt {
-	case project.TypeTauri:
-		return "TAURI"
 	case project.TypeGo:
 		return "GO"
 	case project.TypeGoWails:
@@ -443,6 +431,6 @@ func projectTypeLabel(pt project.ProjectType) string {
 	case project.TypePython:
 		return "PYTHON"
 	default:
-		return "RUST"
+		return pt.Label()
 	}
 }

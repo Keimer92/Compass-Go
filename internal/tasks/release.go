@@ -53,7 +53,7 @@ const (
 
 func windowsSupported(pt project.ProjectType) bool {
 	switch pt {
-	case project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails:
+	case project.TypeGo, project.TypeGoWails:
 		return true
 	}
 	return false
@@ -61,23 +61,10 @@ func windowsSupported(pt project.ProjectType) bool {
 
 func androidSupported(pt project.ProjectType) bool {
 	switch pt {
-	case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+	case project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
 		return true
 	}
 	return false
-}
-
-// windowsTriple devuelve el triple de Rust para una arquitectura de Windows.
-func windowsTriple(key string) (string, bool) {
-	switch key {
-	case archKeyX86:
-		return "i686-pc-windows-msvc", true
-	case archKeyX64:
-		return "x86_64-pc-windows-msvc", true
-	case archKeyArm64:
-		return "aarch64-pc-windows-msvc", true
-	}
-	return "", false
 }
 
 // windowsLabel es el sufijo del artefacto (x64 es la entrega normal: sin sufijo).
@@ -192,7 +179,7 @@ func androidEntries(ctx *project.ProjectContext) []releaseEntry {
 // Python delegan en su build de escritorio de siempre (sólo host).
 func ReleaseWindows(ctx *project.ProjectContext) error {
 	switch ctx.ProjectType {
-	case project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails:
+	case project.TypeGo, project.TypeGoWails:
 		reveal := revealLastArtifact
 		if ctx.ProjectType == project.TypeGoWails {
 			reveal = revealBinFolder
@@ -326,23 +313,6 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 	}
 
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		triple, ok := windowsTriple(key)
-		if !ok {
-			return nil, fmt.Errorf("[ERROR] Arquitectura sin triple.")
-		}
-		return singleArtifact(windowsBuildArch(ctx, triple, windowsLabel(key)))
-	case project.TypeRust:
-		triple, ok := windowsTriple(key)
-		if !ok {
-			return nil, fmt.Errorf("[ERROR] Arquitectura sin triple.")
-		}
-		exe, err := rustBuildArch(ctx, triple, windowsLabel(key))
-		if err != nil {
-			return nil, err
-		}
-		name, version := readCargoMeta(ctx)
-		return withAppInstaller(ctx, name, version, windowsLabel(key), exe), nil
 	case project.TypeGo:
 		target, ok := goArchOf(key)
 		if !ok {
@@ -367,19 +337,7 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 
 func androidArtifacts(ctx *project.ProjectContext, key string) ([]string, error) {
 	if key == archKeyAll {
-		// Los lotes nativos hacen una sola pasada; Tauri no tiene splits, así
-		// que compila arquitectura a arquitectura.
 		switch ctx.ProjectType {
-		case project.TypeTauri:
-			var artifacts []string
-			for _, a := range []string{archKeyArm64, archKeyArmv7, archKeyUniversal} {
-				got, err := androidArtifacts(ctx, a)
-				if err != nil {
-					return nil, err
-				}
-				artifacts = append(artifacts, got...)
-			}
-			return artifacts, nil
 		case project.TypeFlutter:
 			return flutterBuildApksAll(ctx)
 		case project.TypeKotlin:
@@ -402,15 +360,6 @@ func androidArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 	}
 
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		switch key {
-		case archKeyArm64:
-			return singleArtifact(tauriBuildArch(ctx, "aarch64", "arm64"))
-		case archKeyArmv7:
-			return singleArtifact(tauriBuildArch(ctx, "armv7", "armv7"))
-		case archKeyUniversal:
-			return singleArtifact(tauriBuildUniversal(ctx))
-		}
 	case project.TypeFlutter:
 		switch key {
 		case archKeyArm64:
@@ -461,81 +410,6 @@ func artifactBase(name, version, label string) string {
 		base += " " + label
 	}
 	return base
-}
-
-// rustBuildArch compila un release de Rust para una arquitectura de Windows.
-//
-// El artefacto queda en target/<triple>/release y se renombra a
-// "<name> v<version> [label].exe"; label vacío equivale a x64.
-func rustBuildArch(ctx *project.ProjectContext, triple, label string) (string, error) {
-	_, _ = shell.RunProgram("rustup", []string{"target", "add", triple}, ctx.ScriptDir, nil)
-
-	display := label
-	if display == "" {
-		display = "x64"
-	}
-	fmt.Printf("\n[INFO] Compilando Rust para %s (%s)...\n\n", display, triple)
-	command := fmt.Sprintf("cargo build --release --target %s", triple)
-	ok, err := shell.RunShellStatus(command, ctx.ScriptDir, nil)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return "", fmt.Errorf("[ERROR] `%s` fallo. En ARM64 suele faltar el enlazador de Visual Studio para ARM64.", command)
-	}
-
-	dir := filepath.Join(ctx.ScriptDir, "target", triple, "release")
-	artifact := shell.NewestFileIn(dir, []string{"exe"})
-	if artifact == "" {
-		return "", fmt.Errorf("[ERROR] No se encontro el .exe en %s", dir)
-	}
-	name, version := readCargoMeta(ctx)
-	return shell.RenameArtifact(artifact, artifactBase(name, version, label)), nil
-}
-
-// windowsBuildArch compila un release de Tauri para una arquitectura de Windows.
-//
-// Si NSIS no genera instalador (x86 o falta makensis) se entrega el .exe
-// portable, que ya está compilado.
-func windowsBuildArch(ctx *project.ProjectContext, triple, label string) (string, error) {
-	if err := tauriEnsure(ctx); err != nil {
-		return "", err
-	}
-	_, _ = shell.RunProgram("rustup", []string{"target", "add", triple}, ctx.ScriptDir, nil)
-
-	display := label
-	if display == "" {
-		display = "x64"
-	}
-	fmt.Printf("\n[INFO] Compilando escritorio Tauri para %s (%s)...\n\n", display, triple)
-	command := tauriCommand(ctx, fmt.Sprintf("build --target %s --bundles nsis", triple))
-	ok, _ := shell.RunShellStatus(command, ctx.ScriptDir, nil)
-
-	name, version := readTauriMeta(ctx)
-	if name == "" {
-		name = sanitizeAppName(filepath.Base(ctx.ScriptDir))
-	}
-	base := artifactBase(name, version, label)
-	targetDir := filepath.Join(ctx.ScriptDir, "src-tauri", "target", triple, "release")
-
-	if ok {
-		bundle := filepath.Join(targetDir, "bundle", "nsis")
-		if p := shell.NewestFileIn(bundle, []string{"exe", "msi"}); p != "" {
-			return shell.RenameArtifact(p, base), nil
-		}
-	}
-
-	if portable := shell.NewestFileIn(targetDir, []string{"exe"}); portable != "" {
-		fmt.Println()
-		fmt.Println("[WARN] No se genero el instalador NSIS; se entrega el ejecutable portable.")
-		target := filepath.Join(targetDir, base+".exe")
-		if err := copyFile(portable, target); err != nil {
-			return "", err
-		}
-		return target, nil
-	}
-
-	return "", fmt.Errorf("[ERROR] Fallo el build de Tauri para %s (%s). En ARM64 suele faltar el enlazador de Visual Studio para ARM64.", label, triple)
 }
 
 // runFlutterApk ejecuta `flutter build apk --release <args>`.

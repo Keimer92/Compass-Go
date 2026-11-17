@@ -366,100 +366,6 @@ func showGitStatus(ctx *project.ProjectContext) error {
 // ── .gitignore ──────────────────────────────────────────────────────────────
 
 const (
-	gitignoreRust = `# ============================================
-# .gitignore para Rust / Cargo
-# ============================================
-
-# --- Build artifacts (el mas pesado) ---
-target/
-
-# --- Cargo lock (normalmente se incluye en binarios) ---
-# Cargo.lock
-
-# --- IDE ---
-.vscode/
-.idea/
-*.iml
-*.sublime-project
-*.sublime-workspace
-
-# --- OS ---
-.DS_Store
-Thumbs.db
-Desktop.ini
-*.swp
-*.swo
-*~
-
-# --- Environment ---
-.env
-.env.example
-.env.local
-.env.*.local
-
-# --- Logs ---
-*.log
-`
-
-	gitignoreTauri = `# ============================================
-# .gitignore para Rust/Tauri + Windows/Android
-# ============================================
-
-# --- Rust / Cargo (build artifacts, muy pesados) ---
-src-tauri/target/
-
-# --- Node.js ---
-node_modules/
-
-# --- Vite cache ---
-node_modules/.vite
-
-# --- Frontend build output ---
-dist/
-build/
-
-# --- Android nativo (auto-generado por 'npx tauri android init') ---
-src-tauri/gen/android/app/build/
-src-tauri/gen/android/.gradle/
-src-tauri/gen/android/build/
-src-tauri/gen/android/gradle/
-src-tauri/gen/android/buildSrc/
-src-tauri/gen/android/app/keimer
-src-tauri/gen/android/app/keimer.keystore
-src-tauri/gen/android/app/keystore.properties
-src-tauri/gen/android/app/proguard-rules.pro
-src-tauri/gen/android/app/proguard-tauri.pro
-src-tauri/gen/android/app/tauri.build.gradle.kts
-src-tauri/gen/android/app/tauri.properties
-src-tauri/gen/android/app/src/main/assets/
-src-tauri/gen/android/app/src/main/jniLibs/
-src-tauri/gen/android/app/src/main/java/**/generated/
-src-tauri/gen/schemas/
-
-# --- Sistema operativo ---
-.DS_Store
-Thumbs.db
-Desktop.ini
-*.swp
-*.swo
-*~
-
-# --- IDE ---
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-
-# --- Variables de entorno ---
-.env
-.env.example
-.env.local
-.env.*.local
-
-# --- Logs ---
-*.log
-`
-
 	gitignoreFlutter = `# ============================================
 # .gitignore para Flutter/Dart
 # ============================================
@@ -683,10 +589,6 @@ Thumbs.db
 func gitignoreContent(pt project.ProjectType) string {
 	var content string
 	switch pt {
-	case project.TypeRust:
-		content = gitignoreRust
-	case project.TypeTauri:
-		content = gitignoreTauri
 	case project.TypeFlutter:
 		content = gitignoreFlutter
 	case project.TypeKotlin:
@@ -810,24 +712,6 @@ func AddContextGitignoreFromDir(start string) error {
 
 func printPreserved(pt project.ProjectType) {
 	switch pt {
-	case project.TypeRust:
-		fmt.Println("  - src/ (codigo Rust)")
-		fmt.Println("  - Cargo.toml + Cargo.lock")
-		fmt.Println("  - build.rs (si existe)")
-		fmt.Println("  - tests/ (pruebas de integracion)")
-		fmt.Println("  - examples/ (ejemplos)")
-		fmt.Println("  - assets/ (recursos estaticos)")
-	case project.TypeTauri:
-		fmt.Println("  - src/ (codigo frontend)")
-		fmt.Println("  - src-tauri/src/ (codigo Rust)")
-		fmt.Println("  - src-tauri/Cargo.toml + Cargo.lock")
-		fmt.Println("  - src-tauri/tauri.conf.json")
-		fmt.Println("  - src-tauri/icons/")
-		fmt.Println("  - src-tauri/capabilities/")
-		fmt.Println("  - src-tauri/build.rs")
-		fmt.Println("  - package.json + package-lock.json")
-		fmt.Println("  - tsconfig.json, vite.config.ts")
-		fmt.Println("  - index.html, public/")
 	case project.TypeFlutter:
 		fmt.Println("  - lib/ (codigo Dart)")
 		fmt.Println("  - test/ (pruebas)")
@@ -860,15 +744,6 @@ func printPreserved(pt project.ProjectType) {
 
 func printInstructions(pt project.ProjectType) {
 	switch pt {
-	case project.TypeRust:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. cargo build")
-		fmt.Println("  3. cargo run")
-	case project.TypeTauri:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. npm install")
-		fmt.Println("  3. npx tauri android init (solo si compilas para Android)")
-		fmt.Println("  4. npm run tauri dev (Desktop) / tauri android dev (Android)")
 	case project.TypeFlutter:
 		fmt.Println("  1. git clone <repo>")
 		fmt.Println("  2. flutter pub get")
@@ -897,10 +772,6 @@ func printInstructions(pt project.ProjectType) {
 
 func gitignoreBanner(pt project.ProjectType) string {
 	switch pt {
-	case project.TypeRust:
-		return "CREAR .gitignore PARA RUST"
-	case project.TypeTauri:
-		return "CREAR .gitignore PARA RUST/TAURI"
 	case project.TypeFlutter:
 		return "CREAR .gitignore PARA FLUTTER/DART"
 	case project.TypeKotlin:

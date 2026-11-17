@@ -21,16 +21,16 @@ func TestPropsRoundtrip(t *testing.T) {
 	}
 }
 
-func TestPropsAcceptFlutterAndTauriKeyAliases(t *testing.T) {
+func TestPropsAcceptFlutterAndKmpKeyAliases(t *testing.T) {
 	flutter := parseProps("storePassword=a\nkeyPassword=b\nkeyAlias=c\nstoreFile=d.jks")
 	if flutter.StorePassword != "a" || flutter.KeyPassword != "b" ||
 		flutter.KeyAlias != "c" || flutter.StoreFile != "d.jks" {
 		t.Fatalf("aliases Flutter mal parseados: %+v", flutter)
 	}
 
-	tauri := parseProps("storepass=a\nkeypass=b\nalias=c\nstoreFile=d")
-	if tauri.StorePassword != "a" || tauri.KeyPassword != "b" || tauri.KeyAlias != "c" {
-		t.Fatalf("aliases Tauri mal parseados: %+v", tauri)
+	kmp := parseProps("storepass=a\nkeypass=b\nalias=c\nstoreFile=d")
+	if kmp.StorePassword != "a" || kmp.KeyPassword != "b" || kmp.KeyAlias != "c" {
+		t.Fatalf("aliases KMP mal parseados: %+v", kmp)
 	}
 }
 

@@ -376,14 +376,10 @@ func renderHeader(s tcell.Screen, area Rect, ctx *project.ProjectContext, th *th
 
 	var emoji string
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		emoji = "\U0001F980"
 	case project.TypeFlutter:
 		emoji = "\U0001F3AF"
 	case project.TypeKotlin:
 		emoji = "\U0001F537"
-	case project.TypeRust:
-		emoji = "\u2699"
 	case project.TypeGo:
 		emoji = "\U0001F4E6"
 	case project.TypeGoWails:
@@ -394,14 +390,10 @@ func renderHeader(s tcell.Screen, area Rect, ctx *project.ProjectContext, th *th
 	var badge string
 	var badgeColor tcell.Color
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		badge, badgeColor = "TAURI", th.Success
 	case project.TypeFlutter:
 		badge, badgeColor = "FLUTTER", th.Info
 	case project.TypeKotlin:
 		badge, badgeColor = "KOTLIN", th.Accent
-	case project.TypeRust:
-		badge, badgeColor = "RUST", th.Warning
 	case project.TypeGo:
 		badge, badgeColor = "GO", th.Info
 	case project.TypeGoWails:

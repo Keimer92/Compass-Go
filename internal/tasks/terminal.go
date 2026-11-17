@@ -13,11 +13,9 @@ import (
 )
 
 func init() {
-	Register("terminal", project.TypeTauri, TerminalConfigure)
 	Register("terminal", project.TypeFlutter, TerminalConfigure)
 	Register("terminal", project.TypeKotlin, TerminalConfigure)
 	Register("terminal", project.TypePython, TerminalConfigure)
-	Register("terminal", project.TypeRust, TerminalConfigure)
 	Register("terminal", project.TypeGo, TerminalConfigure)
 	Register("terminal", project.TypeGoWails, TerminalConfigure)
 }

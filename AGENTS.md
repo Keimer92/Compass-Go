@@ -4,10 +4,9 @@
 
 `Compass Go` es el **port a Go** de *Compass* (originalmente en Rust): una
 **TUI para Windows** que automatiza tareas de desarrollo, compilación y
-configuración para proyectos **Tauri (Rust)**, **Flutter (Dart)**,
-**Kotlin Multiplatform (Compose)**, **Go + Wails v3**, **Go puro**,
-**Python** y **Rust puro**. Detecta el tipo de proyecto y adapta comandos,
-rutas y menús.
+configuración para proyectos **Flutter (Dart)**, **Kotlin Multiplatform
+(Compose)**, **Go + Wails v3**, **Go puro** y **Python**. Detecta el tipo de
+proyecto y adapta comandos, rutas y menús.
 
 Además del menú, es un **contenedor de terminal propio**: cada card abre una
 pestaña **ConPTY** (PowerShell) dentro de la misma ventana de Compass en lugar
@@ -257,7 +256,7 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
 - **Etapado en build**: `stageWhatsappEngine` (llamado desde `windowsArtifacts`
   en el release de escritorio) reconstruye el bundle si `engine.js` cambió y
   copia `node.exe` + `whatsapp-engine-bundle` al `bin/resources/` del proyecto
-  (o al `resources/` de Tauri/Flutter/Kotlin según tipo).
+  (o al `resources/` de Flutter/Kotlin según tipo).
 - **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
 - `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador
   (sin los artefactos de build del motor: `node_modules`, `out`, `examples`).
@@ -321,7 +320,7 @@ Compass etapará el motor solo. No hace falta marcador manual.
    ```bat
    cd corekit\whatsapp
    npm install
-   node bundle.mjs --asset      # Go/Wails y Tauri  → whatsapp-engine-bundle/
+   node bundle.mjs --asset      # Go/Wails          → whatsapp-engine-bundle/
    node bundle.mjs --single     # Flutter           → out/single/index.js
    ```
 3. **Etapar al proyecto** con la tarea de Compass:
@@ -339,9 +338,8 @@ Compass etapará el motor solo. No hace falta marcador manual.
 | Framework | Destino del bundle | Resolución en runtime |
 |---|---|---|
 | Go + Wails v3 | `resources/whatsapp-engine-bundle/` | `internal/whatsapp` desde el cwd de la app |
-| Tauri (Rust) | `src-tauri/resources/whatsapp-engine-bundle/` | `BaseDirectory::Resource` |
 | Flutter | `whatsapp_engine/index.js` (modo single) | cwd → exe dir → app docs |
-| Kotlin / Rust puro | carpeta de recursos del framework | según launcher |
+| Kotlin | carpeta de recursos del framework | según launcher |
 
 ### Ejemplo concreto: GymPro (Go + Wails v3)
 
@@ -500,8 +498,7 @@ compass-go.exe -p "D:\Mis Proyectos\Go + Wails v3\GymPro" -t whatsapp
 - ❌ Editar el bundle dentro de `resources/whatsapp-engine-bundle/` del
   proyecto. Regenera desde el canónico.
 - ❌ Asumir que en producción el engine se lee desde la máquina de dev. Cada
-  instalador debe embeber su propia copia (Tauri: declarar `resources` y
-  `externalBin` en `tauri.conf.json`; incluir `node.exe` como sidecar).
+  instalador debe embeber su propia copia del bundle y `node.exe` como sidecar.
 - ❌ Dejar `COMPASS_WHATSAPP_ENGINE` apuntando a una instalación vieja tras
   mover Compass. Re-ejecuta `install.bat`.
 
@@ -548,11 +545,11 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
   `refreshContextIcons` reescribe el `Icon` de las entradas existentes en cada
   `context-menu-install`, de modo que mover la instalación no deja rutas
   absolutas obsoletas (que el Explorador pinta como "sin icono").
-- **Instalador de proyectos**: los releases de Windows de **Go puro** y **Rust
-  puro** generan además `<Nombre> v<ver> [arch] Setup.exe` (plantilla NSIS
-  embebida en `internal/tasks/assets/app-installer.nsi`, compilada con
-  `makensis`). La página final ofrece "Crear un acceso directo en el
-  escritorio" y "Ejecutar ahora". Tauri y Go+Wails siguen usando el instalador
-  nativo de su framework (necesario para WebView2).
+- **Instalador de proyectos**: los releases de Windows de **Go puro** generan
+  además `<Nombre> v<ver> [arch] Setup.exe` (plantilla NSIS embebida en
+  `internal/tasks/assets/app-installer.nsi`, compilada con `makensis`). La
+  página final ofrece "Crear un acceso directo en el escritorio" y "Ejecutar
+  ahora". Go+Wails sigue usando el instalador nativo de su framework
+  (necesario para WebView2).
 - **Plataformas soportadas**: solo **Windows** como aplicación de escritorio;
   Android sigue como destino de compilación para los proyectos compatibles.

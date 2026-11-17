@@ -41,7 +41,7 @@ func newTestScreen(t *testing.T) tcell.SimulationScreen {
 
 func TestRenderMenuShowsCoreElements(t *testing.T) {
 	sim := newTestScreen(t)
-	ctx := &project.ProjectContext{ScriptDir: `C:\proj\Demo`, ProjectType: project.TypeTauri}
+	ctx := &project.ProjectContext{ScriptDir: `C:\proj\Demo`, ProjectType: project.TypeFlutter}
 	st := newMenuState(ctx.ProjectType, theme.Default())
 
 	renderMenu(sim, st, ctx, Rect{0, 0, 100, 30})
@@ -49,7 +49,7 @@ func TestRenderMenuShowsCoreElements(t *testing.T) {
 	txt := screenText(sim)
 
 	for _, want := range []string{
-		"Compass", "DESARROLLO", "CONFIGURACION", "Proyecto", "TAURI",
+		"Compass", "DESARROLLO", "CONFIGURACION", "Proyecto", "FLUTTER",
 		"Windows", "Android", "Clean", "Signing",
 	} {
 		if !strings.Contains(txt, want) {
@@ -86,7 +86,7 @@ func TestRenderMenuNarrowDoesNotPanic(t *testing.T) {
 
 func TestGridHitTesting(t *testing.T) {
 	sim := newTestScreen(t)
-	ctx := &project.ProjectContext{ScriptDir: `C:\proj\Demo`, ProjectType: project.TypeTauri}
+	ctx := &project.ProjectContext{ScriptDir: `C:\proj\Demo`, ProjectType: project.TypeFlutter}
 	st := newMenuState(ctx.ProjectType, theme.Default())
 	renderMenu(sim, st, ctx, Rect{0, 0, 100, 30})
 

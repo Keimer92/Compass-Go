@@ -10,7 +10,7 @@ Reimplementar Compass en Go conservando el **comportamiento observable**:
 - Misma CLI: `compass --task <t> --path <p> --pick --trace`
 - Misma TUI: grid de "cards" con hover-glow, pestañas (DEV·MNT / CFG), scroll, selector de temas, modales
 - Terminal **incrustada** (pestañas ConPTY dentro de la ventana) — la pieza diferenciadora
-- Detección de 7 tipos de proyecto, ~20 módulos de tareas, menú contextual de Windows, lock de instancia, temas persistidos
+- Detección de 5 tipos de proyecto, ~20 módulos de tareas, menú contextual de Windows, lock de instancia, temas persistidos
 - Binario único `compass.exe` (Windows) con icono + info de versión + manifest
 
 **Decisión de diseño:** paridad funcional, no copia línea a línea. Gran parte del código es envoltura sobre comandos externos (fácil de portar); concentrar el esfuerzo en el TUI y el ConPTY.
@@ -47,8 +47,8 @@ compass/                      (module: compass)
 │  ├─ container/              panes, ConPTY, parser VT, barra de pestañas, key/mouse SGR, kill tree (container.rs)
 │  ├─ console/                console guard: SetConsoleCtrlHandler + SC_CLOSE (console_guard.rs)  // build tag windows
 │  ├─ tasks/                  android, cleanup, contextmenu, environment, flutter, git, go,
-│  │                          gowails, kotlin, opencode, python, release, rust, signer,
-│  │                          terminal, version, whatsapp, windows, submenu
+│  │                          gowails, kotlin, opencode, python, release, signer,
+│  │                          terminal, version, whatsapp, submenu
 │  └─ prompts/                selector de carpeta (inquire)
 ├─ assets/                    icono, etc.
 ├─ go.mod · go-winres.json
@@ -59,7 +59,7 @@ compass/                      (module: compass)
 
 - **Fase 0 — Andamiaje.** `go.mod`, estructura, `go-winres` (icono + versión + manifest), script de build a `compass.exe`. ✅
 - **Fase 1 — Núcleo headless** (sin TUI). `project`, `shell`, `ui`, `lock` → ya deja funcional `compass --task ...` sin menú. ✅
-- **Fase 2 — Tareas (`tasks/*`).** Portar una a una; orden: go, rust, windows, flutter, python, kotlin, android, gowails, signer, git, cleanup, release, version, environment, terminal, contextmenu (registro), opencode, whatsapp. ✅
+- **Fase 2 — Tareas (`tasks/*`).** Portar una a una; orden: go, flutter, python, kotlin, android, gowails, signer, git, cleanup, release, version, environment, terminal, contextmenu (registro), opencode, whatsapp. ✅
 - **Fase 3 — TUI base (tcell).** setup/restore, loop de eventos, layout grid, cards, tabs, scrollbar, header, footer (sin animación). ✅
 - **Fase 4 — Temas + hover glow.** 14 temas (tests de distinctness), modal Ctrl+T, glow por celda en tcell. ✅
 - **Fase 5 — Submenús** (signer/git/release) reusando la grilla. `internal/tui/submenu.go` (genérico) ✅ · Git, Limpieza, Entorno, Firmas (11 cards) y Release Windows/Android (cards por arquitectura) conectados ✅.

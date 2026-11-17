@@ -25,7 +25,7 @@ const (
 	TabsH       = 1
 )
 
-// Version es la version mostrada en la cabecera (CARGO_PKG_VERSION en Rust).
+// Version es la version mostrada en la cabecera.
 const Version = "1.0.0"
 
 // MenuItem identifica cada card del menu.
@@ -192,7 +192,7 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 	switch m {
 	case WindowsDev:
 		switch pt {
-		case project.TypeRust, project.TypePython, project.TypeGo:
+		case project.TypePython, project.TypeGo:
 			return "Run"
 		}
 		return "Windows"
@@ -208,7 +208,7 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		return "HMR"
 	case WindowsBuild:
 		switch pt {
-		case project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails:
+		case project.TypeGo, project.TypeGoWails:
 			return "Win Release"
 		case project.TypePython:
 			return "Package"
@@ -216,7 +216,7 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		return "Win Build"
 	case AndroidBuildArm64:
 		switch pt {
-		case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+		case project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
 			return "APK Release"
 		}
 		return ""
@@ -224,7 +224,7 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		return ""
 	case AndroidBuildAll:
 		switch pt {
-		case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+		case project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
 			return "AAB"
 		}
 		return ""
@@ -260,54 +260,6 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 // Description devuelve la descripcion de la card segun el tipo de proyecto.
 func (m MenuItem) Description(pt project.ProjectType) string {
 	switch pt {
-	case project.TypeRust:
-		switch m {
-		case WindowsDev:
-			return "cargo run"
-		case WindowsBuild:
-			return "x86 · x64 · ARM64"
-		case Clean:
-			return "Limpia target/ y cache"
-		case VersionItem:
-			return "Actualiza Cargo.toml"
-		case Git:
-			return "Init · gitignore · remoto"
-		case BuildWhatsApp:
-			return "Compila WhatsApp"
-		case ConfigureTerminal:
-			return "Autocompletado"
-		case Environment:
-			return "Backup y restauracion"
-		}
-	case project.TypeTauri:
-		switch m {
-		case WindowsDev:
-			return "Inicia el dev server"
-		case AndroidDev:
-			return "Dev con target Android"
-		case WindowsBuild:
-			return "x86 · x64 · ARM64"
-		case AndroidBuildArm64:
-			return "arm64 · armv7 · universal"
-		case AndroidBuildAll:
-			return "Bundle para Play Store"
-		case Clean:
-			return "Limpia builds/deps"
-		case DebugAndroid:
-			return "Dev + Chrome DevTools"
-		case Signing:
-			return "Firmas y huellas"
-		case Git:
-			return "Init · gitignore · remoto"
-		case BuildWhatsApp:
-			return "Compila WhatsApp"
-		case VersionItem:
-			return "Bump pkg/cargo/tauri"
-		case ConfigureTerminal:
-			return "Autocompletado"
-		case Environment:
-			return "Backup y restauracion"
-		}
 	case project.TypeFlutter:
 		switch m {
 		case WindowsDev:
@@ -676,10 +628,10 @@ func menuGroupOf(it MenuItem, pt project.ProjectType) int {
 		InstallDebug, DebugAndroid, Signing:
 		return groupAndroid
 	case AndroidHmr:
-		// En Tauri/Flutter/Kotlin/Wails es HMR de Android; en Go/Python es
+		// En Flutter/Kotlin/Wails es HMR de Android; en Go/Python es
 		// el reload del servidor de desarrollo (comun).
 		switch pt {
-		case project.TypeTauri, project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
+		case project.TypeFlutter, project.TypeKotlin, project.TypeGoWails:
 			return groupAndroid
 		}
 	}
@@ -689,17 +641,6 @@ func menuGroupOf(it MenuItem, pt project.ProjectType) int {
 // keepForType replica el filtro por tipo de proyecto de MenuState::new.
 func keepForType(item MenuItem, pt project.ProjectType) bool {
 	switch pt {
-	case project.TypeRust:
-		switch item {
-		case AndroidDev, AndroidBuildArm64, AndroidBuildArmv7, AndroidBuildAll,
-			InstallDebug, DebugAndroid, Signing, FlutterProfile, AndroidHmr, Tests:
-			return false
-		}
-	case project.TypeTauri:
-		switch item {
-		case InstallDebug, FlutterProfile, AndroidHmr, Tests:
-			return false
-		}
 	case project.TypeFlutter:
 		switch item {
 		case AndroidBuildArmv7, VersionItem, InstallDebug, AndroidHmr, Tests:

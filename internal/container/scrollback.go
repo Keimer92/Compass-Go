@@ -37,6 +37,11 @@ type Scrollback struct {
 	top  int // fila absoluta del documento en la primera linea visible
 }
 
+// NewScrollback crea un scrollback para una pantalla viva de rows x cols.
+// Se expone para que la GUI (paquete gui) pueda crear pestanas con historia;
+// internal/container sigue siendo el unico que sabe como alimentarlo.
+func NewScrollback(cols, rows int) *Scrollback { return newScrollback(cols, rows) }
+
 // newScrollback crea un scrollback para una pantalla viva de rows x cols.
 func newScrollback(cols, rows int) *Scrollback {
 	H := maxScrollback

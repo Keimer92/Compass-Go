@@ -117,14 +117,6 @@ func moduleName(moduleDir string) string {
 func quickTargets(ctx *project.ProjectContext) map[string]string {
 	root := ctx.ScriptDir
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		return map[string]string{
-			"Vite cache":        filepath.Join(root, "node_modules", ".vite"),
-			"dist/":             filepath.Join(root, "dist"),
-			"target/debug":      filepath.Join(root, "src-tauri", "target", "debug"),
-			"target/release":    filepath.Join(root, "src-tauri", "target", "release"),
-			"gen Android build": filepath.Join(root, "src-tauri", "gen", "android", "app", "build"),
-		}
 	case project.TypeFlutter:
 		return map[string]string{
 			"build/":            filepath.Join(root, "build"),
@@ -138,11 +130,6 @@ func quickTargets(ctx *project.ProjectContext) map[string]string {
 			moduleName(module) + "/build": filepath.Join(module, "build"),
 			".gradle/":                    filepath.Join(root, ".gradle"),
 			".kotlin/":                    filepath.Join(root, ".kotlin"),
-		}
-	case project.TypeRust:
-		return map[string]string{
-			"target/debug":   filepath.Join(root, "target", "debug"),
-			"target/release": filepath.Join(root, "target", "release"),
 		}
 	case project.TypeGo:
 		return map[string]string{"bin/": filepath.Join(root, "bin")}
@@ -173,19 +160,6 @@ func quickTargets(ctx *project.ProjectContext) map[string]string {
 func fullTargets(ctx *project.ProjectContext) map[string]string {
 	root := ctx.ScriptDir
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		gen := filepath.Join(root, "src-tauri", "gen")
-		return map[string]string{
-			"src-tauri/target/":     filepath.Join(root, "src-tauri", "target"),
-			"node_modules/":         filepath.Join(root, "node_modules"),
-			"dist/":                 filepath.Join(root, "dist"),
-			"gen Android build":     filepath.Join(gen, "android", "app", "build"),
-			"gen Android .gradle":   filepath.Join(gen, "android", ".gradle"),
-			"gen Android build dir": filepath.Join(gen, "android", "build"),
-			"gen Android gradle":    filepath.Join(gen, "android", "gradle"),
-			"gen Android buildSrc":  filepath.Join(gen, "android", "buildSrc"),
-			"gen schemas":           filepath.Join(gen, "schemas"),
-		}
 	case project.TypeFlutter:
 		return map[string]string{
 			"build/":            filepath.Join(root, "build"),
@@ -204,8 +178,6 @@ func fullTargets(ctx *project.ProjectContext) map[string]string {
 			".kotlin/":                    filepath.Join(root, ".kotlin"),
 			"node_modules/":               filepath.Join(root, "node_modules"),
 		}
-	case project.TypeRust:
-		return map[string]string{"target/": filepath.Join(root, "target")}
 	case project.TypeGo:
 		return map[string]string{"bin/": filepath.Join(root, "bin")}
 	case project.TypeGoWails:
@@ -247,19 +219,6 @@ func selectableTargets(ctx *project.ProjectContext) []candidate {
 		return candidate{label: label, path: path, deps: deps}
 	}
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		gen := filepath.Join(root, "src-tauri", "gen")
-		return []candidate{
-			c("src-tauri/target/", filepath.Join(root, "src-tauri", "target"), true),
-			c("node_modules/", filepath.Join(root, "node_modules"), true),
-			c("dist/", filepath.Join(root, "dist"), false),
-			c("gen Android build", filepath.Join(gen, "android", "app", "build"), false),
-			c("gen Android .gradle", filepath.Join(gen, "android", ".gradle"), false),
-			c("gen Android build dir", filepath.Join(gen, "android", "build"), false),
-			c("gen Android gradle", filepath.Join(gen, "android", "gradle"), false),
-			c("gen Android buildSrc", filepath.Join(gen, "android", "buildSrc"), false),
-			c("gen schemas", filepath.Join(gen, "schemas"), false),
-		}
 	case project.TypeFlutter:
 		return []candidate{
 			c("build/", filepath.Join(root, "build"), false),
@@ -278,8 +237,6 @@ func selectableTargets(ctx *project.ProjectContext) []candidate {
 			c(".kotlin/", filepath.Join(root, ".kotlin"), false),
 			c("node_modules/", filepath.Join(root, "node_modules"), true),
 		}
-	case project.TypeRust:
-		return []candidate{c("target/", filepath.Join(root, "target"), true)}
 	case project.TypeGo:
 		return []candidate{c("bin/", filepath.Join(root, "bin"), false)}
 	case project.TypeGoWails:
@@ -345,14 +302,10 @@ func quickClean(ctx *project.ProjectContext) error {
 
 func fullClean(ctx *project.ProjectContext) error {
 	switch ctx.ProjectType {
-	case project.TypeTauri:
-		return cleanProjectTauri(ctx)
 	case project.TypeFlutter:
 		return FlutterClean(ctx)
 	case project.TypeKotlin:
 		return KotlinClean(ctx)
-	case project.TypeRust:
-		return RustClean(ctx)
 	case project.TypeGo:
 		return GoClean(ctx)
 	case project.TypeGoWails:
@@ -399,7 +352,7 @@ func reportSizes(ctx *project.ProjectContext) error {
 
 	fmt.Println()
 	fmt.Println("[TIP] La rapida conserva dependencias; la completa las borra, asi que")
-	fmt.Println("      restaurarlas despues (venv / npm install / cargo build / pub get) tarda mas.")
+	fmt.Println("      restaurarlas despues (venv / npm install / pub get) tarda mas.")
 	ui.Pause()
 	return nil
 }
@@ -551,77 +504,6 @@ func CleanupManage(ctx *project.ProjectContext) error {
 			}
 		}
 	}
-}
-
-// ── Clean de Tauri (portabilidad) ─────────────────────────────────────────────
-
-func cleanProjectTauri(ctx *project.ProjectContext) error {
-	shell.ClearScreen()
-	ui.BoxBanner("LIMPIAR PROYECTO PARA PORTABILIDAD")
-	fmt.Println()
-	fmt.Println("Se eliminaran TODOS los archivos de compilacion y dependencias,")
-	fmt.Println("dejando solo el codigo fuente y la configuracion.")
-	fmt.Println()
-	fmt.Println("Se eliminara:")
-	fmt.Println("  - src-tauri/target/")
-	fmt.Println("  - src-tauri/gen/android/ (builds, gradle, auto-generados)")
-	fmt.Println("  - src-tauri/gen/schemas/")
-	fmt.Println("  - node_modules/")
-	fmt.Println("  - dist/")
-	fmt.Println("  - src-tauri/build_log.txt")
-	fmt.Println()
-
-	ok, _ := prompts.Confirm("¿Estas seguro?", false)
-	if !ok {
-		fmt.Println("[INFO] Operacion cancelada.")
-		ui.Pause()
-		return nil
-	}
-
-	var totalFreed uint64
-	totalFreed += purge("target/", filepath.Join(ctx.ScriptDir, "src-tauri", "target"))
-
-	genDir := filepath.Join(ctx.ScriptDir, "src-tauri", "gen")
-	if dirExists(genDir) {
-		size := dirSize(genDir)
-		artifacts := []string{
-			"android/app/build", "android/.gradle", "android/build", "android/gradle",
-			"android/buildSrc", "android/app/proguard-rules.pro", "android/app/proguard-tauri.pro",
-			"android/app/tauri.build.gradle.kts", "android/app/tauri.properties", "schemas",
-		}
-		for _, rel := range artifacts {
-			full := filepath.Join(genDir, rel)
-			if !dirExists(full) && !fileExists(full) {
-				continue
-			}
-			_ = shell.RemoveDir(full)
-			_ = os.Remove(full)
-		}
-		for _, g := range findDirsNamed(filepath.Join(genDir, "android", "app", "src", "main", "java"), "generated") {
-			_ = shell.RemoveDir(g)
-		}
-		totalFreed += size
-		fmt.Printf("  [OK] gen/ (%s)\n", formatSize(size))
-	} else {
-		fmt.Println("  [--] No hay gen/")
-	}
-
-	totalFreed += purge("node_modules/", filepath.Join(ctx.ScriptDir, "node_modules"))
-	totalFreed += purge("dist/", filepath.Join(ctx.ScriptDir, "dist"))
-	totalFreed += purge("build_log.txt", filepath.Join(ctx.ScriptDir, "src-tauri", "build_log.txt"))
-
-	fmt.Println()
-	fmt.Println("[OK] Proyecto limpiado para portabilidad!")
-	fmt.Printf("     Espacio liberado: %s\n", formatSize(totalFreed))
-	fmt.Println()
-	fmt.Println("Para compilar en una maquina nueva:")
-	fmt.Println("  1. npm install")
-	fmt.Println("  2. npx tauri android init  (solo para Android)")
-	fmt.Println("  3. npm run tauri dev          (Desktop)")
-	fmt.Println("  4. npm run tauri android dev  (Android)")
-
-	ui.Pause()
-	return nil
 }
 
 // orderedTargets devuelve las claves en orden estable (alfabetico) con su valor.

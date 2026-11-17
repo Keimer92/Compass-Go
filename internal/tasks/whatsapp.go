@@ -11,10 +11,8 @@ import (
 )
 
 func init() {
-	Register("whatsapp", project.TypeTauri, WhatsappBuild)
 	Register("whatsapp", project.TypeFlutter, WhatsappBuild)
 	Register("whatsapp", project.TypeKotlin, WhatsappBuild)
-	Register("whatsapp", project.TypeRust, WhatsappBuild)
 	Register("whatsapp", project.TypePython, WhatsappBuild)
 	Register("whatsapp", project.TypeGo, WhatsappBuild)
 	Register("whatsapp", project.TypeGoWails, WhatsappBuild)

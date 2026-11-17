@@ -47,7 +47,7 @@ func TestWindowsEntriesAreOfferedOnlyByDesktopArchTypes(t *testing.T) {
 		"Windows ARM64",
 	}
 	for _, kind := range []project.ProjectType{
-		project.TypeTauri, project.TypeRust, project.TypeGo, project.TypeGoWails,
+		project.TypeGo, project.TypeGoWails,
 	} {
 		entries := windowsEntries(releaseCtx(t, kind))
 		if got := releaseLabels(entries); !equalStrings(got, want) {
@@ -74,7 +74,7 @@ func TestAndroidEntriesDependOnTheToolchain(t *testing.T) {
 		"Todos",
 	}
 	for _, kind := range []project.ProjectType{
-		project.TypeTauri, project.TypeFlutter, project.TypeGoWails,
+		project.TypeFlutter, project.TypeGoWails,
 	} {
 		if got := releaseLabels(androidEntries(releaseCtx(t, kind))); !equalStrings(got, full) {
 			t.Errorf("%s: %v, quiero %v", kind.Label(), got, full)
@@ -91,7 +91,7 @@ func TestAndroidEntriesDependOnTheToolchain(t *testing.T) {
 	}
 
 	for _, kind := range []project.ProjectType{
-		project.TypeRust, project.TypeGo, project.TypePython,
+		project.TypeGo, project.TypePython,
 	} {
 		if entries := androidEntries(releaseCtx(t, kind)); entries != nil {
 			t.Errorf("%s no debería ofrecer release de Android", kind.Label())
@@ -128,7 +128,7 @@ func TestReleaseCardColorKeysAreValidAndDistinct(t *testing.T) {
 		known[k] = true
 	}
 
-	ctx := releaseCtx(t, project.TypeTauri)
+	ctx := releaseCtx(t, project.TypeGoWails)
 	for name, entries := range map[string][]releaseEntry{
 		"windows": windowsEntries(ctx),
 		"android": androidEntries(ctx),
@@ -147,21 +147,7 @@ func TestReleaseCardColorKeysAreValidAndDistinct(t *testing.T) {
 	}
 }
 
-func TestWindowsTriplesAndGoarchsMatchRealTargets(t *testing.T) {
-	cases := map[string]string{
-		archKeyX86:   "i686-pc-windows-msvc",
-		archKeyX64:   "x86_64-pc-windows-msvc",
-		archKeyArm64: "aarch64-pc-windows-msvc",
-	}
-	for key, want := range cases {
-		if got, ok := windowsTriple(key); !ok || got != want {
-			t.Errorf("triple(%s) = %q,%v; quiero %q", key, got, ok, want)
-		}
-	}
-	if _, ok := windowsTriple(archKeyAll); ok {
-		t.Error("'all' no tiene triple")
-	}
-
+func TestWindowsLabelsAndGoarchsMatchRealTargets(t *testing.T) {
 	if windowsLabel(archKeyX64) != "" || windowsLabel(archKeyX86) != "x86" || windowsLabel(archKeyArm64) != "arm64" {
 		t.Error("etiquetas de artefacto mal")
 	}
@@ -183,7 +169,7 @@ func TestWindowsTriplesAndGoarchsMatchRealTargets(t *testing.T) {
 // TestReleaseEntriesHaveNoBackCard: cerrar el submenú es cosa de la pestaña
 // (F12 / ×), así que no se ofrece una card "Volver al menu principal".
 func TestReleaseEntriesHaveNoBackCard(t *testing.T) {
-	ctx := releaseCtx(t, project.TypeTauri)
+	ctx := releaseCtx(t, project.TypeGoWails)
 	for name, entries := range map[string][]releaseEntry{
 		"windows": windowsEntries(ctx),
 		"android": androidEntries(ctx),
