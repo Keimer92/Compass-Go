@@ -21,7 +21,31 @@ func init() {
 		Register("git-init", pt, GitManage)
 		Register("gitignore", pt, GitManage)
 		Register("context-gitignore", pt, addContextGitignoreTask)
+		// Acciones individuales para las subcards nativas de la GUI.
+		Register("git-do-init", pt, func(ctx *project.ProjectContext) error {
+			return GitAction(ctx, "init")
+		})
+		Register("git-do-gitignore", pt, func(ctx *project.ProjectContext) error {
+			return GitAction(ctx, "gitignore")
+		})
+		Register("git-do-remote", pt, func(ctx *project.ProjectContext) error {
+			return GitAction(ctx, "remote")
+		})
+		Register("git-do-status", pt, func(ctx *project.ProjectContext) error {
+			return GitAction(ctx, "status")
+		})
 	}
+}
+
+// GitAction ejecuta una opción del submenú de Git sin dibujar el submenú de
+// tcell: la GUI la ofrece como subcard clicable.
+func GitAction(ctx *project.ProjectContext, action string) error {
+	for _, e := range gitEntries() {
+		if e.key == action && e.run != nil {
+			return e.run(ctx)
+		}
+	}
+	return nil
 }
 
 // ── helpers de ejecución ────────────────────────────────────────────────────

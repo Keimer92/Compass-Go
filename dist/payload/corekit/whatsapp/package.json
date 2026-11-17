@@ -1,0 +1,23 @@
+{
+  "name": "whatsapp-engine",
+  "version": "2.0.2",
+  "description": "Motor canónico de WhatsApp (Baileys) centralizado y multi-proyecto para Tauri/Flutter",
+  "type": "module",
+  "main": "engine.js",
+  "bin": {
+    "whatsapp-engine": "engine.js"
+  },
+  "scripts": {
+    "build": "node bundle.mjs",
+    "build:asset": "node bundle.mjs --asset",
+    "build:single": "node bundle.mjs --single"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@vercel/ncc": "^0.38.4",
+    "@whiskeysockets/baileys": "6.7.24",
+    "jimp": "^1.6.1",
+    "pino": "^9.0.0",
+    "qr-image": "^3.2.0"
+  }
+}

@@ -33,7 +33,41 @@ func init() {
 		Register("env", pt, EnvManage)
 		Register("env-backup", pt, EnvManage)
 		Register("env-restore", pt, EnvManage)
+		// Acciones individuales para las subcards nativas de la GUI.
+		Register("env-do-backup", pt, func(ctx *project.ProjectContext) error {
+			return EnvAction("backup")
+		})
+		Register("env-do-inventory", pt, func(ctx *project.ProjectContext) error {
+			return EnvAction("inventory")
+		})
+		Register("env-do-restore", pt, func(ctx *project.ProjectContext) error {
+			return EnvAction("restore")
+		})
+		Register("env-do-validate", pt, func(ctx *project.ProjectContext) error {
+			return EnvAction("validate")
+		})
+		Register("env-do-open", pt, func(ctx *project.ProjectContext) error {
+			return EnvAction("open")
+		})
 	}
+}
+
+// EnvAction ejecuta una opción del submenú de entorno sin dibujar el submenú de
+// tcell. Prepara el directorio de trabajo igual que EnvManage.
+func EnvAction(action string) error {
+	work, err := envWorkDir()
+	if err != nil {
+		return err
+	}
+	if err := envMaterialize(work); err != nil {
+		return err
+	}
+	for _, e := range envEntries() {
+		if e.key == action && e.run != nil {
+			return e.run(work)
+		}
+	}
+	return nil
 }
 
 type envAction struct {

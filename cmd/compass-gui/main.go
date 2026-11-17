@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"compass/internal/project"
 	"compass/internal/prompts"
 	"compass/internal/tasks"
+	"compass/internal/windialog"
 	"compass/internal/workspace"
 )
 
@@ -88,7 +90,20 @@ func main() {
 		return
 	}
 
+	// La GUI no necesita ver la consola: la ocultamos (sin cerrarla, para que
+	// las tareas hijo sigan escribiendo en la ConPTY).
+	windialog.HideConsole()
+
 	if err := gui.Run(dir); err != nil {
+		var detectErr *project.DetectError
+		if errors.As(err, &detectErr) {
+			windialog.Error("Compass Go · Directorio no admitido", fmt.Sprintf(
+				"La carpeta no contiene un proyecto reconocido:\n\n%s\n\n"+
+					"Tipos admitidos: Flutter, Kotlin, Python, Go y Go + Wails.\n\n"+
+					"%s", dir, err))
+		} else {
+			windialog.Error("Compass Go", err.Error())
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

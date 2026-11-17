@@ -113,8 +113,12 @@ func Run(projectDir string) error {
 	a.applyPalette()
 
 	// La carpeta con la que se abrio entra en la lista (o se activa si ya
-	// estaba) y luego se detecta el tipo de cada proyecto guardado.
-	a.ws.AddAny(projectDir)
+	// estaba). Si no es un proyecto reconocido, avisar: NO abrir en silencio
+	// otro proyecto guardado.
+	if ix, _ := a.ws.AddAny(projectDir); ix < 0 {
+		return &project.DetectError{Msg: fmt.Sprintf(
+			"No se encontró un proyecto compatible en:\n%s", projectDir)}
+	}
 	for _, p := range a.ws.Projects {
 		if err := os.Chdir(p.Path); err != nil {
 			continue
@@ -547,6 +551,12 @@ func (a *Application) openTask(item tui.MenuItem) {
 	case tui.AndroidBuildArm64, tui.AndroidBuildAll:
 		a.release = newReleaseDialog("Release · Android", androidReleaseOptions())
 		return
+	case tui.Git:
+		a.release = newReleaseDialog("Git", gitOptions())
+		return
+	case tui.Environment:
+		a.release = newReleaseDialog("Entorno · Respaldo", envOptions())
+		return
 	}
 	task := taskFor(item, a.ctx.ProjectType)
 	if task == "" {
@@ -873,9 +883,7 @@ func (a *Application) layoutOptions(gtx layout.Context, w, h int) {
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Body1(a.th, "Opciones")
-					lbl.Color = a.palette.Brand
-					return lbl.Layout(gtx)
+					return dialogTitle(gtx, a, a.palette, "Opciones", &a.optionsClose)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Top: unit.Dp(20)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -888,13 +896,6 @@ func (a *Application) layoutOptions(gtx layout.Context, w, h int) {
 							lbl.Color = a.palette.Text
 							return lbl.Layout(gtx)
 						})
-					})
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Top: unit.Dp(20)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						lbl := material.Caption(a.th, "Cerrar")
-						lbl.Color = a.palette.Muted
-						return a.optionsClose.Layout(gtx, lbl.Layout)
 					})
 				}),
 			)

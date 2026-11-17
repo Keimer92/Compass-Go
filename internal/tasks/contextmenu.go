@@ -218,8 +218,13 @@ Remove-Item -Path 'HKCU:\Software\Classes\Directory\shell\%s' -Recurse -Force -E
 }
 
 func compassContextCommand(shellName, exe, placeholder string) string {
-	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -Command "& %s -p '%s'"`,
-		shellName, shell.PsQuote(exe), placeholder)
+	// El binario es una app GUI (sin consola), asi que se lanza con
+	// Start-Process sin -Wait: el PowerShell del menu sale enseguida y no
+	// queda ninguna ventana de cmd esperando. La ruta se pasa entre comillas
+	// dobles dentro de un unico argumento para no partirla si tiene espacios.
+	script := fmt.Sprintf(`$e = %s; $p = %s; Start-Process -FilePath $e -ArgumentList ('-p "' + $p + '"') -WindowStyle Hidden | Out-Null`,
+		shell.PsQuote(exe), shell.PsQuote(placeholder))
+	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -Command %s`, shellName, shell.PsQuote(script))
 }
 
 func gitignoreContextCommand(shellName, exe, placeholder string) string {

@@ -252,6 +252,39 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
 - La TUI clásica sigue disponible con `go run ./cmd/compass` como respaldo,
       pero ya no es el binario que instala el instalador.
 
+## Arreglos de lanzamiento (menú contextual / consola)
+
+- [x] **Carpeta no reconocida**: `gui.Run` ya no cae en silencio a otro proyecto
+      guardado. Si `AddAny` no detecta proyecto, devuelve `*project.DetectError`
+      y `cmd/compass-gui/main.go` muestra un **MessageBox nativo**
+      (`internal/windialog`) con "Directorio no admitido" y los tipos soportados.
+- [x] **Sin cmd esperando**:
+      - El exe **sigue siendo de consola** (probeado: con `-H=windowsgui` se
+        pierde la salida de las tareas dentro de la ConPTY, así que se descartó).
+      - `windialog.HideConsole()` oculta la ventana de consola de la GUI sin
+        cerrarla, para que stdout siga funcionando para las tareas hijo.
+      - El menú contextual usa `Start-Process ... -WindowStyle Hidden` y no
+        espera (`-Wait`), así que el PowerShell sale y no queda cmd abierta.
+      - Verificado: el comando generado termina en ~2,5 s y la GUI queda abierta.
+- [x] `install.bat` ejecutado de nuevo y entrada del menú contextual
+      desinstalada/reinstalada para aplicar el comando nuevo.
+
+## Diálogos nativos para submenús (release, Git, entorno)
+
+- [x] **Bug corregido**: `newReleaseDialog` creaba el diálogo con `Open: false`,
+      por eso las subcards de release nunca aparecían. Ahora se crea abierto.
+- [x] El diálogo se ha generalizado y ahora lo usan también:
+      - **Git** (4 opciones): iniciar repo, .gitignore, conectar remoto, ver estado.
+      - **Entorno / backup** (5 opciones): backup completo, solo inventario,
+        restaurar, validar, abrir respaldos.
+- [x] Nuevas acciones en `internal/tasks`: `GitAction`, `EnvAction` y tareas
+      `git-do-*`, `env-do-*`, además de las `windows-release-*` /
+      `android-release-*` existentes. Cada subcard ejecuta su tarea en una
+      pestaña ConPTY sin dibujar el submenú de tcell.
+- [x] Iconos vectoriales ampliados (clean, git, debug, environment, version).
+- [x] Verificado visualmente el diálogo de Release con sus 4 subcards.
+- [x] Reinstalado con `install.bat`.
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar

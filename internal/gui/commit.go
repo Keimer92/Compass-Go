@@ -170,9 +170,7 @@ func (a *Application) layoutCommitPanel(gtx layout.Context) {
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Body1(a.th, "Commit asistido por OpenCode")
-					lbl.Color = a.palette.Brand
-					return lbl.Layout(gtx)
+					return dialogTitle(gtx, a, a.palette, "Commit con OpenCode", &a.commit.cancelBtn)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Top: unit.Dp(16)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -209,16 +207,7 @@ func (a *Application) layoutCommitPanel(gtx layout.Context) {
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Top: unit.Dp(20)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return a.commit.commitBtn.Layout(gtx, pillText(a.th, "Commit", a.palette.Success))
-							}),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return layout.Inset{Left: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-									return a.commit.cancelBtn.Layout(gtx, pillText(a.th, "Cancelar", a.palette.Muted))
-								})
-							}),
-						)
+						return a.commit.commitBtn.Layout(gtx, pillText(a.th, "Commit", a.palette.Success))
 					})
 				}),
 			)

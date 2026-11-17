@@ -53,6 +53,11 @@ func buildReleaseIcons() map[string]*widget.Icon {
 		"apk32":   mdicons.ActionAssignment,
 		"apk":     mdicons.ActionAssignment,
 		"aab":     mdicons.MapsLayers,
+		"clean":   mdicons.ActionDelete,
+		"git":     mdicons.ActionCode,
+		"debug":   mdicons.ActionSearch,
+		"environment": mdicons.ActionSettings,
+		"version": mdicons.ActionUpdate,
 	}
 	out := make(map[string]*widget.Icon, len(keys))
 	for k, data := range keys {
@@ -65,7 +70,10 @@ func buildReleaseIcons() map[string]*widget.Icon {
 
 // newReleaseDialog crea el dialogo segun el tipo de release.
 func newReleaseDialog(title string, options []ReleaseOption) *ReleaseDialog {
-	d := &ReleaseDialog{Title: title, Options: options, clicks: make([]widget.Clickable, len(options))}
+	d := &ReleaseDialog{
+		Open: true, Title: title, Options: options,
+		clicks: make([]widget.Clickable, len(options)),
+	}
 	for i := range options {
 		if options[i].Icon == nil {
 			options[i].Icon = releaseIcons[options[i].ColorKey]
@@ -92,6 +100,25 @@ func androidReleaseOptions() []ReleaseOption {
 	}
 }
 
+func gitOptions() []ReleaseOption {
+	return []ReleaseOption{
+		{"git-do-init", "Inicializar repositorio", "git init + rama main + primer commit", "build", nil},
+		{"git-do-gitignore", "Crear/actualizar .gitignore", "Plantilla por tipo de proyecto", "clean", nil},
+		{"git-do-remote", "Conectar con remoto", "Enlazar con GitHub (URL o gh)", "git", nil},
+		{"git-do-status", "Ver estado", "Rama, remoto y cambios", "debug", nil},
+	}
+}
+
+func envOptions() []ReleaseOption {
+	return []ReleaseOption{
+		{"env-do-backup", "Backup completo", "Variables, inventario y archivos", "environment", nil},
+		{"env-do-inventory", "Solo inventario", "Herramientas y versiones, sin copiar", "version", nil},
+		{"env-do-restore", "Restaurar entorno", "Variables, rutas y rollback", "clean", nil},
+		{"env-do-validate", "Validar backup", "Diff sin modificar nada", "debug", nil},
+		{"env-do-open", "Abrir respaldos", "Carpeta de respaldos de Compass", "git", nil},
+	}
+}
+
 // Layout dibuja el dialogo de release como overlay.
 func (d *ReleaseDialog) Layout(gtx layout.Context, a *Application, p Palette, w, h int) {
 	pw, ph := gtx.Dp(unit.Dp(660)), gtx.Dp(unit.Dp(430))
@@ -113,9 +140,7 @@ func (d *ReleaseDialog) Layout(gtx layout.Context, a *Application, p Palette, w,
 		func(gtx layout.Context) layout.Dimensions {
 			children := []layout.FlexChild{
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Body1(a.th, d.Title)
-					lbl.Color = p.Brand
-					return lbl.Layout(gtx)
+					return dialogTitle(gtx, a, p, d.Title, &d.close)
 				}),
 			}
 			for i := range d.Options {
@@ -124,13 +149,6 @@ func (d *ReleaseDialog) Layout(gtx layout.Context, a *Application, p Palette, w,
 					return d.optionCard(gtx, a, p, i)
 				}))
 			}
-			children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return layout.Inset{Top: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					lbl := material.Caption(a.th, "Cancelar")
-					lbl.Color = p.Muted
-					return d.close.Layout(gtx, lbl.Layout)
-				})
-			}))
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
 		})
 	tr.Pop()
