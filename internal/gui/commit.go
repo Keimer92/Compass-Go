@@ -67,21 +67,23 @@ func gitSummary(root string) string {
 	return s
 }
 
-// generateCommitMessage pide a opencode una unica linea de commit.
+// generateCommitMessage pide a opencode un mensaje de commit detallado en ingles.
 func generateCommitMessage(root, model string) (string, error) {
 	summary := gitSummary(root)
 	if strings.TrimSpace(summary) == "" {
 		return "", errors.New("no hay cambios para commitear")
 	}
-	prompt := "Genera UN SOLO mensaje de commit en español, formato Conventional Commits " +
-		"(tipo: descripcion corta), maximo 72 caracteres, sin comillas ni markdown. " +
-		"Responde unicamente con esa linea, sin explicaciones. Cambios:\n" + summary
+	prompt := "Write a detailed git commit message in ENGLISH using Conventional Commits.\n" +
+		"Line 1: type(scope): short imperative summary (max 72 chars).\n" +
+		"Then a blank line and 2-3 bullet points with '- ' explaining WHAT changed and WHY.\n" +
+		"Output ONLY the commit message, no markdown fences, no quotes, no commentary.\n\n" +
+		"Changes:\n" + summary
 
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return "", errors.New("opencode no está en el PATH")
 	}
 	if strings.TrimSpace(model) == "" {
-		model = "opencode/hy4-flash-free"
+		model = "opencode/nemotron-3.5-lightning-free"
 	}
 	cmd := exec.Command("opencode", "run", "-m", model, prompt)
 	windialog.NoWindow(cmd)
@@ -108,27 +110,38 @@ func generateCommitMessage(root, model string) (string, error) {
 		}
 		return "", fmt.Errorf("opencode falló: %v\n%s", err, detail)
 	}
-	return cleanCommitLine(string(out)), nil
+	return cleanCommitMessage(string(out)), nil
 }
 
-// cleanCommitLine se queda con la ultima linea util de la salida de opencode,
-// ignorando las lineas de estado ("> build ...", herramientas, etc.).
-func cleanCommitLine(raw string) string {
-	var candidate string
-	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, ">") ||
-			strings.HasPrefix(line, "✱") || strings.HasPrefix(line, "→") ||
-			strings.HasPrefix(line, "←") || strings.HasPrefix(line, "▸") {
+// cleanCommitMessage conserva el mensaje multilinea y descarta las lineas de
+// estado del CLI ("> build ...", herramientas, bloques de codigo, etc.).
+func cleanCommitMessage(raw string) string {
+	var out []string
+	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
+		line = strings.TrimRight(line, " \t")
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, ">") || strings.HasPrefix(t, "✱") ||
+			strings.HasPrefix(t, "→") || strings.HasPrefix(t, "←") ||
+			strings.HasPrefix(t, "▸") || strings.HasPrefix(t, "```") ||
+			strings.HasPrefix(strings.ToLower(t), "here is") {
 			continue
 		}
-		candidate = line
+		if t == "" {
+			if len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+			continue
+		}
+		out = append(out, strings.Trim(line, "`\"' "))
 	}
-	candidate = strings.Trim(candidate, "`\"' ")
-	if len(candidate) > 100 {
-		candidate = candidate[:100]
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
 	}
-	return candidate
+	msg := strings.Join(out, "\n")
+	if len(msg) > 1200 {
+		msg = msg[:1200]
+	}
+	return msg
 }
 
 // fallbackCommitMessage genera un mensaje util sin agente, a partir del resumen
@@ -142,9 +155,9 @@ func fallbackCommitMessage(root string) string {
 		}
 	}
 	if n == 0 {
-		return "chore: actualizar proyecto"
+		return "chore: update project"
 	}
-	return fmt.Sprintf("chore: actualizar %d archivos", n)
+	return fmt.Sprintf("chore: update %d files", n)
 }
 
 // doCommit stagea todos los cambios y hace el commit con el mensaje dado.

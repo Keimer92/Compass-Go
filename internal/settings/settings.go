@@ -26,7 +26,7 @@ type Settings struct {
 
 // Default devuelve los valores de fabrica.
 func Default() Settings {
-	return Settings{OpenOutputDir: true, CommitModel: "opencode/hy4-flash-free"}
+	return Settings{OpenOutputDir: true, CommitModel: "opencode/nemotron-3.5-lightning-free"}
 }
 
 func configPath() string {
@@ -52,7 +52,8 @@ func Load() Settings {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return Default()
 	}
-	if strings.TrimSpace(s.CommitModel) == "" {
+	if strings.TrimSpace(s.CommitModel) == "" ||
+		s.CommitModel == "opencode/hy4-flash-free" {
 		s.CommitModel = Default().CommitModel
 	}
 	return s

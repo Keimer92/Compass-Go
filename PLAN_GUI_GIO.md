@@ -319,6 +319,19 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
       el foco y con el botón ↻). Verificado: 0 ventanas de consola visibles
       durante 4 s con la GUI abierta.
 
+## Commits detallados y rápidos
+
+- [x] Modelo por defecto: **`opencode/nemotron-3.5-lightning-free`** (el más
+      rápido de los gratuitos con el prompt completo: ~10 s frente a 126 s de
+      `beam-free`). Se puede cambiar en `settings.json` → `commit_model`;
+      hay migración automática del modelo anterior.
+- [x] Prompt en **inglés obligatorio**: Conventional Commit con cabecera
+      `tipo(alcance): resumen` y 2-3 viñetas explicando QUÉ y POR QUÉ.
+- [x] `cleanCommitMessage` conserva el mensaje **multilinea** (antes se
+      descartaban todas las líneas menos la última) y filtra las líneas de
+      estado del CLI (`> build ...`, herramientas, ``` fences...).
+- [x] Mensaje de reserva también en inglés.
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar
