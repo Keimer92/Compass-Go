@@ -288,9 +288,9 @@ func (a *Application) pulse() {
 		case <-ticker.C:
 		}
 		n++
-		// Pedir refresco cada ~2 s. Lo ejecuta el bucle de la UI (que si puede
-		// leer a.explorer sin carreras) y no este goroutine.
-		if n%60 == 0 {
+		// Pedir refresco cada ~10 s (y al recuperar el foco). Cada refresco
+		// lanza un `git status`, asi que conviene no hacerlo cada poco.
+		if n%300 == 0 {
 			select {
 			case a.refreshCh <- struct{}{}:
 			default:

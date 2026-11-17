@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"compass/internal/windialog"
+
 	"gioui.org/layout"
 	"gioui.org/unit"
 	"gioui.org/widget"
@@ -51,6 +53,7 @@ func gitSummary(root string) string {
 		{"status", "--porcelain=v1", "-uall"},
 	} {
 		cmd := exec.Command("git", args...)
+		windialog.NoWindow(cmd)
 		cmd.Dir = root
 		b, err := cmd.Output()
 		if err == nil {
@@ -81,6 +84,7 @@ func generateCommitMessage(root, model string) (string, error) {
 		model = "opencode/hy4-flash-free"
 	}
 	cmd := exec.Command("opencode", "run", "-m", model, prompt)
+	windialog.NoWindow(cmd)
 	cmd.Dir = root
 	done := make(chan struct{})
 	var out []byte
@@ -150,11 +154,13 @@ func doCommit(root, message string) (string, error) {
 		return "", errors.New("el mensaje del commit esta vacio")
 	}
 	add := exec.Command("git", "add", "-A")
+	windialog.NoWindow(add)
 	add.Dir = root
 	if err := add.Run(); err != nil {
 		return "", fmt.Errorf("git add: %w", err)
 	}
 	cmd := exec.Command("git", "commit", "-m", message)
+	windialog.NoWindow(cmd)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"compass/internal/windialog"
+
 	"gioui.org/layout"
 	"gioui.org/op/clip"
 	"gioui.org/unit"
@@ -155,6 +157,7 @@ func (e *Explorer) readChildren(dir string, depth int) []*FileNode {
 
 func gitChanges(root string) []GitChange {
 	cmd := exec.Command("git", "status", "--porcelain=v1", "-uall")
+	windialog.NoWindow(cmd)
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {

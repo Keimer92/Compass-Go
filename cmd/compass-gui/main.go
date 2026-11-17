@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"compass/internal/gui"
 	"compass/internal/project"
@@ -20,12 +19,10 @@ import (
 )
 
 func main() {
-	if f, err := os.OpenFile(`C:\Users\Admin\AppData\Local\Temp\compass-launch.log`,
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-		cwd, _ := os.Getwd()
-		fmt.Fprintf(f, "%s args=%q cwd=%q\n", time.Now().Format("15:04:05"), os.Args[1:], cwd)
-		f.Close()
-	}
+	// Al estar compilado como app GUI no hay consola propia. Las tareas --task
+	// corren dentro de una ConPTY: enganchamos la consola padre para que su
+	// salida siga llegando al terminal embebido.
+	windialog.AttachParentConsole()
 
 	var task, shortTask, path string
 	flag.StringVar(&task, "task", "", "ejecutar una tarea directamente")
@@ -102,10 +99,6 @@ func main() {
 	if workspace.TryForward(dir) {
 		return
 	}
-
-	// La GUI no necesita ver la consola: la ocultamos (sin cerrarla, para que
-	// las tareas hijo sigan escribiendo en la ConPTY).
-	windialog.HideConsole()
 
 	if err := gui.Run(dir); err != nil {
 		var detectErr *project.DetectError

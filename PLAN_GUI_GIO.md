@@ -292,6 +292,33 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
 - [x] Verificado visualmente el diálogo de Release con sus 4 subcards.
 - [x] Reinstalado con `install.bat`.
 
+## Cero consola al arrancar
+
+- [x] El exe se compila con **`-ldflags="-H=windowsgui"`** en `dist.bat`: Windows
+      no crea ninguna consola al lanzarlo (ni desde el menú contextual ni desde
+      el menú Inicio).
+- [x] Para no perder la salida de las tareas, `internal/windialog/console_windows.go`
+      engancha la consola padre (`AttachConsole(ATTACH_PARENT_PROCESS)`) y
+      reapunta `os.Stdin/Stdout/Stderr` **solo en las invocaciones `--task`**,
+      que corren dentro de la ConPTY. Verificado: la salida del task `version`
+      se ve en el terminal embebido y no aparece ninguna cmd.
+- [x] `install.bat` vuelve a compilar+instalar y **borra `dist\`** al terminar.
+- [x] Apagado completo al cerrar la ventana (`shutdown()`: cierra sesiones,
+      para el pulso, libera token IPC y `os.Exit`) — verificado ciclo
+      abrir → cerrar → reabrir.
+- [x] `cmd/compass` (TUI) eliminado; `internal/tui` queda solo como biblioteca.
+
+## Parpadeo de consola periódico
+
+- [x] Causa: el `git status` que el explorador lanza periódicamente creaba una
+      consola efímera porque el exe es una app GUI sin consola propia.
+- [x] `internal/windialog/exec_windows.go` añade `NoWindow()` (CREATE_NO_WINDOW)
+      a **todos** los comandos del GUI: `git status`, `git diff`, `git add`,
+      `git commit` y `opencode run`.
+- [x] El refresco automático baja de ~2 s a ~10 s (sigue también al recuperar
+      el foco y con el botón ↻). Verificado: 0 ventanas de consola visibles
+      durante 4 s con la GUI abierta.
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar

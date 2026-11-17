@@ -72,9 +72,10 @@ if not errorlevel 1 (
 ) else (
     echo [AVISO] go-winres no encontrado: se compila sin icono ni version.
 )
-REM Se mantiene el subsistema de consola: las tareas hijo necesitan stdout
-REM dentro de la ConPTY. La GUI oculta su propia ventana de consola en main.go.
-go build -o "dist\payload\compass-go.exe" ./cmd/compass-gui
+REM App GUI de Windows: no se crea ninguna consola al arrancar. Las tareas
+REM --task enganchan la consola padre en main.go para seguir escribiendo en
+REM la ConPTY del terminal embebido.
+go build -ldflags="-H=windowsgui" -o "dist\payload\compass-go.exe" ./cmd/compass-gui
 if errorlevel 1 (
     echo.
     echo =============================================
