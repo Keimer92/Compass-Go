@@ -34,7 +34,7 @@ genérico).
 
 ```
 Compass Go/
-├─ cmd/compass/main.go        # entrypoint: flags, dispatch global/local
+├─ cmd/compass-gui/main.go    # entrypoint GUI: flag_globales, dispatch, IPC
 ├─ internal/
 │  ├─ tui/                    # TUI con tcell: model, render, submenu, glow (halo hover)
 │  ├─ container/              # contenedor ConPTY: sesión, encode teclado/ratón, render vt10x→tcell
@@ -505,7 +505,7 @@ compass-go.exe -p "D:\Mis Proyectos\Go + Wails v3\GymPro" -t whatsapp
 ## Desarrollo
 
 ```bat
-go build -o dist/payload/compass-go.exe ./cmd/compass   # compilar sin instalar
+go build -o dist/payload/compass-go.exe ./cmd/compass-gui   # compilar sin instalar
 go vet ./...                  # análisis estático
 go test ./...                 # tests unitarios (sin TUI real)
 COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binario real)
@@ -516,7 +516,7 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 - Los tests e2e (`internal/container/e2e_test.go`) están **tras la variable
   de entorno `COMPASS_E2E=1`** porque arrancan `compass-go.exe` de verdad.
 - Recursos de Windows: `go-winres.json` + `assets/icon/*.ico` → `.syso` en
-  `cmd/compass/rsrc` (generados al compilar con `install.bat` / `dist.bat`).
+  `cmd/compass-gui/rsrc` (generados al compilar con `install.bat` / `dist.bat`).
 
 ## Notas de arquitectura / diferencias con el Rust original
 

@@ -249,8 +249,9 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
       `context-gitignore`, además del `--task` de proyecto que ya tenía.
       Así `install.bat` y el menú contextual siguen funcionando con el exe nuevo.
 - [x] `--pick` y `-p` se mantienen.
-- La TUI clásica sigue disponible con `go run ./cmd/compass` como respaldo,
-      pero ya no es el binario que instala el instalador.
+- La TUI clásica (`cmd/compass`) se ha **eliminado**: solo queda esta versión
+      GUI. `internal/tui` se conserva únicamente como biblioteca de tipos
+      (`MenuItem`, `SubItem`) que usan las tareas y la GUI.
 
 ## Arreglos de lanzamiento (menú contextual / consola)
 
@@ -268,6 +269,12 @@ el panel de commit sigue siendo usable con el mensaje de reserva.
       - Verificado: el comando generado termina en ~2,5 s y la GUI queda abierta.
 - [x] `install.bat` ejecutado de nuevo y entrada del menú contextual
       desinstalada/reinstalada para aplicar el comando nuevo.
+- [x] **Causa del fallo al abrir desde el menú contextual**: Explorer pasa la
+      ruta con barra final (`...\Compass Go UX\`); al concatenar `-p "ruta\"`
+      el `\"` escapaba la comilla y el argumento llegía roto. El comando ya no
+      hace quoting manual: usa `ProcessStartInfo.ArgumentList` de .NET (pwsh 7),
+      con `CreateNoWindow` y sin `-Wait`. Verificado con ruta con `\` final:
+      abre la GUI con el proyecto correcto y el PowerShell termina enseguida.
 
 ## Diálogos nativos para submenús (release, Git, entorno)
 

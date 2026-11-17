@@ -26,7 +26,7 @@ func Register(task string, pt project.ProjectType, fn TaskFn) {
 // contexto. Devuelve error si la tarea no aplica o no esta implementada.
 //
 // Las tareas globales (context-menu*, opencode*, cline*, kilo*, antigravity*,
-// vibe-setup) y context-gitignore se resuelven antes en cmd/compass/main.go, así
+// vibe-setup) y context-gitignore se resuelven antes en cmd/compass-gui/main.go, así
 // que aquí sólo llegan tareas de proyecto.
 func RunTaskDirect(ctx *project.ProjectContext, task string) error {
 	if task == "context-gitignore" {

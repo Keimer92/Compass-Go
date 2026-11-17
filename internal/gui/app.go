@@ -87,8 +87,8 @@ type Application struct {
 	pickerRows []widget.Clickable
 }
 
-// Run abre la ventana sobre projectDir y bloquea hasta que se cierra. El CLI
-// headless y la TUI antigua (COMPASS_LEGACY_TUI) no se tocan.
+// Run abre la ventana. projectDir vacio (arranque desde el menu Inicio) abre
+// un espacio de trabajo vacio con un boton para elegir proyecto.
 func Run(projectDir string) error {
 	a := &Application{
 		w:            new(app.Window),

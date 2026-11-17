@@ -36,7 +36,7 @@ Reimplementar Compass en Go conservando el **comportamiento observable**:
 
 ```
 compass/                      (module: compass)
-├─ cmd/compass/main.go        CLI, detección, dispatch, lock
+├─ cmd/compass-gui/main.go    GUI Gio, detección, dispatch, lock/IPC
 ├─ internal/
 │  ├─ project/                ProjectType + detect (context.rs)
 │  ├─ shell/                  pwsh detect, run_ps, spawn window, console title/tab color, PATH registry, artifact (cmd.rs)

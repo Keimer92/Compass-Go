@@ -125,7 +125,7 @@ func compassExe(t *testing.T) string {
 			return
 		}
 		exe := filepath.Join(root, "compass-go.exe")
-		build := exec.Command("go", "build", "-o", exe, "./cmd/compass")
+		build := exec.Command("go", "build", "-o", exe, "./cmd/compass-gui")
 		build.Dir = root
 		if out, err := build.CombinedOutput(); err != nil {
 			compassErr = fmt.Errorf("no se pudo compilar compass-go.exe: %v\n%s", err, out)
