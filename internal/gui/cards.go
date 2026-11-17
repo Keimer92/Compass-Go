@@ -2,8 +2,6 @@ package gui
 
 import (
 	"image"
-	"image/color"
-	"unicode"
 
 	"compass/internal/project"
 	"compass/internal/tui"
@@ -12,7 +10,6 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
-	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -178,21 +175,28 @@ func (g *CardGrid) layoutCard(gtx layout.Context, p Palette, th *material.Theme,
 	paint.Fill(gtx.Ops, accent)
 	stack.Pop()
 
-	// Cuadrado con la inicial de la card (los emoji de Icon() aun no se pintan
-	// en Gio; se retomara cuando se resuelva el fallback de color glyphs).
 	label := item.Label(g.pt)
-	badge := gtx.Dp(unit.Dp(34))
-	br := image.Rect(r.Min.X+gtx.Dp(unit.Dp(16)), r.Min.Y+gtx.Dp(unit.Dp(18)),
-		r.Min.X+gtx.Dp(unit.Dp(16))+badge, r.Min.Y+gtx.Dp(unit.Dp(18))+badge)
-	stack = clip.Rect(br).Push(gtx.Ops)
+	badge := gtx.Dp(unit.Dp(38))
+	br := image.Rect(r.Min.X+gtx.Dp(unit.Dp(16)), r.Min.Y+gtx.Dp(unit.Dp(16)),
+		r.Min.X+gtx.Dp(unit.Dp(16))+badge, r.Min.Y+gtx.Dp(unit.Dp(16))+badge)
+	brad := gtx.Dp(unit.Dp(10))
+	stack = clip.RRect{
+		Rect: br, SE: brad, SW: brad, NE: brad, NW: brad,
+	}.Push(gtx.Ops)
 	paint.Fill(gtx.Ops, dim(accent, 55))
 	stack.Pop()
 
-	badgeGtx := gtx
-	badgeGtx.Constraints = layout.Exact(br.Size())
-	btrans := op.Offset(br.Min).Push(badgeGtx.Ops)
-	drawCentered(badgeGtx, th, string(firstRune(label)), accent)
-	btrans.Pop()
+	// Icono vectorial real de la accion.
+	if ic := iconsByItem[item]; ic != nil {
+		is := gtx.Dp(unit.Dp(22))
+		ig := gtx
+		ig.Constraints = layout.Exact(image.Pt(is, is))
+		it := op.Offset(image.Pt(
+			br.Min.X+(badge-is)/2, br.Min.Y+(badge-is)/2,
+		)).Push(ig.Ops)
+		ic.Layout(ig, accent)
+		it.Pop()
+	}
 
 	// Texto: titulo + descripcion.
 	txtGtx := gtx
@@ -230,19 +234,3 @@ var themeCardKeys = [18]string{
 	"clean", "debug", "sign", "version", "git", "whatsapp", "terminal", "environment",
 }
 
-func firstRune(s string) string {
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return string(r)
-		}
-	}
-	return "?"
-}
-
-// drawCentered dibuja un texto centrado en las constraints actuales.
-func drawCentered(gtx layout.Context, th *material.Theme, txt string, col color.NRGBA) {
-	lbl := material.Body1(th, txt)
-	lbl.Color = col
-	lbl.Alignment = text.Middle
-	lbl.Layout(gtx)
-}

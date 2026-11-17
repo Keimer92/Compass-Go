@@ -62,9 +62,16 @@ type Application struct {
 	optionCheck  widget.Clickable
 	optionsClose widget.Clickable
 	optionsBtn   widget.Clickable
+	commit       CommitDraft
+	rightTab     int // 0 = explorador, 1 = commit
+	explorerTab  widget.Clickable
+	commitTab    widget.Clickable
+	commitMsgCh  chan commitResult
+	commitDoneCh chan commitResult
 	explorer     *Explorer
 	explorers    map[string]*Explorer
 	ipcCh        chan string
+	refreshCh    chan struct{}
 	closeIPC     func()
 
 	inputTag   byte
@@ -92,6 +99,9 @@ func Run(projectDir string) error {
 		panesByProj:  make(map[string][]*Pane),
 		activeByProj: make(map[string]int),
 		ipcCh:        make(chan string, 16),
+		refreshCh:    make(chan struct{}, 1),
+		commitMsgCh:  make(chan commitResult, 1),
+		commitDoneCh: make(chan commitResult, 1),
 		activePane:   -1,
 		termVisible:  true,
 		explorers:    make(map[string]*Explorer),
@@ -264,10 +274,12 @@ func (a *Application) pulse() {
 	n := 0
 	for range ticker.C {
 		n++
-		// El estado de Git y el arbol se refrescan cada ~5 s en segundo plano.
-		if n%150 == 0 {
-			if ex := a.explorer; ex != nil {
-				go ex.Refresh()
+		// Pedir refresco cada ~2 s. Lo ejecuta el bucle de la UI (que si puede
+		// leer a.explorer sin carreras) y no este goroutine.
+		if n%60 == 0 {
+			select {
+			case a.refreshCh <- struct{}{}:
+			default:
 			}
 		}
 		a.w.Invalidate()
@@ -283,7 +295,50 @@ func (a *Application) loop() {
 				p.Session.Close()
 			}
 			return
+		case app.ConfigEvent:
+			// Al volver a la ventana, refrescar Git al instante.
+			if e.Config.Focused {
+				select {
+				case a.refreshCh <- struct{}{}:
+				default:
+				}
+			}
 		case app.FrameEvent:
+			// Refresco periodico del explorador (Git + arbol).
+			select {
+			case <-a.refreshCh:
+				if ex := a.explorer; ex != nil {
+					go ex.Refresh()
+				}
+			default:
+			}
+			// Resultado del mensaje generado por OpenCode.
+			select {
+			case res := <-a.commitMsgCh:
+				a.commit.Loading = false
+				if res.err != nil {
+					a.commit.Error = res.err.Error()
+					a.commit.Editor.SetText(fallbackCommitMessage(a.ctx.ScriptDir))
+				} else {
+					a.commit.Error = ""
+					a.commit.Editor.SetText(res.message)
+				}
+			default:
+			}
+			// Resultado del commit.
+			select {
+			case res := <-a.commitDoneCh:
+				a.commit.Loading = false
+				if res.err != nil {
+					a.commit.Error = res.err.Error()
+				} else {
+					a.rightTab = 0
+					if ex := a.explorer; ex != nil {
+						go ex.Refresh()
+					}
+				}
+			default:
+			}
 			// Carpetas entregadas por el menu contextual (otra instancia).
 		ipcLoop:
 			for {
@@ -573,6 +628,45 @@ func (a *Application) layout(gtx layout.Context) {
 	if a.optionsClose.Clicked(gtx) {
 		a.optionsOpen = false
 	}
+	if a.explorerTab.Clicked(gtx) {
+		a.rightTab = 0
+	}
+	if a.commitTab.Clicked(gtx) {
+		a.rightTab = 1
+		if !a.commit.Loading {
+			a.commit.Loading = true
+			a.commit.Error = ""
+			root := a.ctx.ScriptDir
+			go func() {
+				msg, err := generateCommitMessage(root)
+				a.commitMsgCh <- commitResult{message: msg, err: err}
+			}()
+		}
+	}
+	if a.rightTab == 1 {
+		_, _ = a.commit.Editor.Update(gtx)
+		if a.commit.genBtn.Clicked(gtx) && !a.commit.Loading {
+			a.commit.Loading = true
+			a.commit.Error = ""
+			root := a.ctx.ScriptDir
+			go func() {
+				msg, err := generateCommitMessage(root)
+				a.commitMsgCh <- commitResult{message: msg, err: err}
+			}()
+		}
+		if a.commit.commitBtn.Clicked(gtx) {
+			msg := a.commit.Editor.Text()
+			root := a.ctx.ScriptDir
+			a.commit.Loading = true
+			go func() {
+				_, err := doCommit(root, msg)
+				a.commitDoneCh <- commitResult{err: err}
+			}()
+		}
+		if a.commit.cancelBtn.Clicked(gtx) {
+			a.rightTab = 0
+		}
+	}
 	if a.themeBtn.Clicked(gtx) {
 		a.togglePicker()
 	}
@@ -680,13 +774,33 @@ func (a *Application) layout(gtx layout.Context) {
 	}
 	ct.Pop()
 
-	// Panel derecho: arbol de archivos + cambios de Git.
+	// Panel derecho con pestañas: Explorador | Commit.
 	eg := gtx
 	eg.Constraints = layout.Exact(image.Pt(rightW, h-headH))
+	eg.Constraints.Min = image.Pt(0, 0) // las pastillas no deben heredar la altura minima
 	et := op.Offset(image.Pt(w-rightW, headH)).Push(eg.Ops)
-	if a.explorer != nil {
-		a.explorer.Layout(eg, *p, a.th)
+	tabH := gtx.Dp(unit.Dp(44))
+	paintRect(eg, 0, 0, rightW, tabH, blend(p.Background, p.Border, 0.35))
+	layout.Inset{Left: unit.Dp(10), Top: unit.Dp(6)}.Layout(eg, func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return a.pillButton(gtx, p, "Explorador", &a.explorerTab, a.rightTab == 0)
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return a.pillButton(gtx, p, "Commit", &a.commitTab, a.rightTab == 1)
+			}),
+		)
+	})
+
+	ec := eg
+	ec.Constraints = layout.Exact(image.Pt(rightW, h-headH-tabH))
+	ect := op.Offset(image.Pt(0, tabH)).Push(ec.Ops)
+	if a.rightTab == 1 {
+		a.layoutCommitPanel(ec)
+	} else if a.explorer != nil {
+		a.explorer.Layout(ec, *p, a.th)
 	}
+	ect.Pop()
 	et.Pop()
 
 	if a.picker {
@@ -829,11 +943,11 @@ func (a *Application) layoutHeader(gtx layout.Context, p *Palette, sideW, headH,
 	layout.Inset{Left: unit.Dp(16), Top: unit.Dp(9)}.Layout(hg, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return a.tabButton(gtx, p, "Inicio", &a.homeTab,
+				return a.pillButton(gtx, p, "Inicio", &a.homeTab,
 					a.grid.tab == tui.TabDevMnt)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return a.tabButton(gtx, p, "Config", &a.cfgTab,
+				return a.pillButton(gtx, p, "Config", &a.cfgTab,
 					a.grid.tab == tui.TabCfg)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -841,18 +955,10 @@ func (a *Application) layoutHeader(gtx layout.Context, p *Palette, sideW, headH,
 				if a.termVisible && len(a.panes) > 0 {
 					txt = "Terminal ▴"
 				}
-				lbl := material.Caption(a.th, txt)
-				lbl.Color = p.Muted
-				return layout.Inset{Left: unit.Dp(18)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					return a.termToggle.Layout(gtx, lbl.Layout)
-				})
+				return a.pillButton(gtx, p, txt, &a.termToggle, a.termVisible)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				lbl := material.Caption(a.th, "Opciones")
-				lbl.Color = p.Muted
-				return layout.Inset{Left: unit.Dp(18)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					return a.optionsBtn.Layout(gtx, lbl.Layout)
-				})
+				return a.pillButton(gtx, p, "Opciones", &a.optionsBtn, a.optionsOpen)
 			}),
 		)
 	})
@@ -871,23 +977,43 @@ func (a *Application) layoutHeader(gtx layout.Context, p *Palette, sideW, headH,
 	tr.Pop()
 }
 
-func (a *Application) tabButton(gtx layout.Context, p *Palette, name string,
+// pillButton dibuja un boton/pestana con forma de pastilla redondeada.
+func (a *Application) pillButton(gtx layout.Context, p *Palette, name string,
 	btn *widget.Clickable, active bool) layout.Dimensions {
 
-	lbl := material.Body2(a.th, name)
-	if active {
-		lbl.Color = p.Brand
-	} else {
-		lbl.Color = p.Muted
-	}
-	dims := btn.Layout(gtx, lbl.Layout)
-	if active {
-		bar := image.Rect(0, dims.Size.Y-2, dims.Size.X, dims.Size.Y)
-		s := clip.Rect(bar).Push(gtx.Ops)
-		paint.Fill(gtx.Ops, p.Brand)
-		s.Pop()
-	}
-	return dims
+	return layout.Inset{Right: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return btn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			lbl := material.Body2(a.th, name)
+			bg := blend(p.Background, p.Border, 0.22)
+			if active {
+				bg = blend(p.Background, p.Accent, 0.30)
+				lbl.Color = p.Text
+			} else {
+				lbl.Color = p.Muted
+				if btn.Hovered() {
+					bg = blend(p.Background, p.Accent, 0.16)
+				}
+			}
+
+			// Capturamos el texto para poder pintar el fondo debajo.
+			m := op.Record(gtx.Ops)
+			dims := layout.Inset{
+				Left: unit.Dp(14), Right: unit.Dp(14),
+				Top: unit.Dp(6), Bottom: unit.Dp(6),
+			}.Layout(gtx, lbl.Layout)
+			call := m.Stop()
+
+			rad := gtx.Dp(unit.Dp(9))
+			stack := clip.RRect{
+				Rect: image.Rectangle{Max: dims.Size},
+				SE: rad, SW: rad, NE: rad, NW: rad,
+			}.Push(gtx.Ops)
+			paint.Fill(gtx.Ops, bg)
+			stack.Pop()
+			call.Add(gtx.Ops)
+			return dims
+		})
+	})
 }
 
 func (a *Application) layoutPicker(gtx layout.Context, w, h int) {

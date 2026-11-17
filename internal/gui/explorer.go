@@ -316,9 +316,9 @@ func changeRow(gtx layout.Context, th *material.Theme, p Palette,
 }
 
 func headerRow(gtx layout.Context, th *material.Theme, p Palette,
-	title string, btn *widget.Clickable) layout.Dimensions {
+	title string, refreshBtn *widget.Clickable) layout.Dimensions {
 
-	return layout.Inset{Left: unit.Dp(12), Top: unit.Dp(12), Bottom: unit.Dp(6)}.Layout(gtx,
+	return layout.Inset{Left: unit.Dp(12), Top: unit.Dp(12), Bottom: unit.Dp(8), Right: unit.Dp(10)}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -332,7 +332,7 @@ func headerRow(gtx layout.Context, th *material.Theme, p Palette,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					lbl := material.Caption(th, "↻")
 					lbl.Color = p.Muted
-					return btn.Layout(gtx, lbl.Layout)
+					return refreshBtn.Layout(gtx, lbl.Layout)
 				}),
 			)
 		})

@@ -189,12 +189,44 @@ derecho con árbol de archivos + cambios Git**.
       actualización automática cada ~5 s.
 - [x] El panel de terminal sigue abajo, sin solapar el explorador derecho.
 
+## Mejoras de interfaz añadidas después
+
+- [x] **Iconos reales por card**: `internal/gui/icons.go` mapea los 18
+      `MenuItem` a iconos vectoriales Material Design (`widget.Icon`), en vez
+      de la inicial del titulo. Cada card tiene ademas hover que aclara su
+      fondo con el color de acento.
+- [x] **Pestañas superiores separadas**: `pillButton` dibuja cada pestaña como
+      una pastilla redondeada (Inicio, Config, Terminal, Opciones) con hover y
+      estado activo.
+- [x] **Refresco dinamico del explorador Git**: cada ~2 s y al recuperar el
+      foco de la ventana (`ConfigEvent.Focused`), ademas del boton manual ↻.
+      El refresco se pide por canal al bucle de la UI para evitar carreras.
+- [x] **Panel derecho con pestañas**: "Explorador" y "Commit", con el mismo
+      estilo de pastillas redondeadas que la cabecera central.
+- [x] **Commit asistido por OpenCode** (`internal/gui/commit.go`), en la
+      pestaña Commit del panel derecho:
+      - Mensaje editable, boton "Generar con OpenCode" (usa `opencode run`
+        con un resumen de `git diff`/`git status`) y "Commit"
+        (`git add -A` + `git commit -m`).
+      - Si opencode falla se muestra el error real y se rellena un mensaje de
+        reserva (`chore: actualizar N archivos`) que el usuario puede editar.
+      - Solo se intenta opencode (no otros agentes), segun pidió el usuario.
+
+### Incidencia detectada con opencode
+
+`opencode v2.2.6` esta instalado en `C:\Users\Admin\AppData\Roaming\npm`, pero
+`opencode run` falla con **HTTP 401: invalid auth token** (proveedor de
+`deepseek-v4.1-flash`). `opencode auth list` solo muestra "Ollama Cloud".
+No es un fallo de Compass: hay que reautenticar con `opencode auth login`
+(o cambiar el modelo con `opencode run -m <proveedor/modelo>`). Mientras tanto
+el panel de commit sigue siendo usable con el mensaje de reserva.
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar
 multi-proyecto, panel de terminal estilo IDE, pestañas por tarea, scrollback,
-selección/copiar, 20 temas, opciones, avisos y explorador Git a la derecha.
-La TUI clásica de tcell sigue disponible como respaldo.
+selección/copiar, 20 temas, opciones, avisos, explorador Git dinamico y commit
+asistido por OpenCode. La TUI clásica de tcell sigue disponible como respaldo.
 
 Notas técnicas del spike:
 - Gio v0.10.3 usa la API nueva: `text.Shaper` stateful (`LayoutString` +
