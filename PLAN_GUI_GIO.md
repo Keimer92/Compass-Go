@@ -221,6 +221,24 @@ No es un fallo de Compass: hay que reautenticar con `opencode auth login`
 (o cambiar el modelo con `opencode run -m <proveedor/modelo>`). Mientras tanto
 el panel de commit sigue siendo usable con el mensaje de reserva.
 
+## Últimos ajustes (pestañas derechas, modelo free y subcards nativas)
+
+- [x] Panel derecho con pestañas **Explorador | Commit** (estilo pastillas como
+      la cabecera central).
+- [x] **Modelo gratuito para commits**: `opencode run -m opencode/hy4-flash-free`
+      (verifyado en esta máquina). Se puede cambiar en
+      `%LOCALAPPDATA%\compass\settings.json` → `commit_model`.
+      - Los modelos `ollama-cloud/*` fallan por falta de créditos; el proveedor
+        `opencode/*-free` funciona sin auth adicional.
+- [x] **Subcards de release nativas**: al pulsar "Win Release" o los builds
+      Android se abre un diálogo con las 4 opciones como cards clicables, en vez
+      del submenú de tcell dibujado en la ConPTY. Se añadieron tareas
+      `windows-release-{x64,x86,arm64,all}` y `android-release-{arm64,armv7,universal,all}`
+      en `internal/tasks/release.go` (`ReleaseWindowsArch`/`ReleaseAndroidArch`).
+- [x] Resize de la ConPTY propagado en cada frame y barra de pestañas del
+      terminal reducida a 26 dp para evitar que el TUI hijo pierda filas
+      superiores.
+
 ## Estado del proyecto
 
 Compass Go dispone de GUI nativa (Gio) con barra Windows maximizada, sidebar

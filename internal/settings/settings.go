@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Settings son las opciones globales del usuario.
@@ -17,11 +18,15 @@ type Settings struct {
 	// OpenOutputDir abre el Explorer en la carpeta/artefacto de salida al
 	// terminar un build. Por defecto si (comportamiento historico).
 	OpenOutputDir bool `json:"open_output_dir"`
+
+	// CommitModel es el modelo de opencode usado para generar mensajes de
+	// commit. Por defecto un modelo gratuito.
+	CommitModel string `json:"commit_model"`
 }
 
 // Default devuelve los valores de fabrica.
 func Default() Settings {
-	return Settings{OpenOutputDir: true}
+	return Settings{OpenOutputDir: true, CommitModel: "opencode/hy4-flash-free"}
 }
 
 func configPath() string {
@@ -46,6 +51,9 @@ func Load() Settings {
 	}
 	if err := json.Unmarshal(data, &s); err != nil {
 		return Default()
+	}
+	if strings.TrimSpace(s.CommitModel) == "" {
+		s.CommitModel = Default().CommitModel
 	}
 	return s
 }

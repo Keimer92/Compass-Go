@@ -65,7 +65,7 @@ func gitSummary(root string) string {
 }
 
 // generateCommitMessage pide a opencode una unica linea de commit.
-func generateCommitMessage(root string) (string, error) {
+func generateCommitMessage(root, model string) (string, error) {
 	summary := gitSummary(root)
 	if strings.TrimSpace(summary) == "" {
 		return "", errors.New("no hay cambios para commitear")
@@ -77,7 +77,10 @@ func generateCommitMessage(root string) (string, error) {
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return "", errors.New("opencode no está en el PATH")
 	}
-	cmd := exec.Command("opencode", "run", prompt)
+	if strings.TrimSpace(model) == "" {
+		model = "opencode/hy4-flash-free"
+	}
+	cmd := exec.Command("opencode", "run", "-m", model, prompt)
 	cmd.Dir = root
 	done := make(chan struct{})
 	var out []byte

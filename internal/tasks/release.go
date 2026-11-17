@@ -20,6 +20,32 @@ func init() {
 	for _, pt := range allTypes() {
 		Register("windows-release", pt, ReleaseWindows)
 		Register("android-release", pt, ReleaseAndroid)
+		// Variantes por arquitectura: la GUI las ofrece como subcards clicables
+		// en vez de dibujar el submenú de tcell dentro de la ConPTY.
+		Register("windows-release-x64", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseWindowsArch(ctx, archKeyX64)
+		})
+		Register("windows-release-x86", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseWindowsArch(ctx, archKeyX86)
+		})
+		Register("windows-release-arm64", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseWindowsArch(ctx, archKeyArm64)
+		})
+		Register("windows-release-all", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseWindowsArch(ctx, archKeyAll)
+		})
+		Register("android-release-arm64", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseAndroidArch(ctx, archKeyArm64)
+		})
+		Register("android-release-armv7", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseAndroidArch(ctx, archKeyArmv7)
+		})
+		Register("android-release-universal", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseAndroidArch(ctx, archKeyUniversal)
+		})
+		Register("android-release-all", pt, func(ctx *project.ProjectContext) error {
+			return ReleaseAndroidArch(ctx, archKeyAll)
+		})
 	}
 }
 
@@ -212,6 +238,45 @@ func ReleaseAndroid(ctx *project.ProjectContext) error {
 
 	return runReleaseMenu(ctx, releaseTitleAndroid, androidEntries(ctx), reveal,
 		func(key string) ([]string, error) { return androidArtifacts(ctx, key) })
+}
+
+// ReleaseWindowsArch ejecuta una arquitectura concreta sin mostrar el submenú
+// de tcell. Lo usa la GUI para ofrecer las subcards como botones nativos.
+func ReleaseWindowsArch(ctx *project.ProjectContext, arch string) error {
+	reveal := revealLastArtifact
+	if ctx.ProjectType == project.TypeGoWails {
+		reveal = revealBinFolder
+	}
+	artifacts, err := windowsArtifacts(ctx, arch)
+	if err != nil {
+		sound.Failure()
+		fmt.Println()
+		fmt.Println(err)
+		fmt.Println()
+		ui.Pause()
+		return nil
+	}
+	finishRelease(ctx, artifacts, reveal)
+	return nil
+}
+
+// ReleaseAndroidArch ejecuta una variante de Android sin el submenú de tcell.
+func ReleaseAndroidArch(ctx *project.ProjectContext, arch string) error {
+	reveal := revealLastArtifact
+	if ctx.ProjectType == project.TypeGoWails {
+		reveal = revealBinFolder
+	}
+	artifacts, err := androidArtifacts(ctx, arch)
+	if err != nil {
+		sound.Failure()
+		fmt.Println()
+		fmt.Println(err)
+		fmt.Println()
+		ui.Pause()
+		return nil
+	}
+	finishRelease(ctx, artifacts, reveal)
+	return nil
 }
 
 // runReleaseMenu es el bucle canónico de los submenús: ejecuta la acción con la

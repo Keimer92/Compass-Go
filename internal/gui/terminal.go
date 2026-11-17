@@ -172,12 +172,13 @@ func (t *Terminal) Layout(gtx layout.Context, p *Pane, pal *Palette) layout.Dime
 	if rows < 1 {
 		rows = 1
 	}
-	if cols != t.cols || rows != t.rows {
-		t.cols, t.rows = cols, rows
-		p.Session.Resize(cols, rows)
-		if p.Back != nil {
-			p.Back.Resize(cols, rows)
-		}
+	// Llamar siempre (Session.Resize ya descarta tamaños iguales): así la
+	// ConPTY acaba convergiendo aunque el primer frame llegue tarde y el TUI
+	// hijo no pierde filas superiores bajo la barra de pestañas.
+	t.cols, t.rows = cols, rows
+	p.Session.Resize(cols, rows)
+	if p.Back != nil {
+		p.Back.Resize(cols, rows)
 	}
 
 	lines, curX, curY, curVisible := t.snapshot(p, cols, rows)

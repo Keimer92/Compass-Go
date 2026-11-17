@@ -63,6 +63,7 @@ type Application struct {
 	optionsClose widget.Clickable
 	optionsBtn   widget.Clickable
 	commit       CommitDraft
+	release      *ReleaseDialog
 	rightTab     int // 0 = explorador, 1 = commit
 	explorerTab  widget.Clickable
 	commitTab    widget.Clickable
@@ -479,6 +480,13 @@ func (a *Application) onKey(e key.Event) {
 		return
 	}
 
+	if a.release != nil && a.release.Open {
+		if e.Name == key.NameEscape {
+			a.release.Open = false
+		}
+		return
+	}
+
 	if a.picker {
 		switch e.Name {
 		case key.NameUpArrow:
@@ -527,19 +535,35 @@ func (a *Application) onKey(e key.Event) {
 	}
 }
 
-// openTask abre la tarea de una card en una pestana ConPTY.
+// openTask abre la tarea de una card en una pestana ConPTY. Los releases
+// abren un dialogo nativo con sus subcards en vez del submenu de tcell.
 func (a *Application) openTask(item tui.MenuItem) {
+	switch item {
+	case tui.WindowsBuild:
+		if a.ctx.ProjectType == project.TypeGo || a.ctx.ProjectType == project.TypeGoWails {
+			a.release = newReleaseDialog("Release · Windows", windowsReleaseOptions())
+			return
+		}
+	case tui.AndroidBuildArm64, tui.AndroidBuildAll:
+		a.release = newReleaseDialog("Release · Android", androidReleaseOptions())
+		return
+	}
 	task := taskFor(item, a.ctx.ProjectType)
 	if task == "" {
 		return
 	}
+	title := item.Label(a.ctx.ProjectType)
+	a.openTaskByName(task, title)
+}
+
+// openTaskByName lanza una tarea concreta en una pestana ConPTY.
+func (a *Application) openTaskByName(task, title string) {
 	exe, err := os.Executable()
 	if err != nil {
 		return
 	}
 	script := container.PaneScript(exe, task, a.ctx.ScriptDir)
-	label := item.Label(a.ctx.ProjectType)
-	p, err := a.newPane(label, task, script, a.ctx.ScriptDir)
+	p, err := a.newPane(title, task, script, a.ctx.ScriptDir)
 	if err != nil {
 		return
 	}
@@ -606,6 +630,21 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 }
 
 func (a *Application) layout(gtx layout.Context) {
+	// Subcards del dialogo de release (nativas, clicables).
+	if a.release != nil && a.release.Open {
+		for i := range a.release.Options {
+			if a.release.clicks[i].Clicked(gtx) {
+				opt := a.release.Options[i]
+				a.release.Open = false
+				a.openTaskByName(opt.Task, opt.Label)
+				break
+			}
+		}
+		if a.release.close.Clicked(gtx) {
+			a.release.Open = false
+		}
+	}
+
 	// Botones del raton (la GUI se puede usar sin atajos de teclado).
 	for len(a.projBtns) < len(a.ws.Projects) {
 		a.projBtns = append(a.projBtns, widget.Clickable{})
@@ -638,7 +677,7 @@ func (a *Application) layout(gtx layout.Context) {
 			a.commit.Error = ""
 			root := a.ctx.ScriptDir
 			go func() {
-				msg, err := generateCommitMessage(root)
+				msg, err := generateCommitMessage(root, a.settings.CommitModel)
 				a.commitMsgCh <- commitResult{message: msg, err: err}
 			}()
 		}
@@ -650,7 +689,7 @@ func (a *Application) layout(gtx layout.Context) {
 			a.commit.Error = ""
 			root := a.ctx.ScriptDir
 			go func() {
-				msg, err := generateCommitMessage(root)
+				msg, err := generateCommitMessage(root, a.settings.CommitModel)
 				a.commitMsgCh <- commitResult{message: msg, err: err}
 			}()
 		}
@@ -753,7 +792,7 @@ func (a *Application) layout(gtx layout.Context) {
 		pg := cg
 		pg.Constraints = layout.Exact(image.Pt(contentW, panelH))
 		pt := op.Offset(image.Pt(0, gridH)).Push(pg.Ops)
-		barH := gtx.Dp(unit.Dp(30))
+		barH := gtx.Dp(unit.Dp(26))
 		a.layoutTabBar(pg, *p, contentW, barH)
 
 		tg := pg
@@ -808,6 +847,9 @@ func (a *Application) layout(gtx layout.Context) {
 	}
 	if a.optionsOpen {
 		a.layoutOptions(gtx, w, h)
+	}
+	if a.release != nil && a.release.Open {
+		a.release.Layout(gtx, a, *p, w, h)
 	}
 }
 
