@@ -1,6 +1,6 @@
-// Command compass-gui es la GUI nativa (Gio) de Compass Go. Durante la fase 1
-// convive con cmd/compass (la TUI de tcell), que sigue siendo la version
-// estable; se lanza con -p o, sin argumentos, sobre el directorio actual.
+// Command compass-gui es la GUI nativa (Gio) de Compass Go. Es el binario que
+// debe sustituir a cmd/compass: abre la ventana con -p y, con --task, ejecuta
+// tareas (globales o de proyecto) dentro de una ConPTY.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 
 	"compass/internal/gui"
 	"compass/internal/project"
+	"compass/internal/prompts"
 	"compass/internal/tasks"
 	"compass/internal/workspace"
 )
@@ -20,15 +21,38 @@ func main() {
 	flag.StringVar(&shortTask, "t", "", "alias de --task")
 	flag.StringVar(&path, "path", "", "ruta del proyecto")
 	flag.StringVar(&path, "p", "", "alias de --path")
+	pick := flag.Bool("pick", false, "elegir la carpeta con un navegador")
 	flag.Parse()
 
+	// Las tareas globales no necesitan proyecto (instalador, menu contextual,
+	// vibe coding...). Se despachan antes de resolver la carpeta.
+	t := task
+	if t == "" {
+		t = shortTask
+	}
+	if t != "" && tasks.IsGlobalTask(t) {
+		if err := tasks.RunGlobalTask(t); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	dir := path
-	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
+	if dir == "" || *pick {
+		cwd, err := os.Getwd()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
+		}
+		if *pick {
+			chosen, err := prompts.PickProjectRoot(cwd)
+			if err != nil || chosen == "" {
+				return
+			}
+			dir = chosen
+		} else {
+			dir = cwd
 		}
 	}
 	if err := os.Chdir(dir); err != nil {
@@ -36,11 +60,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Las cards abren el propio binario con --task dentro de una ConPTY.
-	t := task
-	if t == "" {
-		t = shortTask
+	if t == "context-gitignore" {
+		if err := tasks.AddContextGitignoreFromDir(dir); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
+
+	// Las cards abren el propio binario con --task dentro de una ConPTY.
 	if t != "" {
 		ctx, err := project.Detect()
 		if err != nil {
@@ -54,8 +82,8 @@ func main() {
 		return
 	}
 
-	// Si ya hay una ventana abierta, le pasamos la carpeta y salimos: asi el
-	// menu contextual apila proyectos en la misma ventana.
+	// Si ya hay una ventana abierta, le pasamos la carpeta y salimos: así el
+	// menú contextual apila proyectos en la misma ventana.
 	if workspace.TryForward(dir) {
 		return
 	}
