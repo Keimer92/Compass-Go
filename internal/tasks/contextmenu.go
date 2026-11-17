@@ -218,13 +218,11 @@ Remove-Item -Path 'HKCU:\Software\Classes\Directory\shell\%s' -Recurse -Force -E
 }
 
 func compassContextCommand(shellName, exe, placeholder string) string {
-	// ArgumentList de .NET (pwsh 7) hace el quoting bien incluso si Explorer
-	// pasa la ruta con barra final: `-p "C:\...\"` romperia la comilla.
-	// CreateNoWindow evita la ventana cmd; no se usa -Wait para que el
-	// PowerShell del menu termine enseguida.
-	script := fmt.Sprintf(`$e = %s; $p = %s; try { $psi = [System.Diagnostics.ProcessStartInfo]::new(); $psi.FileName = $e; $psi.ArgumentList.Add('-p'); $psi.ArgumentList.Add($p); $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; [System.Diagnostics.Process]::Start($psi) | Out-Null } catch { Start-Process -FilePath $e -ArgumentList @('-p', $p) -WindowStyle Hidden | Out-Null }`,
-		shell.PsQuote(exe), shell.PsQuote(placeholder))
-	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -Command %s`, shellName, shell.PsQuote(script))
+	// Llamada directa al exe, sin PowerShell de por medio: el arranque desde
+	// Explorer no depende de quoting de PS ni de su entorno. La GUI oculta su
+	// propia consola en main.go, asi que solo se ve un parpadeo breve.
+	_ = shellName
+	return fmt.Sprintf(`"%s" -p "%s"`, exe, placeholder)
 }
 
 func gitignoreContextCommand(shellName, exe, placeholder string) string {

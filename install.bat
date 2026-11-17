@@ -11,9 +11,9 @@ REM ---------------------------------------------------------------
 REM  Flags:  install.bat --force   rehace tambien la cascada Vibe Coding
 REM          install.bat --vibe    vuelve a configurar Vibe Coding
 REM
-REM  Flujo: dist.bat compila y genera dist\CompassGo-Setup.exe, y el
-REM  instalador NSIS hace la instalacion real (binario, iconos, corekits,
-REM  PATH, menu contextual, accesos directos y anclaje a la barra).
+REM  Flujo: dist.bat compila y genera dist\CompassGo-Setup.exe, el instalador
+REM  NSIS hace la instalacion real y al terminar se borra dist\ (solo dist.bat
+REM  vuelve a crearlo).
 REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
@@ -69,7 +69,6 @@ echo.
 REM ---------------------------------------------------------------
 REM  1. Compilar y empaquetar con dist.bat
 REM ---------------------------------------------------------------
-REM Se borra el Setup anterior: si dist.bat falla, no se instala uno viejo.
 if exist "%SETUP%" del /f /q "%SETUP%" >nul 2>nul
 echo [INFO] Compilando y generando el instalador (dist.bat --fast)...
 call "%~dp0dist.bat" --fast
@@ -142,6 +141,11 @@ echo.
 
 REM El icono de las entradas nuevas solo aparece al refrescar la cache.
 ie4uinit.exe -show >nul 2>nul
+
+REM dist\ es temporal: solo lo crea dist.bat. Se borra tras instalar.
+if exist "%CD%\dist" rmdir /s /q "%CD%\dist" >nul 2>nul
+echo [OK] dist\ eliminado (generalo con dist.bat cuando lo necesites).
+echo.
 
 echo =============================================
 echo   [OK] Instalacion completada

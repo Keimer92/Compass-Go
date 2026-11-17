@@ -8,6 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"compass/internal/gui"
 	"compass/internal/project"
@@ -18,6 +20,13 @@ import (
 )
 
 func main() {
+	if f, err := os.OpenFile(`C:\Users\Admin\AppData\Local\Temp\compass-launch.log`,
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		cwd, _ := os.Getwd()
+		fmt.Fprintf(f, "%s args=%q cwd=%q\n", time.Now().Format("15:04:05"), os.Args[1:], cwd)
+		f.Close()
+	}
+
 	var task, shortTask, path string
 	flag.StringVar(&task, "task", "", "ejecutar una tarea directamente")
 	flag.StringVar(&shortTask, "t", "", "alias de --task")
@@ -40,6 +49,10 @@ func main() {
 		return
 	}
 
+	// Explorer/pwsh pueden dejar comillas literal en la ruta (p.ej.
+	// `C:\proy\"` cuando %1 termina en backslash). Las quitamos antes de
+	// usarla; un backslash final normal lo acepta os.Chdir.
+	path = strings.Trim(strings.TrimSpace(path), `"`)
 	dir := path
 	if dir == "" || *pick {
 		cwd, err := os.Getwd()

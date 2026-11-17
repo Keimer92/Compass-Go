@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"compass/internal/container"
@@ -73,7 +74,9 @@ type Application struct {
 	explorers    map[string]*Explorer
 	ipcCh        chan string
 	refreshCh    chan struct{}
+	done         chan struct{}
 	closeIPC     func()
+	stopOnce     sync.Once
 
 	inputTag   byte
 	termX      int
@@ -101,6 +104,7 @@ func Run(projectDir string) error {
 		activeByProj: make(map[string]int),
 		ipcCh:        make(chan string, 16),
 		refreshCh:    make(chan struct{}, 1),
+		done:         make(chan struct{}),
 		commitMsgCh:  make(chan commitResult, 1),
 		commitDoneCh: make(chan commitResult, 1),
 		activePane:   -1,
@@ -277,7 +281,12 @@ func (a *Application) pulse() {
 	ticker := time.NewTicker(frame)
 	defer ticker.Stop()
 	n := 0
-	for range ticker.C {
+	for {
+		select {
+		case <-a.done:
+			return
+		case <-ticker.C:
+		}
 		n++
 		// Pedir refresco cada ~2 s. Lo ejecuta el bucle de la UI (que si puede
 		// leer a.explorer sin carreras) y no este goroutine.
@@ -291,6 +300,18 @@ func (a *Application) pulse() {
 	}
 }
 
+// shutdown libera el token IPC, para el pulso y termina el proceso. Se llama
+// al cerrar la ventana, no solo al volver de app.Main().
+func (a *Application) shutdown() {
+	a.stopOnce.Do(func() {
+		close(a.done)
+		if a.closeIPC != nil {
+			a.closeIPC()
+		}
+		os.Exit(0)
+	})
+}
+
 func (a *Application) loop() {
 	for {
 		e := a.w.Event()
@@ -299,6 +320,10 @@ func (a *Application) loop() {
 			for _, p := range a.panes {
 				p.Session.Close()
 			}
+			// Cerrar el listener IPC y salir del proceso: si solo cerramos la
+			// ventana, la consola y el listener siguen vivos y el proximo
+			// arranque se reenvia a esta instancia invisible.
+			a.shutdown()
 			return
 		case app.ConfigEvent:
 			// Al volver a la ventana, refrescar Git al instante.
