@@ -85,9 +85,21 @@ func PsQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
+// hideConsole aplica los atributos que impiden que un proceso hijo abra una
+// consola visible (parpadeo) cuando Compass corre como app GUI. Los handles de
+// stdio se heredan igual, asi que la salida sigue llegando a la ConPTY.
+func hideConsole(c *exec.Cmd) *exec.Cmd {
+	c.SysProcAttr = noWindowAttrs()
+	return c
+}
+
+// HideConsole expone hideConsole para que otros paquetes (git, adb, keytool)
+// ejecuten procesos externos sin que aparezca una consola visible.
+func HideConsole(c *exec.Cmd) *exec.Cmd { return hideConsole(c) }
+
 // RunPS ejecuta un script de PowerShell y captura su salida.
 func RunPS(script string) ([]byte, error) {
-	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
+	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script))
 	out, err := cmd.CombinedOutput()
 	return out, err
 }
@@ -97,7 +109,7 @@ func RunPSInDirStatus(script string, dir string) error {
 	if !dirExists(dir) {
 		return fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
+	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script))
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -132,7 +144,7 @@ func RunPSStatus(script string, dir string, envs map[string]string) (bool, error
 	if !dirExists(dir) {
 		return false, fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
+	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script))
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -159,7 +171,7 @@ func RunPSFile(path string, args []string, dir string, envs map[string]string) (
 	}
 	full := []string{Shell(), "-NoLogo", "-NoProfile", "-File", path}
 	full = append(full, args...)
-	c := exec.Command(full[0], full[1:]...)
+	c := hideConsole(exec.Command(full[0], full[1:]...))
 	c.Dir = dir
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
@@ -177,7 +189,7 @@ func RunPSFile(path string, args []string, dir string, envs map[string]string) (
 
 // Run ejecuta un comando y captura su salida.
 func Run(cmd string, args ...string) ([]byte, error) {
-	c := exec.Command(cmd, args...)
+	c := hideConsole(exec.Command(cmd, args...))
 	return c.CombinedOutput()
 }
 
@@ -186,14 +198,14 @@ func RunInDir(cmd string, dir string, args ...string) ([]byte, error) {
 	if !dirExists(dir) {
 		return nil, fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	c := exec.Command(cmd, args...)
+	c := hideConsole(exec.Command(cmd, args...))
 	c.Dir = dir
 	return c.CombinedOutput()
 }
 
 // RunStatus ejecuta un comando; error si falla.
 func RunStatus(cmd string, args ...string) error {
-	c := exec.Command(cmd, args...)
+	c := hideConsole(exec.Command(cmd, args...))
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -208,7 +220,7 @@ func RunInDirStatus(cmd string, dir string, args ...string) error {
 	if !dirExists(dir) {
 		return fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	c := exec.Command(cmd, args...)
+	c := hideConsole(exec.Command(cmd, args...))
 	c.Dir = dir
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
@@ -222,7 +234,7 @@ func RunInDirStatus(cmd string, dir string, args ...string) error {
 // RunTimeout ejecuta cmd esperando hasta timeout secs con stdin cerrado.
 // Devuelve (false, nil) si se agoto el tiempo; (_, err) si no arranco.
 func RunTimeout(cmd string, args []string, timeoutSecs uint) (bool, error) {
-	c := exec.Command(cmd, args...)
+	c := hideConsole(exec.Command(cmd, args...))
 	c.Stdin = nil
 	if err := c.Start(); err != nil {
 		return false, fmt.Errorf("falló al ejecutar '%s': %w", cmd, err)
@@ -244,7 +256,7 @@ func RunTimeout(cmd string, args []string, timeoutSecs uint) (bool, error) {
 
 // RunProgram ejecuta un programa sin shell, con args, env y dir; devuelve exito.
 func RunProgram(program string, args []string, dir string, envs map[string]string) (bool, error) {
-	c := exec.Command(program, args...)
+	c := hideConsole(exec.Command(program, args...))
 	c.Dir = dir
 	c.Env = mergeEnv(envs)
 	err := c.Run()
@@ -259,7 +271,7 @@ func RunProgram(program string, args []string, dir string, envs map[string]strin
 
 // RunProgramCapture ejecuta un programa capturando la salida.
 func RunProgramCapture(program string, args []string, dir string, envs map[string]string) ([]byte, error) {
-	c := exec.Command(program, args...)
+	c := hideConsole(exec.Command(program, args...))
 	c.Dir = dir
 	c.Env = mergeEnv(envs)
 	out, err := c.CombinedOutput()

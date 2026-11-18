@@ -13,13 +13,12 @@ import (
 const createNewConsole = 0x00000010
 const createNoWindow = 0x08000000
 
-// noWindowAttrs evita que los procesos de tareas abran una consola nueva cuando
-// Corren dentro de la ConPTY de Compass (el exe es una app GUI sin consola).
+// noWindowAttrs evita que los procesos de tareas abran una consola visible
+// (parpadeo) cuando Compass corre como app GUI sin consola propia. Se aplica
+// SIEMPRE: los hijos heredan los handles de stdio, asi que su salida sigue
+// llegando a la ConPTY aunque no tengan ventana.
 func noWindowAttrs() *syscall.SysProcAttr {
-	if Embedded() {
-		return &syscall.SysProcAttr{CreationFlags: createNoWindow}
-	}
-	return nil
+	return &syscall.SysProcAttr{CreationFlags: createNoWindow}
 }
 
 // WindowScript construye el script de una ventana nueva: titulo y comando.
@@ -31,31 +30,21 @@ func WindowScript(title, command string, interactive bool) string {
 	return script
 }
 
-// SpawnNewWindowAutoexit abre una ventana que se cierra al terminar el comando.
+// SpawnNewWindowAutoexit ejecuta el comando en la consola actual (la ConPTY
+// embebida) y retorna al terminar. Ya NO abre una ventana externa: Compass es
+// el propio terminal y todo debe responder dentro de la app.
 func SpawnNewWindowAutoexit(title, dir, command string) error {
-	if Embedded() {
-		RunShellStatus(command, dir, nil)
-		return nil
-	}
-	script := WindowScript(title, command, false)
-	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
-	cmd.Dir = dir
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
-	return cmd.Start()
+	_ = title
+	RunShellStatus(command, dir, nil)
+	return nil
 }
 
-// SpawnNewWindowInteractive abre una terminal con stdin funcional para comandos
-// interactivos; queda abierta tras el comando.
+// SpawnNewWindowInteractive ejecuta el comando interactivo en la consola actual
+// (la ConPTY embebida), con stdin funcional. No abre ventana externa.
 func SpawnNewWindowInteractive(title, dir, command string) error {
-	if Embedded() {
-		RunShellStatus(command, dir, nil)
-		return nil
-	}
-	script := WindowScript(title, command, true)
-	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
-	cmd.Dir = dir
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
-	return cmd.Start()
+	_ = title
+	RunShellStatus(command, dir, nil)
+	return nil
 }
 
 // RunPSFileStatus ejecuta un .ps1 con -File en dir, heredando stdio.
@@ -63,7 +52,7 @@ func RunPSFileStatus(script string, args []string, dir string, envs map[string]s
 	if !dirExists(dir) {
 		return false, fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script)
+	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script))
 	cmd.Dir = dir
 	cmd.Args = append(cmd.Args, args...)
 	cmd.Stdin = os.Stdin

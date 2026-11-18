@@ -9,6 +9,7 @@ import (
 
 	"compass/internal/project"
 	"compass/internal/prompts"
+	"compass/internal/shell"
 )
 
 // Device es un dispositivo Android físico conectado.
@@ -24,7 +25,7 @@ func adbCommand(ctx *project.ProjectContext, args ...string) (string, error) {
 	if adb == "" {
 		adb = "adb"
 	}
-	out, err := exec.Command(adb, args...).CombinedOutput()
+	out, err := shell.HideConsole(exec.Command(adb, args...)).CombinedOutput()
 	return string(out), err
 }
 

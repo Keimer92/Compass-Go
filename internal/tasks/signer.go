@@ -272,7 +272,7 @@ func findKeytool() (string, error) {
 		if p == "" {
 			continue
 		}
-		err := exec.Command(p, "-help").Run()
+		err := shell.HideConsole(exec.Command(p, "-help")).Run()
 		if err == nil {
 			return p, nil
 		}
@@ -313,7 +313,7 @@ func normalizeFingerprint(s string) string {
 
 // keystoreFingerprints ejecuta `keytool -list -v` y extrae las huellas.
 func keystoreFingerprints(keytool, keystore, storePass string) (Fingerprints, error) {
-	out, err := exec.Command(keytool, "-list", "-v", "-keystore", keystore, "-storepass", storePass).CombinedOutput()
+	out, err := shell.HideConsole(exec.Command(keytool, "-list", "-v", "-keystore", keystore, "-storepass", storePass)).CombinedOutput()
 	if err != nil {
 		msg := firstNonEmptyLine(string(out))
 		if msg == "" {
@@ -839,7 +839,7 @@ func createKeystore(ctx *project.ProjectContext) error {
 	// El CN sólo afecta a los metadatos del certificado, no a la firma.
 	const dname = "CN=Compass App, OU=Development, O=Developer, L=City, ST=State, C=US"
 	genkey := func(a string) *exec.Cmd {
-		return exec.Command(keytool,
+		return shell.HideConsole(exec.Command(keytool,
 			"-genkey", "-v",
 			"-keystore", dest,
 			"-alias", a,
@@ -849,7 +849,7 @@ func createKeystore(ctx *project.ProjectContext) error {
 			"-storepass", pass,
 			"-keypass", pass,
 			"-dname", dname,
-		)
+		))
 	}
 
 	first := genkey(alias)
@@ -857,10 +857,10 @@ func createKeystore(ctx *project.ProjectContext) error {
 	if err := first.Run(); err != nil {
 		fmt.Printf("  Falló con alias '%s'. Probando con alias temporal...\n", alias)
 		tempAlias := "temp_" + alias
-		_ = exec.Command(keytool,
+		_ = shell.HideConsole(exec.Command(keytool,
 			"-delete", "-alias", tempAlias,
 			"-keystore", dest, "-storepass", pass,
-		).Run()
+		)).Run()
 
 		second := genkey(tempAlias)
 		second.Stdin, second.Stdout, second.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -872,10 +872,10 @@ func createKeystore(ctx *project.ProjectContext) error {
 		}
 
 		fmt.Printf("  Renombrando alias '%s' a '%s'...\n", tempAlias, alias)
-		_ = exec.Command(keytool,
+		_ = shell.HideConsole(exec.Command(keytool,
 			"-changealias", "-alias", tempAlias, "-destalias", alias,
 			"-keystore", dest, "-storepass", pass, "-keypass", pass,
-		).Run()
+		)).Run()
 	}
 
 	fmt.Printf("  [OK] Keystore generado: %s\n", name)
@@ -1543,9 +1543,9 @@ func runToolCapture(program string, args ...string) ([]byte, error) {
 	ext := strings.ToLower(filepath.Ext(program))
 	var cmd *exec.Cmd
 	if ext == ".bat" || ext == ".cmd" {
-		cmd = exec.Command("cmd", append([]string{"/c", program}, args...)...)
+		cmd = shell.HideConsole(exec.Command("cmd", append([]string{"/c", program}, args...)...))
 	} else {
-		cmd = exec.Command(program, args...)
+		cmd = shell.HideConsole(exec.Command(program, args...))
 	}
 	return cmd.CombinedOutput()
 }

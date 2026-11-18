@@ -1277,7 +1277,7 @@ func WailsDebugAndroid(ctx *project.ProjectContext) error {
 	if adb == "" {
 		adb = "adb"
 	}
-	pid, err := exec.Command(adb, "-s", device, "shell", "pidof", pkg).CombinedOutput()
+	pid, err := shell.HideConsole(exec.Command(adb, "-s", device, "shell", "pidof", pkg)).CombinedOutput()
 	pidStr := strings.TrimSpace(string(pid))
 	var command string
 	if pidStr == "" {

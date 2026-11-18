@@ -51,7 +51,7 @@ func GitAction(ctx *project.ProjectContext, action string) error {
 // ── helpers de ejecución ────────────────────────────────────────────────────
 
 func runCapture(program string, args []string, dir string) error {
-	cmd := exec.Command(program, args...)
+	cmd := shell.HideConsole(exec.Command(program, args...))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -65,7 +65,7 @@ func gitCapture(ctx *project.ProjectContext, args ...string) error {
 }
 
 func gitOut(ctx *project.ProjectContext, args ...string) string {
-	cmd := exec.Command("git", args...)
+	cmd := shell.HideConsole(exec.Command("git", args...))
 	cmd.Dir = ctx.ScriptDir
 	out, err := cmd.Output()
 	if err != nil {
