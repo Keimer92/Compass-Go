@@ -157,6 +157,28 @@ func (b *Bridge) SelectProject(index int) map[string]any {
 	return info
 }
 
+// RemoveProject cierra un proyecto de la lista (lo quita del workspace, no
+// borra nada del disco). Si era el activo, re-detecta el nuevo activo; si no
+// queda ninguno, deja el puente sin contexto. Emite workspace:changed.
+func (b *Bridge) RemoveProject(index int) map[string]any {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if index < 0 || index >= len(b.ws.Projects) {
+		return b.workspaceInfo()
+	}
+	wasActive := index == b.ws.Active
+	b.ws.Remove(index) // ajusta Active y hace Save
+	if len(b.ws.Projects) == 0 {
+		b.ctx, b.dir = nil, ""
+	} else if wasActive {
+		if p := b.ws.ActiveProject(); p != nil && !b.detect(p.Path) {
+			b.ctx, b.dir = nil, ""
+		}
+	}
+	Emit("workspace:changed", b.workspaceInfo())
+	return b.workspaceInfo()
+}
+
 // GetMenu devuelve las cards del menu del proyecto activo.
 func (b *Bridge) GetMenu() []MenuItemInfo {
 	b.mu.Lock()

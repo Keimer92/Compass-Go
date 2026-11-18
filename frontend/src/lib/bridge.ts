@@ -18,6 +18,7 @@ const M = (name: string) => `compass/internal/webui.Bridge.${name}`
 
 export const getWorkspace = () => call<WorkspaceInfo>(M('GetWorkspace'))
 export const selectProject = (i: number) => call<WorkspaceInfo>(M('SelectProject'), i)
+export const removeProject = (i: number) => call<WorkspaceInfo>(M('RemoveProject'), i)
 export const getMenu = () => call<MenuItemInfo[]>(M('GetMenu'))
 export const runTask = (id: string) => call<string>(M('RunTask'), id)
 export interface Subcard { task: string; label: string; description: string; icon: string }

@@ -3,7 +3,7 @@
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
   import {
-    getWorkspace, selectProject, getMenu, runTask,
+    getWorkspace, selectProject, removeProject, getMenu, runTask,
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged,
@@ -153,6 +153,15 @@
     await closeAllTabs()
   }
 
+  async function dropProject(i: number) {
+    const wasActive = i === workspace.active
+    workspace = await removeProject(i)
+    if (wasActive) {
+      await closeAllTabs()
+      menu = await getMenu()
+    }
+  }
+
   // mountTerm crea el xterm de una pestana y lo engancha a su host.
   function mountTerm(key: number): Terminal {
     const term = new Terminal({
@@ -300,10 +309,13 @@
     <div class="section-title">PROYECTOS</div>
     <div class="projects">
       {#each workspace.projects as p, i}
-        <button class:active={i === workspace.active} class="project" onclick={() => pickProject(i)}>
-          <span class="dot" style="background:{colors[i % colors.length]}"></span>
-          <span class="pname">{p.name}</span>
-        </button>
+        <div class:active={i === workspace.active} class="project">
+          <button class="project-main" onclick={() => pickProject(i)} title={p.path}>
+            <span class="dot" style="background:{colors[i % colors.length]}"></span>
+            <span class="pname">{p.name}</span>
+          </button>
+          <button class="project-close" onclick={() => dropProject(i)} aria-label="Cerrar proyecto" title="Cerrar proyecto">×</button>
+        </div>
       {/each}
     </div>
   </aside>

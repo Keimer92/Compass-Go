@@ -6,10 +6,14 @@
 .project-type { font-size: 11px; color: var(--muted); }
 .section-title { margin: 28px 0 8px; font-size: 10px; color: var(--muted); letter-spacing: .12em; }
 .projects { display: flex; flex-direction: column; gap: 4px; }
-.project { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font-size: 12px; }
+.project { position: relative; display: flex; align-items: center; width: 100%; border-radius: 8px; color: var(--text); font-size: 12px; }
 .project:hover { background: color-mix(in srgb, var(--border) 50%, transparent); }
 .project.active { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.dot { width: 8px; height: 8px; border-radius: 50%; }
+.project-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 8px 10px; border: none; background: transparent; color: inherit; text-align: left; font-size: inherit; cursor: pointer; }
+.project-close { flex-shrink: 0; width: 22px; height: 22px; margin-right: 6px; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity .12s ease, background .12s ease; }
+.project:hover .project-close { opacity: 1; }
+.project-close:hover { background: color-mix(in srgb, var(--red) 35%, transparent); color: var(--text); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar { height: 46px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 60%, var(--bg)); }
 .tabs { display: flex; gap: 8px; }
