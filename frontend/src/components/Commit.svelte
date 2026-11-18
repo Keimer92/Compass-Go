@@ -36,11 +36,11 @@
 </script>
 
 <div class="head">
-  <span>Commit con OpenCode</span>
+  <span>Commit con Ollama</span>
 </div>
 <textarea placeholder="Mensaje del commit..." bind:value={message}></textarea>
 <button class="pill" onclick={generate} disabled={loading}>
-  {loading ? 'Generando...' : 'Generar con OpenCode'}
+  {loading ? 'Generando...' : 'Generar con Ollama'}
 </button>
 <div class="hint">Se añadirán todos los cambios (git add -A)</div>
 {#if error}<div class="error">{error}</div>{/if}

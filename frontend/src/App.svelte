@@ -459,8 +459,16 @@
         <span>Abrir la carpeta de salida al terminar un build</span>
       </label>
       <label class="opt-row column">
-        <span>Modelo de opencode para los commits</span>
-        <input class="opt-input" type="text" bind:value={settings.commit_model} placeholder="opencode/..." />
+        <span>Endpoint de Ollama</span>
+        <input class="opt-input" type="text" bind:value={settings.ollama_endpoint} placeholder="https://ollama.com" />
+      </label>
+      <label class="opt-row column">
+        <span>Modelo para los commits</span>
+        <input class="opt-input" type="text" bind:value={settings.ollama_model} placeholder="gemma4:31b" />
+      </label>
+      <label class="opt-row column">
+        <span>API key de Ollama <small>(se guarda en settings.json)</small></span>
+        <input class="opt-input" type="password" bind:value={settings.ollama_api_key} placeholder="********" autocomplete="off" />
       </label>
       <div class="modal-actions">
         <button class="btn-primary" onclick={saveSettings}>Guardar</button>
