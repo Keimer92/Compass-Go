@@ -554,10 +554,19 @@ func Pause() {
 
 // PauseFor hace una cuenta regresiva y, dentro del contenedor, pide cerrar la
 // pestana (el proceso sale con ExitCloseTab).
+//
+// La cuenta atras y el cierre solo ocurren si el usuario activo
+// "cerrar la pestana al terminar un build" en Opciones (por defecto esta
+// desactivado y la pestana se queda abierta).
 func PauseFor(seconds uint) {
 	// Todas las tareas de build terminan aqui: el aviso sonoro suena al
 	// instante, antes de la cuenta atras y del cierre de la pestana.
 	sound.Success()
+	if !settings.Load().CloseTabOnBuildEnd {
+		fmt.Println()
+		fmt.Println("  Build completado. La pestana permanece abierta.")
+		return
+	}
 	for remaining := int(seconds); remaining >= 1; remaining-- {
 		fmt.Printf("\r  Cerrando en %d s...  ", remaining)
 		time.Sleep(time.Second)

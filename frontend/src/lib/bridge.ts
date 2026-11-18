@@ -58,6 +58,7 @@ export const setTheme = (name: string) => call<ThemeInfo>(M('SetTheme'), name)
 
 export interface Settings {
   open_output_dir: boolean
+  close_tab_on_build_end: boolean
   openrouter_endpoint: string
   openrouter_model: string
   openrouter_api_key: string
@@ -75,6 +76,7 @@ export interface FileNode { name: string; path: string; isDir: boolean; children
 export const gitStatus = () => call<Change[]>(M('GitStatus'))
 export const fileTree = () => call<FileNode[]>(M('FileTree'))
 export const generateCommit = () => call<string>(M('GenerateCommit'))
+export const cancelCommit = () => call<void>(M('CancelCommit'))
 export const commit = (message: string) => call<string>(M('Commit'), message)
 
 export interface CommitEntry { hash: string; short: string; author: string; date: string; subject: string }

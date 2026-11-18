@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"compass/internal/window"
 )
 
 // Message es el mensaje que el CLI envia a la ventana abierta.
@@ -48,6 +50,10 @@ func TryForward(dir string) bool {
 		return false
 	}
 	defer conn.Close()
+	// Esta instancia la lanzo el usuario (menu contextual / acceso directo), asi
+	// que puede ceder el permiso de primer plano a la ventana ya abierta para
+	// que se traiga al frente en vez de quedarse detras.
+	window.AllowForeground(tok.PID)
 	if err := json.NewEncoder(conn).Encode(Message{Op: "addProject", Path: dir}); err != nil {
 		return false
 	}

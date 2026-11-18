@@ -19,6 +19,11 @@ type Settings struct {
 	// terminar un build. Por defecto si (comportamiento historico).
 	OpenOutputDir bool `json:"open_output_dir"`
 
+	// CloseTabOnBuildEnd cierra la pestana del panel cuando termina una tarea
+	// de compilacion (tras la cuenta atras de 10 s). Por defecto NO: la
+	// pestana se queda abierta para poder leer la salida con calma.
+	CloseTabOnBuildEnd bool `json:"close_tab_on_build_end"`
+
 	// OpenRouterEndpoint es la base de la API de OpenRouter. Por defecto
 	// https://openrouter.ai/api/v1 (se le anade /chat/completions).
 	OpenRouterEndpoint string `json:"openrouter_endpoint"`
@@ -33,7 +38,9 @@ type Settings struct {
 // Default devuelve los valores de fabrica.
 func Default() Settings {
 	return Settings{
-		OpenOutputDir:      true,
+		OpenOutputDir: true,
+		// Desactivado: al terminar un build la pestana se queda abierta.
+		CloseTabOnBuildEnd: false,
 		OpenRouterEndpoint: "https://openrouter.ai/api/v1",
 		// Vacio: GenerateCommit elige el gratuito mas rapido disponible si el
 		// usuario no ha seleccionado uno en Opciones.

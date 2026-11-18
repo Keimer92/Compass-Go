@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { generateCommit, commit } from '../lib/bridge'
+  import { generateCommit, cancelCommit, commit } from '../lib/bridge'
 
   let message = $state('')
   let loading = $state(false)
@@ -42,10 +42,21 @@
     try {
       message = await generateCommit()
     } catch (e) {
-      error = (e as Error).message
+      const msg = (e as Error).message
+      // Cancelar no es un fallo: se avisa en tono neutro.
+      if (msg.includes('cancelada')) ok = 'Generación cancelada'
+      else error = msg
     } finally {
       loading = false
       stopTimer()
+    }
+  }
+
+  async function cancel() {
+    try {
+      await cancelCommit()
+    } catch {
+      /* si ya habia terminado, no hay nada que cancelar */
     }
   }
 
@@ -76,6 +87,7 @@
     <div class="progress" aria-label="Generando commit"><div class="bar"></div></div>
     <span class="elapsed">{(elapsedMs / 1000).toFixed(1)} s</span>
   </div>
+  <button class="pill cancel" onclick={cancel}>Cancelar</button>
 {:else if lastMs > 0}
   <div class="elapsed done">Última generación: {(lastMs / 1000).toFixed(1)} s</div>
 {/if}
@@ -100,6 +112,7 @@
   .elapsed.done { margin:8px 14px 0; }
   @keyframes indeterminate { 0% { transform:translateX(-110%); } 100% { transform:translateX(320%); } }
   .commit { background:color-mix(in srgb, var(--green) 30%, var(--bg)); }
+  .cancel { background:color-mix(in srgb, var(--red) 26%, var(--bg)); }
   .hint { margin:8px 14px; color:var(--muted); font-size:10px; }
   .error { margin:8px 14px; color:var(--red); font-size:11px; white-space:pre-wrap; }
   .ok { margin:8px 14px; color:var(--green); font-size:11px; }

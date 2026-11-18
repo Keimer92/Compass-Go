@@ -64,7 +64,7 @@ Compass Go/
 │  ├─ installer.nsi           #   asistente MUI2 (icono, componentes, ejecutar al final)
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
-├─ dist/                      # GENERADO por dist.bat (payload, installer.nsi, setup); desechable
+├─ dist/                      # GENERADO por dist.bat (payload/ + CompassGo-Setup.exe); desechable
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
@@ -117,10 +117,13 @@ install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
 ### 2. `dist.bat` — generar el instalador en `dist\` (tipo: *package*)
 
 Compila a `dist\payload\compass-go.exe` (con iconos), copia la plantilla
-`packaging\installer.nsi` a `dist\installer.nsi` (generando antes la cabecera
-del asistente desde el icono de la app) y, si NSIS está instalado, produce el
-instalador autónomo `dist\CompassGo-Setup.exe`. Todo lo generado vive en
-`dist\` y es desechable.
+`packaging\installer.nsi` a `dist\installer.nsi` y genera la cabecera del
+asistente en `dist\installer_header.bmp`; con NSIS instalado produce el
+instalador autónomo `dist\CompassGo-Setup.exe`. `dist\` es solo un área de
+trabajo temporal: al terminar `makensis` se borran el `.nsi`, el `.bmp` y
+`payload\`, de modo que `dist\` queda **únicamente** con
+`CompassGo-Setup.exe` (el instalador lo lleva todo dentro). Con
+`--no-installer` sí se conserva `dist\payload` (es el único artefacto).
 
 Al copiar `corekit/` al payload se excluyen los artefactos de build del motor
 (`node_modules`, `out`, `examples`): en ejecución solo hacen falta `node.exe` +
@@ -148,12 +151,13 @@ dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
   Windows no expone el verbo, `ExecShell` cae en el verbo `open` y abriría la
   app durante la instalación.
 
-- Si falta NSIS, avisa y deja `dist\payload` e `installer.nsi` listos (no es
-  un error para `dist.bat`; `install.bat` sí aborta en ese caso).
+- Si falta NSIS, avisa y deja `dist\payload` listo (no es un error para
+  `dist.bat`; `install.bat` sí aborta en ese caso).
 - Si `makensis` falla, `dist.bat` termina con código 1.
-- Para recompilar el instalador a mano:
-  `makensis /DAPPICON=payload\CompassGo.ico dist\installer.nsi` (añade
-  `/DNOHEADER` si no existe `dist\installer_header.bmp`).
+- Para recompilar el instalador a mano hay que regenerar los temporales:
+  `powershell -File packaging\make_header.ps1 -Icon assets\icon\CompassGo.ico -Out dist\installer_header.bmp`,
+  `copy packaging\installer.nsi dist\` y luego
+  `makensis /DAPPICON=payload\CompassGo.ico dist\installer.nsi` desde `dist\`.
 - Requiere ejecutarlo **desde la raíz del proyecto** (necesita `go.mod`).
 
 ### 3. `uninstall.bat` — desinstalar de la máquina (tipo: *uninstall*)
@@ -222,11 +226,16 @@ proyecto concreto:
 
 - **Aviso sonoro de fin de build (siempre activo)**: al terminar cualquier
   compilación release (`windows-release`, `android-release`, `android-aab`,
-  `windows-build`, …) suena una triada ascendente justo antes de la cuenta
-  atrás que cierra la pestaña; si el build falla suenan dos tonos graves.
-  Se emite desde `shell.PauseFor` (éxito) y `shell.RunBuildAndRevealWithEnv` /
-  `runReleaseMenu` (fallo), usando `Beep` de `kernel32` (`internal/sound`), sin
-  WAV ni PowerShell. No se puede desactivar.
+  `windows-build`, …) suena una triada ascendente; si el build falla suenan dos
+  tonos graves. Se emite desde `shell.PauseFor` (éxito) y
+  `shell.RunBuildAndRevealWithEnv` / `runReleaseMenu` (fallo), usando `Beep` de
+  `kernel32` (`internal/sound`), sin WAV ni PowerShell. No se puede desactivar.
+- **Cerrar la pestaña al terminar un build (opcional, desactivado por
+  defecto)**: en el modal **Opciones** (`Ctrl+O`) hay una casilla que activa la
+  cuenta atrás de 10 s y el cierre automático de la pestaña del terminal. Por
+  defecto está **desactivada**: `shell.PauseFor` solo imprime "Build completado.
+  La pestaña permanece abierta." y no emite `ExitCloseTab`, así que la salida
+  queda visible para leerla.
 - **Abrir carpeta de salida (opcional)**: en el menú principal, `Ctrl+O` abre
   el modal **Opciones** con la casilla "Abrir la carpeta de salida al terminar
   un build". Se guarda al instante en

@@ -1,6 +1,8 @@
 package webui
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,10 +11,15 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"compass/internal/settings"
 	"compass/internal/windialog"
 )
+
+// errCommitCancelled es el error que recibe el frontend cuando el usuario pulsa
+// Cancelar mientras se genera el mensaje de commit.
+var errCommitCancelled = errors.New("generacion cancelada")
 
 // Change es una linea de `git status --porcelain`.
 type Change struct {
@@ -137,23 +144,194 @@ func buildTree(dir string, depth, maxDepth int) []*FileNode {
 	return out
 }
 
-// gitSummary resume los cambios para el prompt de opencode.
+// Limites del material que se envia al modelo: contexto suficiente para que el
+// mensaje sea preciso sin desbordar la ventana de los modelos gratuitos.
+const (
+	maxStatusLines    = 120
+	maxDiffChars      = 9000
+	maxFileDiffChars  = 4000 // un solo archivo no puede acaparar el prompt
+	maxUntrackedFiles = 4
+	maxUntrackedLines = 50
+)
+
+// gitSummary arma el material del prompt: estado, diffs reales (con contexto) y
+// un extracto de los archivos nuevos. Antes solo enviaba --stat y nombres de
+// archivo, asi que el modelo no podia saber que cambio y escribia bullets
+// genericos.
 func gitSummary(root string) string {
 	var parts []string
-	for _, args := range [][]string{
-		{"diff", "--stat", "--no-color"},
-		{"diff", "--cached", "--stat", "--no-color"},
-		{"status", "--porcelain=v1", "-uall"},
-	} {
-		if out, err := runGit(root, args...); err == nil && out != "" {
-			parts = append(parts, out)
+
+	if out, err := runGit(root, "status", "--porcelain=v1", "-uall"); err == nil && out != "" {
+		if filtered := filterStatus(out); filtered != "" {
+			parts = append(parts, "STATUS (porcelain):\n"+clipLines(filtered, maxStatusLines))
 		}
 	}
-	s := strings.Join(parts, "\n")
-	if len(s) > 4000 {
-		s = s[:4000]
+
+	diff := strings.TrimSpace(diffSection(root, false) + "\n" + diffSection(root, true))
+	if diff != "" {
+		parts = append(parts, "DIFF:\n"+clip(diff, maxDiffChars))
 	}
-	return s
+
+	if news := newFileExcerpts(root, maxUntrackedFiles, maxUntrackedLines); news != "" {
+		parts = append(parts, "NEW FILES (excerpt):\n"+news)
+	}
+
+	return strings.Join(parts, "\n\n")
+}
+
+// diffSection devuelve el diff de trabajo (o del index) archivo por archivo,
+// omitiendo el contenido de artefactos generados (bundles, dist, minificados):
+// ocupan todo el presupuesto y no dicen nada util sobre el cambio.
+func diffSection(root string, staged bool) string {
+	numstat := []string{"diff", "--numstat", "--no-color"}
+	if staged {
+		numstat = append(numstat, "--cached")
+	}
+	out, err := runGit(root, numstat...)
+	if err != nil || strings.TrimSpace(out) == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) != 3 {
+			continue
+		}
+		added, deleted, path := fields[0], fields[1], strings.TrimSpace(fields[2])
+		if path == "" {
+			continue
+		}
+		if generatedPath(path) {
+			b.WriteString("--- " + path + " (generado, contenido omitido)\n")
+			continue
+		}
+		if added == "-" || deleted == "-" { // binario
+			b.WriteString("--- " + path + " (binario)\n")
+			continue
+		}
+		args := []string{"diff", "--no-color", "-U2"}
+		if staged {
+			args = append(args, "--cached")
+		}
+		args = append(args, "--", path)
+		d, err := runGit(root, args...)
+		if err != nil || d == "" {
+			continue
+		}
+		b.WriteString(clip(stripGitWarnings(d), maxFileDiffChars))
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// stripGitWarnings quita avisos de git (p.ej. CRLF) que no describen cambios.
+func stripGitWarnings(s string) string {
+	var keep []string
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "warning:") {
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return strings.Join(keep, "\n")
+}
+
+// filterStatus quita del porcelain los archivos generados (node_modules, dist,
+// binarios...): si no, ocupan todo el listado y esconden los cambios reales.
+func filterStatus(raw string) string {
+	var keep []string
+	skipped := 0
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if len(line) > 3 && generatedPath(strings.TrimSpace(line[3:])) {
+			skipped++
+			continue
+		}
+		keep = append(keep, line)
+	}
+	if skipped > 0 {
+		keep = append(keep, fmt.Sprintf("... (%d archivos generados omitidos)", skipped))
+	}
+	return strings.Join(keep, "\n")
+}
+
+// generatedPath marca rutas cuyo diff es ruido (artefactos de build).
+func generatedPath(p string) bool {
+	lp := strings.ToLower(filepath.ToSlash(p))
+	if strings.Contains(lp, "node_modules/") ||
+		strings.Contains(lp, "/dist/") || strings.HasPrefix(lp, "dist/") ||
+		strings.Contains(lp, "/build/") || strings.HasPrefix(lp, "build/") {
+		return true
+	}
+	for _, ext := range []string{".min.js", ".min.css", ".map", ".lock", ".ico", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".pdf"} {
+		if strings.HasSuffix(lp, ext) {
+			return true
+		}
+	}
+	return strings.HasSuffix(lp, "package-lock.json")
+}
+
+// newFileExcerpts devuelve las primeras lineas de los archivos sin seguimiento
+// (git diff no los muestra, asi que sin esto el modelo los ve solo por nombre).
+func newFileExcerpts(root string, maxFiles, maxLines int) string {
+	raw, err := runGit(root, "status", "--porcelain=v1", "-uall")
+	if err != nil || raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	found := 0
+	for _, line := range strings.Split(raw, "\n") {
+		if !strings.HasPrefix(line, "?? ") {
+			continue
+		}
+		rel := strings.Trim(strings.TrimSpace(line[3:]), `"`)
+		if rel == "" || strings.HasSuffix(rel, "/") || generatedPath(rel) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		probe := data
+		if len(probe) > 8000 {
+			probe = probe[:8000]
+		}
+		if bytes.IndexByte(probe, 0) >= 0 || !utf8.ValidString(string(probe)) {
+			continue // binario: no aporta al mensaje
+		}
+		b.WriteString("--- " + rel + "\n")
+		b.WriteString(clipLines(string(data), maxLines))
+		b.WriteString("\n")
+		found++
+		if found >= maxFiles {
+			break
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// clip recorta s a max caracteres cortando por linea y sin romper UTF-8.
+func clip(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := s[:max]
+	if i := strings.LastIndex(cut, "\n"); i > max/2 {
+		cut = cut[:i]
+	}
+	return strings.ToValidUTF8(cut, "") + "\n... (truncado)"
+}
+
+// clipLines deja las primeras max lineas de s.
+func clipLines(s string, max int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= max {
+		return s
+	}
+	return strings.Join(lines[:max], "\n") + "\n... (truncado)"
 }
 
 // GenerateCommit pide a OpenRouter un mensaje de commit para los cambios
@@ -181,16 +359,43 @@ func (b *Bridge) GenerateCommit() (string, error) {
 	if model == "" {
 		return "", errors.New("falta el modelo de OpenRouter: elige uno en Opciones")
 	}
-	prompt := "Write a git commit message in ENGLISH. Do NOT explore the repository.\n" +
-		"Use ONLY the change list below. Output exactly this format:\n" +
-		"Line 1: type(scope): imperative summary (max 72 chars).\n" +
-		"Then 3 or 4 short bullet lines starting with '- ' (max 90 chars each),\n" +
-		"each describing a concrete change from the list (mention filenames when useful).\n" +
-		"No blank lines, no markdown, no quotes, no explanation.\n\n" +
-		"Change list:\n" + summary
+	prompt := "You write precise Conventional Commit messages from the git evidence below.\n" +
+		"You cannot explore the repository: base EVERY line strictly on the diff, status and new-file excerpts.\n\n" +
+		"Output format (exactly this, nothing else):\n" +
+		"Line 1: <type>(<scope>): <imperative summary, max 72 chars, no trailing period>\n" +
+		"Then 3 to 5 lines, each starting with \"- \", max 90 chars, describing ONE concrete change.\n\n" +
+		"Rules:\n" +
+		"- type is one of: feat, fix, refactor, perf, docs, test, build, ci, chore, style.\n" +
+		"- scope is the affected area taken from the paths (e.g. webui, shell, tasks, frontend, installer).\n" +
+		"- Each bullet must name what actually changed: function, type, struct field, flag, CSS class,\n" +
+		"  UI text, endpoint or file. Say what it does now, not that it was \"updated\".\n" +
+		"- BANNED generic phrasing: \"improve code\", \"update files\", \"various changes\",\n" +
+		"  \"minor fixes\", \"refactor code\", \"enhance functionality\", \"make improvements\".\n" +
+		"- If several files change for one reason, group them in a single bullet that names the reason.\n" +
+		"- No blank lines, no markdown fences, no quotes, no preamble, no explanation.\n\n" +
+		"Git evidence:\n" + summary
 
-	out, err := openRouterChat(cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, model, prompt)
+	// La peticion vive en un contexto cancelable para que el boton Cancelar
+	// corte la espera al instante en vez de dejar el modal bloqueado.
+	ctx, cancel := context.WithCancel(context.Background())
+	b.commitMu.Lock()
+	if b.commitCancel != nil {
+		b.commitCancel() // una generacion anterior que quedo colgada
+	}
+	b.commitCancel = cancel
+	b.commitMu.Unlock()
+	defer func() {
+		cancel()
+		b.commitMu.Lock()
+		b.commitCancel = nil
+		b.commitMu.Unlock()
+	}()
+
+	out, err := openRouterChat(ctx, cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, model, prompt)
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", errCommitCancelled
+		}
 		return "", err
 	}
 	msg := cleanCommitMessage(out)
@@ -198,6 +403,17 @@ func (b *Bridge) GenerateCommit() (string, error) {
 		return "", errors.New("OpenRouter no devolvió un mensaje utilizable")
 	}
 	return msg, nil
+}
+
+// CancelCommit aborta la generacion de commit en curso, si la hay. La llamada
+// a GenerateCommit termina con errCommitCancelled.
+func (b *Bridge) CancelCommit() {
+	b.commitMu.Lock()
+	cancel := b.commitCancel
+	b.commitMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // cleanCommitMessage descarta el ruido del CLI y deja cabecera + viñetas.
@@ -223,12 +439,12 @@ func cleanCommitMessage(raw string) string {
 	for len(out) > 0 && out[len(out)-1] == "" {
 		out = out[:len(out)-1]
 	}
-	if len(out) > 5 {
-		out = out[:5]
+	if len(out) > 6 {
+		out = out[:6] // cabecera + hasta 5 vinietas
 	}
 	for i, line := range out {
 		if len(line) > 95 {
-			out[i] = line[:95]
+			out[i] = strings.ToValidUTF8(line[:95], "")
 		}
 	}
 	return strings.Join(out, "\n")

@@ -2,6 +2,7 @@ package webui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,8 +44,8 @@ type orChatResponse struct {
 }
 
 // openRouterChat envia un prompt a OpenRouter y devuelve el texto de la
-// respuesta.
-func openRouterChat(endpoint, apiKey, model, prompt string) (string, error) {
+// respuesta. ctx permite abortar la peticion (boton Cancelar del commit).
+func openRouterChat(ctx context.Context, endpoint, apiKey, model, prompt string) (string, error) {
 	body, err := json.Marshal(orChatRequest{
 		Model:    model,
 		Messages: []orMessage{{Role: "user", Content: prompt}},
@@ -55,7 +56,7 @@ func openRouterChat(endpoint, apiKey, model, prompt string) (string, error) {
 	}
 
 	url := strings.TrimRight(strings.TrimSpace(endpoint), "/") + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("URL de OpenRouter invalida: %w", err)
 	}

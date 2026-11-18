@@ -3,6 +3,7 @@
 package webui
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"compass/internal/project"
 	"compass/internal/settings"
 	"compass/internal/tasks"
+	"compass/internal/window"
 	"compass/internal/workspace"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -25,6 +27,11 @@ type Bridge struct {
 	ctx  *project.ProjectContext
 	mu   sync.Mutex
 	term *TerminalService
+
+	// commitMu protege commitCancel: la generacion de commit en curso, para
+	// poder abortarla desde el boton Cancelar.
+	commitMu     sync.Mutex
+	commitCancel context.CancelFunc
 }
 
 // NewBridge crea el servicio para la carpeta inicial.
@@ -294,26 +301,52 @@ func (b *Bridge) FocusWindow() {
 	if app == nil {
 		return
 	}
-	if w, ok := app.Window.Get("main"); ok && w != nil {
-		w.Focus()
+	w, ok := app.Window.Get("main")
+	if !ok || w == nil {
+		return
 	}
+	// SetForegroundWindow desde Wails suele ser ignorado por Windows cuando la
+	// ventana no es la activa; FocusHandle restaura y se engancha al hilo en
+	// primer plano para forzarlo.
+	if hwnd := w.NativeWindow(); hwnd != nil {
+		window.FocusHandle(uintptr(hwnd))
+	}
+	w.Focus()
 }
 
-// GetSettings devuelve las opciones globales. La API key nunca se envia al
-// frontend: se devuelve vacia para que el campo del modal quede en blanco.
+// apiKeyMask es el valor que ve el frontend cuando ya hay una key guardada.
+// Nunca se envia la key real; si vuelve con esta mascara se conserva la que ya
+// habia, de modo que cambiar el modelo (u otra opcion) no la borra.
+const apiKeyMask = "********"
+
+// GetSettings devuelve las opciones globales con la API key enmascarada.
 func (b *Bridge) GetSettings() settings.Settings {
 	s := settings.Load()
-	s.OpenRouterAPIKey = ""
+	if strings.TrimSpace(s.OpenRouterAPIKey) != "" {
+		s.OpenRouterAPIKey = apiKeyMask
+	}
 	return s
 }
 
-// SetSettings guarda las opciones globales. Si el frontend no envio la key
-// (vacio o enmascarado), se conserva la que ya habia guardada.
+// SetSettings guarda las opciones globales partiendo de lo que ya habia
+// guardado: la key solo se reemplaza si el frontend envia una nueva (no vacia
+// ni enmascarada). Asi cambiar el modelo no puede perder la key.
 func (b *Bridge) SetSettings(s settings.Settings) {
-	if k := strings.TrimSpace(s.OpenRouterAPIKey); k == "" || k == "********" {
-		s.OpenRouterAPIKey = settings.Load().OpenRouterAPIKey
+	cur := settings.Load()
+
+	cur.OpenOutputDir = s.OpenOutputDir
+	cur.CloseTabOnBuildEnd = s.CloseTabOnBuildEnd
+	if v := strings.TrimSpace(s.OpenRouterEndpoint); v != "" {
+		cur.OpenRouterEndpoint = v
 	}
-	settings.Save(s)
+	if v := strings.TrimSpace(s.OpenRouterModel); v != "" {
+		cur.OpenRouterModel = v
+	}
+	if k := strings.TrimSpace(s.OpenRouterAPIKey); k != "" && k != apiKeyMask {
+		cur.OpenRouterAPIKey = k
+	}
+
+	settings.Save(cur)
 }
 
 // RunTask es el punto de entrada --task del propio binario.

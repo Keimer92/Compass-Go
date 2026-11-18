@@ -142,11 +142,14 @@ echo.
 REM El icono de las entradas nuevas solo aparece al refrescar la cache.
 ie4uinit.exe -show >nul 2>nul
 
-REM dist\payload es temporal y pesado (~90 MB); se borra tras instalar.
+REM dist.bat ya borra dist\payload al empaquetar; este barrido es solo una
+REM red de seguridad (p.ej. si dist.bat fallo antes de limpiar).
 REM El instalador autocontenido dist\CompassGo-Setup.exe se CONSERVA para
 REM poder distribuirlo o reinstalar sin volver a compilar.
-if exist "%CD%\dist\payload" rmdir /s /q "%CD%\dist\payload" >nul 2>nul
-echo [OK] dist\payload eliminado.
+if exist "%CD%\dist\payload" (
+    rmdir /s /q "%CD%\dist\payload" >nul 2>nul
+    echo [OK] dist\payload eliminado.
+)
 if exist "%SETUP%" (
     echo [OK] Instalador autocontenido conservado: %CD%\%SETUP%
 ) else (

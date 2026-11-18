@@ -226,25 +226,25 @@ func compassContextCommand(shellName, exe, placeholder string) string {
 }
 
 func gitignoreContextCommand(shellName, exe, placeholder string) string {
-	// El binario es de consola, asi que lanzarlo directamente desde Explorer
-	// hace parpadear una ventana cmd. Lo ejecutamos dentro de un pwsh oculto:
-	// el hijo hereda esa consola oculta, asi que no aparece ninguna ventana.
+	// El binario es de subsistema GUI: al lanzarlo con `&` PowerShell NO espera
+	// y $LASTEXITCODE queda vacio, asi que el aviso decia siempre "No se pudo
+	// crear" aunque el .gitignore se hubiera escrito. Start-Process -Wait
+	// devuelve el codigo real del proceso.
 	//
-	// Ojo: NO usar Start-Process -ArgumentList para pasar la ruta. Start-Process
-	// une los argumentos sin comillas, y una ruta con espacios (o con barra
-	// final) llega partida al binario, que falla. La llamada directa `& $exe`
-	// pasa la ruta como un unico argumento y funciona en todos los casos.
+	// Ojo: -ArgumentList une los elementos sin comillas; se construye a mano la
+	// linea con la ruta entre comillas para que no se parta con espacios.
 	script := fmt.Sprintf(`
 $exe = %s
 $path = %s
-& $exe --task context-gitignore --path $path
-$code = $LASTEXITCODE
+$argLine = '--task context-gitignore --path "' + $path + '"'
+$p = $null
+try { $p = Start-Process -FilePath $exe -ArgumentList $argLine -Wait -PassThru -WindowStyle Hidden } catch { }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $n = New-Object System.Windows.Forms.NotifyIcon
 $n.Icon = [System.Drawing.SystemIcons]::Information
 $n.Visible = $true
-if ($code -eq 0) {
+if ($p -ne $null -and $p.ExitCode -eq 0) {
   $n.ShowBalloonTip(4000, 'Compass Go', '.gitignore creado o actualizado', 'Info')
 } else {
   $n.ShowBalloonTip(5000, 'Compass Go', 'No se pudo crear el .gitignore', 'Warning')

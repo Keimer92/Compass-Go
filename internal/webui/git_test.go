@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +60,37 @@ func TestGitStatusParsesPorcelain(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("nuevo.txt no aparece en los cambios: %+v", changes)
+	}
+}
+
+func TestGitSummaryIncludesDiffsAndNewFiles(t *testing.T) {
+	dir := initRepo(t)
+	main := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(main, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", "init"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+
+	// Un archivo modificado (va en el diff) y otro nuevo (solo en el extracto).
+	if err := os.WriteFile(main, []byte("package main\n\nfunc NuevaFuncion() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "nuevo.go"), []byte("package main\n\nfunc HelperNuevo() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := gitSummary(dir)
+	if !strings.Contains(got, "NuevaFuncion") {
+		t.Fatalf("el resumen deberia incluir el diff del archivo modificado:\n%s", got)
+	}
+	if !strings.Contains(got, "HelperNuevo") {
+		t.Fatalf("el resumen deberia incluir un extracto del archivo nuevo:\n%s", got)
 	}
 }
 

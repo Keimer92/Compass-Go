@@ -400,13 +400,17 @@ build/
 .packages
 .flutter-plugins
 .flutter-plugins-dependencies
+coverage/
 
 # --- Android (Gradle) ---
 android/build/
 android/.gradle/
+android/.cxx/
 android/app/build/
 android/local.properties
 android/key.properties
+*.jks
+*.keystore
 
 # --- Node.js ---
 node_modules/
@@ -460,6 +464,13 @@ composeApp/release/
 
 # --- Kotlin ---
 .kotlin/
+.externalNativeBuild/
+.cxx/
+captures/
+*.hprof
+
+# --- Node / frontends embebidos ---
+node_modules/
 
 # --- Signing / Secrets (NO subir: contienen la clave privada) ---
 composeApp/keystore.properties
@@ -505,9 +516,11 @@ android-signing/
 keystore-backups/
 
 # --- Node.js / frontend ---
+node_modules/
 frontend/node_modules/
-frontend/dist/
+**/frontend/dist/
 frontend/bindings/
+build/bin/
 
 # --- Android (generado por 'wails3 update build-assets') ---
 build/android/app/build/
@@ -523,6 +536,12 @@ build/android/gen/
 # --- Go ---
 *.syso
 *.test
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+coverage.out
 
 # --- IDE ---
 .idea/
@@ -562,6 +581,15 @@ bin/
 *.dylib
 *.test
 *.out
+*.syso
+coverage.out
+*.coverprofile
+
+# --- Node / frontends embebidos (Wails, web, tooling) ---
+node_modules/
+frontend/node_modules/
+**/frontend/dist/
+frontend/bindings/
 
 # --- Editor / entorno local ---
 .vscode/
@@ -583,6 +611,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.ipynb_checkpoints/
 .coverage
 htmlcov/
 
@@ -595,6 +625,10 @@ ENV/
 build/
 dist/
 *.egg-info/
+*.mo
+
+# --- Node / frontends embebidos ---
+node_modules/
 
 # --- Secrets / local config ---
 .env
@@ -626,7 +660,40 @@ func gitignoreContent(pt project.ProjectType) string {
 	default:
 		content = gitignoreGo
 	}
-	return withTaskCacheRules(content)
+	return withCommonRules(withTaskCacheRules(content))
+}
+
+// commonIgnoreRules ensucian el arbol en cualquier proyecto: dependencias Node
+// (aunque el proyecto sea Go, si lleva UI web) y salidas de empaquetado.
+var commonIgnoreRules = []string{"node_modules/", "dist/"}
+
+// withCommonRules anade las reglas comunes que falten, sin duplicarlas.
+func withCommonRules(content string) string {
+	var missing []string
+	for _, rule := range commonIgnoreRules {
+		if !hasIgnoreRule(content, rule) {
+			missing = append(missing, rule)
+		}
+	}
+	if len(missing) == 0 {
+		return content
+	}
+	content = strings.TrimRight(content, "\n \t")
+	content += "\n\n# --- Dependencias Node y salidas de empaquetado ---\n"
+	for _, rule := range missing {
+		content += rule + "\n"
+	}
+	return content
+}
+
+// hasIgnoreRule indica si content ya contiene ese patron como regla propia.
+func hasIgnoreRule(content, rule string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == rule {
+			return true
+		}
+	}
+	return false
 }
 
 // withTaskCacheRules anade el directorio de trabajo de go-task (Taskfile).
@@ -670,17 +737,22 @@ func mergeGitignore(existing, required string) string {
 		return existing
 	}
 	merged := existing
-	if !strings.HasSuffix(merged, "\n") && merged != "" {
+	if merged != "" && !strings.HasSuffix(merged, "\n") {
 		merged += "\n"
 	}
-	if merged != "" {
-		merged += "\n# Compass project ignore rules\n"
+	// La cabecera se escribe una sola vez; en actualizaciones posteriores solo
+	// se anaden las reglas nuevas.
+	if merged != "" && !strings.Contains(merged, mergeMarker) {
+		merged += "\n" + mergeMarker + "\n"
 	}
 	for _, rule := range missing {
 		merged += rule + "\n"
 	}
 	return merged
 }
+
+// mergeMarker separa las reglas que anade Compass de las que ya tenia el repo.
+const mergeMarker = "# Compass project ignore rules"
 
 func writeContextGitignore(root, required string) error {
 	path := filepath.Join(root, ".gitignore")

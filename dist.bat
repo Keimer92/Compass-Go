@@ -76,6 +76,10 @@ REM App GUI de Windows: -H=windowsgui evita que se abra una consola al arrancar.
 REM Las tareas --task enganchan la consola padre en main.go (AttachParentConsole)
 REM para seguir escribiendo en la ConPTY del terminal embebido.
 echo [INFO] Compilando frontend Svelte...
+REM Vite ya no vacia el outDir (conserva el .gitkeep de //go:embed), asi que
+REM aqui se borra el bundle anterior para no acumular assets con hash viejo.
+if exist "cmd\compass-web\frontend\dist\assets" rmdir /s /q "cmd\compass-web\frontend\dist\assets" >nul 2>nul
+if exist "cmd\compass-web\frontend\dist\index.html" del /f /q "cmd\compass-web\frontend\dist\index.html" >nul 2>nul
 pushd frontend
 call npm run build
 if errorlevel 1 ( popd & echo [ERROR] Fallo el build de Svelte. & exit /b 1 )
@@ -186,30 +190,43 @@ echo [OK] dist\installer.nsi listo.
 
 if not exist "%MAKENSIS%" (
     echo [WARN] NSIS no esta instalado; se omite el instalador.
-    echo        Instala NSIS desde https://nsis.sourceforge.io/ y ejecuta:
-    echo        "%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% %FAST_FLAG% "dist\installer.nsi"
+    echo        Instala NSIS desde https://nsis.sourceforge.io/ y vuelve a ejecutar dist.bat.
+    call :clean_assets
     goto done
 )
 
 echo [INFO] Generando dist\CompassGo-Setup.exe...
 pushd "dist"
 "%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% %FAST_FLAG% installer.nsi >nul
-if errorlevel 1 (
-    popd
+set "MAKENSIS_RC=%errorlevel%"
+popd
+REM El .nsi y el .bmp solo hacen falta mientras compila makensis: se borran
+REM para no dejar restos en dist\ (el instalador ya los lleva embebidos).
+call :clean_assets
+if not "%MAKENSIS_RC%"=="0" (
     echo [ERROR] No se pudo generar el instalador.
     echo.
     exit /b 1
-) else (
-    popd
-    echo [OK] dist\CompassGo-Setup.exe generado.
 )
+echo [OK] dist\CompassGo-Setup.exe generado.
+echo.
+
+REM El instalador es autocontenido: el payload (y los temporales del .nsi)
+REM ya no hacen falta en dist\.
+if exist "dist\payload" rmdir /s /q "dist\payload" >nul 2>nul
+echo [OK] dist\payload eliminado (todo va dentro del instalador).
 echo.
 
 :done
 echo =============================================
 echo   [OK] dist listo
 echo =============================================
-echo   Payload:    %CD%\dist\payload\compass-go.exe
+if exist "dist\payload\compass-go.exe" echo   Payload:    %CD%\dist\payload\compass-go.exe
 if "%MAKE_INSTALLER%"=="1" if exist "dist\CompassGo-Setup.exe" echo   Instalador: %CD%\dist\CompassGo-Setup.exe
 echo.
+exit /b 0
+
+:clean_assets
+if exist "dist\installer.nsi" del /f /q "dist\installer.nsi" >nul 2>nul
+if exist "dist\installer_header.bmp" del /f /q "dist\installer_header.bmp" >nul 2>nul
 exit /b 0

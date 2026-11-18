@@ -37,6 +37,7 @@
   let previewName = $state<string | null>(null)
   let settings = $state<Settings>({
     open_output_dir: true,
+    close_tab_on_build_end: false,
     openrouter_endpoint: 'https://openrouter.ai/api/v1',
     openrouter_model: '',
     openrouter_api_key: '',
@@ -99,6 +100,13 @@
 
   async function openOptions() {
     optionsOpen = true
+    // Se relee lo guardado: la key vuelve enmascarada y el modal nunca
+    // muestra un estado obsoleto de una sesion anterior.
+    try {
+      settings = await getSettings()
+    } catch {
+      /* se mantiene lo que ya habia */
+    }
     try {
       models = await listModels()
     } catch {
@@ -538,6 +546,10 @@
         <input type="checkbox" bind:checked={settings.open_output_dir} />
         <span>Abrir la carpeta de salida al terminar un build</span>
       </label>
+      <label class="opt-row">
+        <input type="checkbox" bind:checked={settings.close_tab_on_build_end} />
+        <span>Cerrar la pestaña del terminal al terminar un build <small>(cuenta atrás de 10 s)</small></span>
+      </label>
       <label class="opt-row column">
         <span>Endpoint de OpenRouter</span>
         <input class="opt-input" type="text" bind:value={settings.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
@@ -557,7 +569,9 @@
         </select>
       </label>
       <label class="opt-row column">
-        <span>API key de OpenRouter <small>(se guarda en settings.json)</small></span>
+        <span>API key de OpenRouter <small>{settings.openrouter_api_key === '********'
+          ? '(guardada · escribe otra para cambiarla)'
+          : '(se guarda en settings.json)'}</small></span>
         <input class="opt-input" type="password" bind:value={settings.openrouter_api_key} placeholder="********" autocomplete="off" />
       </label>
       <div class="modal-actions">
