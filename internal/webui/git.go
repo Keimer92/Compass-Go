@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"compass/internal/settings"
 	"compass/internal/windialog"
@@ -156,7 +155,8 @@ func gitSummary(root string) string {
 	return s
 }
 
-// GenerateCommit pide a opencode un mensaje de commit para los cambios actuales.
+// GenerateCommit pide a Ollama Cloud un mensaje de commit para los cambios
+// actuales. La key, el modelo y el endpoint se leen de las opciones globales.
 func (b *Bridge) GenerateCommit() (string, error) {
 	dir := b.projectDir()
 	if dir == "" {
@@ -166,12 +166,12 @@ func (b *Bridge) GenerateCommit() (string, error) {
 	if strings.TrimSpace(summary) == "" {
 		return "", errors.New("no hay cambios para commitear")
 	}
-	if _, err := exec.LookPath("opencode"); err != nil {
-		return "", errors.New("opencode no está en el PATH")
+	cfg := settings.Load()
+	if strings.TrimSpace(cfg.OllamaAPIKey) == "" {
+		return "", errors.New("falta la API key de Ollama: añádela en Opciones (ollama.com/settings/keys)")
 	}
-	model := strings.TrimSpace(settings.Load().CommitModel)
-	if model == "" {
-		model = settings.Default().CommitModel
+	if strings.TrimSpace(cfg.OllamaModel) == "" {
+		return "", errors.New("falta el modelo de Ollama: añádelo en Opciones")
 	}
 	prompt := "Write a git commit message in ENGLISH. Do NOT explore the repository.\n" +
 		"Use ONLY the change list below. Output exactly this format:\n" +
@@ -181,35 +181,13 @@ func (b *Bridge) GenerateCommit() (string, error) {
 		"No blank lines, no markdown, no quotes, no explanation.\n\n" +
 		"Change list:\n" + summary
 
-	cmd := exec.Command("opencode", "run", "-m", model, prompt)
-	windialog.NoWindow(cmd)
-	cmd.Dir = dir
-
-	done := make(chan struct{})
-	var out []byte
-	var err error
-	go func() {
-		out, err = cmd.CombinedOutput()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(90 * time.Second):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		return "", errors.New("OpenCode tardó demasiado en responder")
-	}
+	out, err := chatCompletion(cfg.OllamaEndpoint, cfg.OllamaAPIKey, cfg.OllamaModel, prompt)
 	if err != nil {
-		detail := strings.TrimSpace(string(out))
-		if len(detail) > 200 {
-			detail = detail[len(detail)-200:]
-		}
-		return "", fmt.Errorf("opencode falló: %v\n%s", err, detail)
+		return "", err
 	}
-	msg := cleanCommitMessage(string(out))
+	msg := cleanCommitMessage(out)
 	if strings.TrimSpace(msg) == "" {
-		return "", errors.New("opencode no devolvió un mensaje utilizable")
+		return "", errors.New("Ollama no devolvió un mensaje utilizable")
 	}
 	return msg, nil
 }

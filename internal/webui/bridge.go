@@ -284,11 +284,22 @@ func (b *Bridge) ResizeTerminal(id string, cols, rows int) { b.term.Resize(id, c
 // CloseTerminal mata la sesion de la pestana.
 func (b *Bridge) CloseTerminal(id string) { b.term.Close(id) }
 
-// GetSettings devuelve las opciones globales.
-func (b *Bridge) GetSettings() settings.Settings { return settings.Load() }
+// GetSettings devuelve las opciones globales. La API key nunca se envia al
+// frontend: se devuelve vacia para que el campo del modal quede en blanco.
+func (b *Bridge) GetSettings() settings.Settings {
+	s := settings.Load()
+	s.OllamaAPIKey = ""
+	return s
+}
 
-// SetSettings guarda las opciones globales.
-func (b *Bridge) SetSettings(s settings.Settings) { settings.Save(s) }
+// SetSettings guarda las opciones globales. Si el frontend no envio la key
+// (vacio o enmascarado), se conserva la que ya habia guardada.
+func (b *Bridge) SetSettings(s settings.Settings) {
+	if k := strings.TrimSpace(s.OllamaAPIKey); k == "" || k == "********" {
+		s.OllamaAPIKey = settings.Load().OllamaAPIKey
+	}
+	settings.Save(s)
+}
 
 // RunTask es el punto de entrada --task del propio binario.
 func RunTask(task, dir string) {

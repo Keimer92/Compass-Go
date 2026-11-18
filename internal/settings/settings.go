@@ -19,14 +19,29 @@ type Settings struct {
 	// terminar un build. Por defecto si (comportamiento historico).
 	OpenOutputDir bool `json:"open_output_dir"`
 
-	// CommitModel es el modelo de opencode usado para generar mensajes de
-	// commit. Por defecto un modelo gratuito.
-	CommitModel string `json:"commit_model"`
+	// CommitModel es un campo legacy de la epoca de opencode. Ya no se usa
+	// para generar commits, pero se conserva para migrar el modelo elegido
+	// por el usuario a OllamaModel en Load().
+	CommitModel string `json:"commit_model,omitempty"`
+
+	// OllamaEndpoint es la base de la API de Ollama Cloud. Por defecto
+	// https://ollama.com (se le anade /api/chat).
+	OllamaEndpoint string `json:"ollama_endpoint"`
+
+	// OllamaModel es el modelo cloud usado para generar mensajes de commit.
+	OllamaModel string `json:"ollama_model"`
+
+	// OllamaAPIKey es el bearer token de https://ollama.com/settings/keys.
+	OllamaAPIKey string `json:"ollama_api_key"`
 }
 
 // Default devuelve los valores de fabrica.
 func Default() Settings {
-	return Settings{OpenOutputDir: true, CommitModel: "opencode/nemotron-3.5-lightning-free"}
+	return Settings{
+		OpenOutputDir:  true,
+		OllamaEndpoint: "https://ollama.com",
+		OllamaModel:    "gemma4:31b",
+	}
 }
 
 func configPath() string {
@@ -52,9 +67,21 @@ func Load() Settings {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return Default()
 	}
-	if strings.TrimSpace(s.CommitModel) == "" ||
-		s.CommitModel == "opencode/hy4-flash-free" {
-		s.CommitModel = Default().CommitModel
+	def := Default()
+	// Migracion: el antiguo commit_model (opencode/...) se convierte en el
+	// modelo de Ollama siempre que no fuera uno reservado de opencode.
+	if strings.TrimSpace(s.OllamaModel) == "" {
+		legacy := strings.TrimSpace(s.CommitModel)
+		if legacy != "" && !strings.HasPrefix(legacy, "opencode/") &&
+			legacy != "hy4-flash-free" && legacy != "nemotron-3.5-lightning-free" {
+			s.OllamaModel = legacy
+		} else {
+			s.OllamaModel = def.OllamaModel
+		}
+	}
+	s.CommitModel = ""
+	if strings.TrimSpace(s.OllamaEndpoint) == "" {
+		s.OllamaEndpoint = def.OllamaEndpoint
 	}
 	return s
 }

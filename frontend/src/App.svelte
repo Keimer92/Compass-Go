@@ -33,7 +33,13 @@
   let themes = $state<ThemeInfo[]>([])
   let theme = $state<ThemeInfo | null>(null)
   let previewName = $state<string | null>(null)
-  let settings = $state<Settings>({ open_output_dir: true, commit_model: '' })
+  let settings = $state<Settings>({
+    open_output_dir: true,
+    commit_model: '',
+    ollama_endpoint: 'https://ollama.com',
+    ollama_model: 'gemma4:31b',
+    ollama_api_key: '',
+  })
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   let seq = 0

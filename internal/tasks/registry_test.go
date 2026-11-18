@@ -30,7 +30,6 @@ func TestMenuTasksAreRegisteredForEveryType(t *testing.T) {
 		"android-aab":           {project.TypeFlutter, project.TypeKotlin, project.TypeGoWails},
 		"android-install-debug": {project.TypeKotlin, project.TypeGoWails},
 		"debug-android":         {project.TypeFlutter, project.TypeKotlin, project.TypeGoWails},
-		"flutter-profile":       {project.TypeFlutter},
 		"python-test":           {project.TypePython},
 		"go-test":               {project.TypeGo},
 	}

@@ -58,6 +58,9 @@ export const setTheme = (name: string) => call<ThemeInfo>(M('SetTheme'), name)
 export interface Settings {
   open_output_dir: boolean
   commit_model: string
+  ollama_endpoint: string
+  ollama_model: string
+  ollama_api_key: string
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
