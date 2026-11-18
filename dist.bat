@@ -67,15 +67,22 @@ if not exist "dist\payload" mkdir "dist\payload"
 where go-winres >nul 2>nul
 if not errorlevel 1 (
     echo [INFO] Generando recursos de Windows con go-winres...
-    go-winres make --in go-winres.json --out cmd\compass-gui\rsrc --arch amd64,386 >nul
+    go-winres make --in go-winres.json --out cmd\compass-web\rsrc --arch amd64,386 >nul
     if errorlevel 1 echo [WARN] go-winres fallo; se compila sin recursos.
 ) else (
     echo [AVISO] go-winres no encontrado: se compila sin icono ni version.
 )
-REM App GUI de Windows: no se crea ninguna consola al arrancar. Las tareas
-REM --task enganchan la consola padre en main.go para seguir escribiendo en
-REM la ConPTY del terminal embebido.
-go build -ldflags="-H=windowsgui" -o "dist\payload\compass-go.exe" ./cmd/compass-gui
+REM App GUI de Windows: -H=windowsgui evita que se abra una consola al arrancar.
+REM Las tareas --task enganchan la consola padre en main.go (AttachParentConsole)
+REM para seguir escribiendo en la ConPTY del terminal embebido.
+echo [INFO] Compilando frontend Svelte...
+pushd frontend
+call npm run build
+if errorlevel 1 ( popd & echo [ERROR] Fallo el build de Svelte. & exit /b 1 )
+popd
+echo [OK] Frontend compilado.
+
+go build -ldflags="-H=windowsgui" -o "dist\payload\compass-go.exe" ./cmd/compass-web
 if errorlevel 1 (
     echo.
     echo =============================================

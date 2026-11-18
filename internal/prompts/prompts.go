@@ -6,7 +6,7 @@
 package prompts
 
 import (
-	"bufio"
+	"compass/internal/stdin"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -170,10 +170,5 @@ func PickProjectRoot(start string) (string, error) {
 }
 
 func readLine() (string, error) {
-	r := bufio.NewReader(os.Stdin)
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimRight(line, "\r\n"), nil
+	return stdin.ReadLineErr()
 }

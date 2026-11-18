@@ -38,6 +38,9 @@ type Session struct {
 	// code es el codigo de salida del shell; -1 mientras sigue vivo.
 	code atomic.Int32
 
+	// done se cierra cuando el proceso termina; permite esperar su salida.
+	done chan struct{}
+
 	mu         sync.Mutex
 	rows, cols int
 }
@@ -49,6 +52,15 @@ type Session struct {
 // otra ventana. sb es el scrollback de la pestana (su terminal "alto" se
 // alimenta con la misma salida para conservar la historia).
 func Spawn(script, dir string, rows, cols int, sb *Scrollback) (*Session, error) {
+	return SpawnTap(script, dir, rows, cols, sb, nil)
+}
+
+// SpawnTap es Spawn con un consumidor adicional de la salida cruda.
+//
+// tap recibe cada trozo leido de la ConPTY (para reenviarlo a un frontend
+// web). Es imprescindible que la salida se reparta desde el mismo lector que
+// alimenta el parser: dos lectores sobre la misma ConPTY se robarian bytes.
+func SpawnTap(script, dir string, rows, cols int, sb *Scrollback, tap func([]byte)) (*Session, error) {
 	if rows < 2 {
 		rows = 2
 	}
@@ -79,6 +91,7 @@ func Spawn(script, dir string, rows, cols int, sb *Scrollback) (*Session, error)
 		rows: rows,
 		cols: cols,
 		sb:   sb,
+		done: make(chan struct{}),
 	}
 	s.code.Store(-1)
 	if cmd.Process != nil {
@@ -98,6 +111,11 @@ func Spawn(script, dir string, rows, cols int, sb *Scrollback) (*Session, error)
 				if s.sb != nil {
 					s.sb.Feed(buf[:n])
 				}
+				if tap != nil {
+					chunk := make([]byte, n)
+					copy(chunk, buf[:n])
+					tap(chunk)
+				}
 			}
 			if err != nil {
 				s.exited.Store(true)
@@ -115,6 +133,7 @@ func Spawn(script, dir string, rows, cols int, sb *Scrollback) (*Session, error)
 			s.code.Store(int32(cmd.ProcessState.ExitCode()))
 		}
 		s.exited.Store(true)
+		close(s.done)
 	}()
 
 	return s, nil
@@ -137,6 +156,15 @@ func (s *Session) WithScreen(f func(vt10x.View)) {
 	s.term.Lock()
 	defer s.term.Unlock()
 	f(s.term)
+}
+
+// ExitCode devuelve el codigo de salida del proceso (o -1 si sigue vivo).
+func (s *Session) ExitCode() int { return int(s.code.Load()) }
+
+// WaitExit espera a que el proceso termine y devuelve su codigo de salida.
+func (s *Session) WaitExit() int {
+	<-s.done
+	return s.ExitCode()
 }
 
 // Write reenvia bytes al proceso de la pestana.

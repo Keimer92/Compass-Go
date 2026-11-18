@@ -11,7 +11,7 @@
           "name": "CompassGo",
           "version": "1.0.0.0"
         },
-        "description": "Compass Go - TUI para proyectos Tauri/Flutter/Kotlin/Go/Python/Rust en Windows",
+        "description": "Compass Go - GUI para proyectos Flutter/Kotlin/Go+Wails/Go/Python en Windows",
         "minimum-os": "win7",
         "execution-level": "asInvoker",
         "ui-access": false,
@@ -39,7 +39,7 @@
         "info": {
             "0409": {
               "CompanyName": "Compass Go",
-              "FileDescription": "Compass Go - TUI para proyectos Tauri/Flutter/Kotlin/Go/Python/Rust en Windows",
+              "FileDescription": "Compass Go - GUI para proyectos Flutter/Kotlin/Go+Wails/Go/Python en Windows",
               "FileVersion": "1.0.0.0",
               "InternalName": "compass-go",
               "OriginalFilename": "compass-go.exe",

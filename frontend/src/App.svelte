@@ -1,0 +1,452 @@
+<script lang="ts">
+  import { onMount, tick } from 'svelte'
+  import { Terminal } from '@xterm/xterm'
+  import { FitAddon } from '@xterm/addon-fit'
+  import {
+    getWorkspace, selectProject, getMenu, runTask,
+    onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
+    closeTerminal, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
+    subcards, onWorkspaceChanged,
+  } from './lib/bridge'
+  import { svg } from './lib/icons'
+  import Card from './components/Card.svelte'
+  import Explorer from './components/Explorer.svelte'
+  import Commit from './components/Commit.svelte'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard } from './lib/bridge'
+
+  interface Tab {
+    key: number
+    label: string
+    ptyId: string | null
+    exited: boolean
+  }
+
+  let workspace = $state<WorkspaceInfo>({ projects: [], active: 0 })
+  let menu = $state<MenuItemInfo[]>([])
+  let tabs = $state<Tab[]>([])
+  let activeKey = $state<number | null>(null)
+  let rightTab = $state<'explorer' | 'commit'>('explorer')
+  let themeMenu = $state(false)
+  let optionsOpen = $state(false)
+  let menuTab = $state<'DEV' | 'CFG'>('DEV')
+  let lastError = $state('')
+  let themes = $state<ThemeInfo[]>([])
+  let theme = $state<ThemeInfo | null>(null)
+  let previewName = $state<string | null>(null)
+  let settings = $state<Settings>({ open_output_dir: true, commit_model: '' })
+  let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
+
+  let seq = 0
+  const terms = new Map<number, { term: Terminal; fit: FitAddon }>()
+  const mounted = new Set<number>()
+
+  const activeTab = () => tabs.find((t) => t.key === activeKey) ?? null
+
+  // applyTheme solo pinta (CSS vars + terminales); no toca el tema guardado.
+  // Asi se puede llamar en hover para previsualizar sin persistir nada.
+  function applyTheme(t: ThemeInfo) {
+    const root = document.documentElement.style
+    root.setProperty('--bg', t.bg)
+    root.setProperty('--panel', t.panel)
+    root.setProperty('--sidebar', t.sidebar)
+    root.setProperty('--text', t.text)
+    root.setProperty('--muted', t.muted)
+    root.setProperty('--border', t.border)
+    root.setProperty('--brand', t.brand)
+    root.setProperty('--accent', t.accent)
+    for (const entry of terms.values()) {
+      entry.term.options.theme = { background: t.panel, foreground: t.text }
+    }
+  }
+
+  // Tema que se esta mostrando: el previsualizado si hay hover, si no el guardado.
+  const shownTheme = () => (previewName ? themes.find((t) => t.name === previewName) ?? theme : theme)
+
+  function hoverTheme(t: ThemeInfo) {
+    previewName = t.name
+    applyTheme(t)
+  }
+
+  function endPreview() {
+    previewName = null
+    if (theme) applyTheme(theme)
+  }
+
+  function closeThemeMenu() {
+    endPreview()
+    themeMenu = false
+  }
+
+  async function pickTheme(name: string) {
+    theme = await setTheme(name)
+    previewName = null
+    applyTheme(theme)
+    themeMenu = false
+  }
+
+  async function saveSettings() {
+    await setSettings({ ...settings })
+    optionsOpen = false
+  }
+
+  const cardAccent = (item: MenuItemInfo) => shownTheme()?.cards?.[item.color] ?? shownTheme()?.accent ?? '#cba6f7'
+
+  function b64ToBytes(b64: string): Uint8Array {
+    const bin = atob(b64)
+    const out = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+  }
+  function bytesToB64(bytes: Uint8Array): string {
+    let bin = ''
+    for (const b of bytes) bin += String.fromCharCode(b)
+    return btoa(bin)
+  }
+  const colors = ['#89b4fa', '#94e2d5', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7']
+
+  onMount(() => {
+    onPtyData((d) => {
+      const tab = tabs.find((t) => t.ptyId === d.id)
+      const entry = tab && terms.get(tab.key)
+      if (entry) entry.term.write(b64ToBytes(d.data))
+    })
+    onPtyExit((d) => {
+      const tab = tabs.find((t) => t.ptyId === d.id)
+      const entry = tab && terms.get(tab.key)
+      if (entry) entry.term.writeln('\r\n\x1b[2m─ proceso terminado ─\x1b[0m')
+      if (tab) {
+        tab.exited = true
+        tab.ptyId = null
+      }
+    })
+    window.addEventListener('resize', () => {
+      const entry = activeKey != null ? terms.get(activeKey) : null
+      const tab = activeTab()
+      if (!entry) return
+      entry.fit.fit()
+      if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
+    })
+    loadTheme()
+    onWorkspaceChanged(() => refresh())
+    refresh()
+  })
+
+  async function loadTheme() {
+    try {
+      themes = await getThemes()
+      theme = await getTheme()
+      applyTheme(theme)
+      settings = await getSettings()
+    } catch (e) {
+      lastError = 'ERROR cargando tema: ' + (e as Error).message
+    }
+  }
+
+  async function refresh() {
+    workspace = await getWorkspace()
+    menu = await getMenu()
+  }
+
+  async function pickProject(i: number) {
+    workspace = await selectProject(i)
+    menu = await getMenu()
+    await closeAllTabs()
+  }
+
+  // mountTerm crea el xterm de una pestana y lo engancha a su host.
+  function mountTerm(key: number): Terminal {
+    const term = new Terminal({
+      fontFamily: 'Cascadia Mono, Consolas, monospace',
+      fontSize: 13,
+      cursorBlink: true,
+      theme: { background: theme?.panel ?? '#11111b', foreground: theme?.text ?? '#cdd6f4' },
+      allowProposedApi: true,
+      scrollback: 5000,
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    terms.set(key, { term, fit })
+    term.onData((data) => {
+      const tab = tabs.find((t) => t.key === key)
+      if (tab?.ptyId) writeTerminal(tab.ptyId, bytesToB64(new TextEncoder().encode(data)))
+    })
+    return term
+  }
+
+  // attachTerm pinta el xterm en su host una vez que el DOM existe.
+  async function attachTerm(key: number) {
+    await tick()
+    const el = document.getElementById(`term-${key}`)
+    const entry = terms.get(key)
+    if (!el || !entry || mounted.has(key)) return
+    entry.term.open(el)
+    mounted.add(key)
+    entry.fit.fit()
+  }
+
+  async function activate(key: number) {
+    activeKey = key
+    await tick()
+    const entry = terms.get(key)
+    const tab = tabs.find((t) => t.key === key)
+    if (!entry) return
+    entry.fit.fit()
+    if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
+    entry.term.focus()
+  }
+
+  async function startPty(tab: Tab, task: string) {
+    const entry = terms.get(tab.key)
+    if (!entry) return
+    entry.term.clear()
+    entry.fit.fit()
+    const script = await taskScript(task)
+    // El id se fija ANTES de abrir: la salida de la tarea puede llegar antes
+    // de que la promesa resuelva y hay que poder casarla ya.
+    const id = `tab-${tab.key}`
+    tab.ptyId = id
+    tab.exited = false
+    const opened = await openTerminal(id, script, entry.term.rows, entry.term.cols)
+    if (!opened) {
+      tab.ptyId = null
+      tab.exited = true
+      lastError = 'ERROR: no se pudo abrir la ConPTY'
+      return
+    }
+    lastError = ''
+    entry.term.focus()
+  }
+
+  async function openTask(item: MenuItemInfo) {
+    lastError = 'Abriendo ' + item.label + '...'
+    try {
+      // Release / Git / Entorno abren un modal con subcards (como en la GUI Gio).
+      const subs = await subcards(item.id)
+      if (subs?.length) {
+        subMenu = { title: item.label, items: subs }
+        lastError = ''
+        return
+      }
+      const task = await runTask(item.id)
+      if (!task) {
+        const dbg = await getDebug()
+        lastError = `Sin tarea para ${item.label} (ctx=${dbg.ctxDir || 'nil'}, tipo=${dbg.type || '?'})`
+        return
+      }
+      lastError = ''
+      await runNamedTask(item.label, task)
+    } catch (e) {
+      lastError = 'ERROR: ' + (e as Error).message
+    }
+  }
+
+  async function pickSubcard(sub: Subcard) {
+    subMenu = null
+    await runNamedTask(sub.label, sub.task)
+  }
+
+  async function runNamedTask(label: string, task: string) {
+    // Reutiliza la pestana de esa card si ya existe.
+    const existing = tabs.find((t) => t.label === label)
+    if (existing) {
+      if (existing.ptyId) {
+        await activate(existing.key)
+        return
+      }
+      await activate(existing.key)
+      await startPty(existing, task)
+      return
+    }
+
+    const key = ++seq
+    tabs.push({ key, label, ptyId: null, exited: false })
+    mountTerm(key)
+    await attachTerm(key)
+    await activate(key)
+    await startPty(tabs.find((t) => t.key === key)!, task)
+  }
+
+  async function closeTab(key: number) {
+    const tab = tabs.find((t) => t.key === key)
+    if (tab?.ptyId) await closeTerminal(tab.ptyId)
+    const entry = terms.get(key)
+    if (entry) {
+      entry.term.dispose()
+      terms.delete(key)
+    }
+    mounted.delete(key)
+    const i = tabs.findIndex((t) => t.key === key)
+    tabs = tabs.filter((t) => t.key !== key)
+    if (activeKey === key) {
+      const next = tabs[Math.min(i, tabs.length - 1)]
+      activeKey = next ? next.key : null
+      if (next) await activate(next.key)
+    }
+  }
+
+  async function closeAllTabs() {
+    for (const t of [...tabs]) await closeTab(t.key)
+    activeKey = null
+  }
+</script>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">COMPASS <span>GO</span></div>
+    {#if workspace.projects.length}
+      <div class="project-name">{workspace.projects[workspace.active]?.name}</div>
+      <div class="project-type">{workspace.projects[workspace.active]?.type}</div>
+    {/if}
+    <div class="section-title">PROYECTOS</div>
+    <div class="projects">
+      {#each workspace.projects as p, i}
+        <button class:active={i === workspace.active} class="project" onclick={() => pickProject(i)}>
+          <span class="dot" style="background:{colors[i % colors.length]}"></span>
+          <span class="pname">{p.name}</span>
+        </button>
+      {/each}
+    </div>
+  </aside>
+
+  <main class="main">
+    {#if lastError}<div class="debug-line">{lastError}</div>{/if}
+    <header class="topbar">
+      <div class="tabs">
+        <button class:active={menuTab === 'DEV'} onclick={() => (menuTab = 'DEV')}>Inicio</button>
+        <button class:active={menuTab === 'CFG'} onclick={() => (menuTab = 'CFG')}>Config</button>
+      </div>
+      <div class="topbar-actions">
+        <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>◈ {theme?.name ?? 'Tema'} ▾</button>
+        <button class="theme-btn" onclick={() => (optionsOpen = true)}>⚙ Opciones</button>
+      </div>
+    </header>
+
+    <section class="content">
+      <div class="cards-area">
+        <div class="cards">
+          {#each menu.filter((m) => (menuTab === 'CFG' ? m.section === 'CFG' : m.section !== 'CFG')) as item}
+            <Card {item} accent={cardAccent(item)} onOpen={() => openTask(item)} />
+          {/each}
+        </div>
+
+        <div class="terminal-panel">
+          {#if tabs.length}
+            <div class="term-tabs">
+              {#each tabs as tab}
+                <div
+                  class="term-tab"
+                  class:active={tab.key === activeKey}
+                  role="tab"
+                  tabindex="0"
+                  aria-selected={tab.key === activeKey}
+                  onclick={() => activate(tab.key)}
+                  onkeydown={(e) => e.key === 'Enter' && activate(tab.key)}
+                >
+                  <span class="term-dot" class:dead={tab.exited}></span>
+                  <span class="term-label">{tab.label}</span>
+                  <button
+                    class="term-close"
+                    title="Cerrar pestaña"
+                    onclick={(e) => {
+                      e.stopPropagation()
+                      closeTab(tab.key)
+                    }}>×</button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          <div class="term-stage">
+            {#each tabs as tab}
+              <div class="term-host" class:hidden={tab.key !== activeKey} id={`term-${tab.key}`}></div>
+            {/each}
+            {#if !tabs.length}
+              <div class="term-empty">
+                <p class="muted">Abre una card para lanzar su tarea en una pestaña ConPTY.</p>
+              </div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <aside class="right">
+        <div class="right-tabs">
+          <button class:active={rightTab === 'explorer'} onclick={() => (rightTab = 'explorer')}>Explorador</button>
+          <button class:active={rightTab === 'commit'} onclick={() => (rightTab = 'commit')}>Commit</button>
+        </div>
+        <div class="right-body">
+          {#if rightTab === 'explorer'}
+            {#key workspace.active}
+              <Explorer />
+            {/key}
+          {:else}
+            {#key workspace.active}
+              <Commit />
+            {/key}
+          {/if}
+        </div>
+      </aside>
+    </section>
+  </main>
+</div>
+
+{#if subMenu}
+  <div class="modal-backdrop" onclick={() => (subMenu = null)} role="presentation">
+    <div class="modal wide" onclick={(e) => e.stopPropagation()} role="dialog" aria-label={subMenu.title}>
+      <div class="modal-head"><span>{subMenu.title}</span><button onclick={() => (subMenu = null)}>×</button></div>
+      <div class="sub-grid">
+        {#each subMenu.items as sub}
+          <button class="sub-card" onclick={() => pickSubcard(sub)}>
+            <span class="sub-icon">{@html svg(sub.icon, 18)}</span>
+            <span class="sub-text">
+              <span class="sub-label">{sub.label}</span>
+              <span class="sub-desc">{sub.description}</span>
+            </span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if themeMenu}
+  <div class="modal-backdrop" onclick={closeThemeMenu} role="presentation">
+    <div class="modal wide" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Temas"
+         onmouseleave={endPreview}>
+      <div class="modal-head"><span>Temas</span><button onclick={closeThemeMenu}>×</button></div>
+      <div class="theme-grid">
+        {#each themes as t}
+          <button class="theme-swatch" class:active={t.name === shownTheme()?.name}
+                  onmouseenter={() => hoverTheme(t)} onclick={() => pickTheme(t.name)}>
+            <span class="swatch-colors">
+              <i style="background:{t.bg}"></i>
+              <i style="background:{t.panel}"></i>
+              <i style="background:{t.accent}"></i>
+              <i style="background:{t.brand}"></i>
+            </span>
+            <span class="swatch-name">{t.name}</span>
+          </button>
+        {/each}
+      </div>
+      <div class="theme-hint">Pasa el cursor para previsualizar · clic para aplicar</div>
+    </div>
+  </div>
+{/if}
+
+{#if optionsOpen}
+  <div class="modal-backdrop" onclick={() => (optionsOpen = false)} role="presentation">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Opciones">
+      <div class="modal-head"><span>Opciones</span><button onclick={() => (optionsOpen = false)}>×</button></div>
+      <label class="opt-row">
+        <input type="checkbox" bind:checked={settings.open_output_dir} />
+        <span>Abrir la carpeta de salida al terminar un build</span>
+      </label>
+      <label class="opt-row column">
+        <span>Modelo de opencode para los commits</span>
+        <input class="opt-input" type="text" bind:value={settings.commit_model} placeholder="opencode/..." />
+      </label>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick={saveSettings}>Guardar</button>
+      </div>
+    </div>
+  </div>
+{/if}

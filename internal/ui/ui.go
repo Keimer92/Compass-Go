@@ -3,12 +3,11 @@
 package ui
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
 	"compass/internal/shell"
+	"compass/internal/stdin"
 	"github.com/rivo/uniseg"
 )
 
@@ -29,8 +28,7 @@ func AskText(prompt string, def string) string {
 		msg = fmt.Sprintf("%s [%s]: ", prompt, def)
 	}
 	fmt.Print(msg)
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimRight(line, "\r\n")
+	line := stdin.ReadLine()
 	if strings.TrimSpace(line) == "" {
 		return def
 	}
@@ -41,8 +39,7 @@ func AskText(prompt string, def string) string {
 // lo aporta tcell en una fase posterior.
 func AskPassword(prompt string) string {
 	fmt.Print(prompt + ": ")
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	return strings.TrimRight(line, "\r\n")
+	return stdin.ReadLine()
 }
 
 // Banner imprime un banner con borde y el texto centrado (cuenta runes).

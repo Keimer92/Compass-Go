@@ -3,18 +3,20 @@
 ## ¿Qué es?
 
 `Compass Go` es el **port a Go** de *Compass* (originalmente en Rust): una
-**TUI para Windows** que automatiza tareas de desarrollo, compilación y
-configuración para proyectos **Flutter (Dart)**, **Kotlin Multiplatform
-(Compose)**, **Go + Wails v3**, **Go puro** y **Python**. Detecta el tipo de
-proyecto y adapta comandos, rutas y menús.
+**GUI de escritorio para Windows** (Wails v3 + Svelte 5) que automatiza tareas
+de desarrollo, compilación y configuración para proyectos **Flutter (Dart)**,
+**Kotlin Multiplatform (Compose)**, **Go + Wails v3**, **Go puro** y
+**Python**. Detecta el tipo de proyecto y adapta comandos, rutas y menús.
 
 Además del menú, es un **contenedor de terminal propio**: cada card abre una
 pestaña **ConPTY** (PowerShell) dentro de la misma ventana de Compass en lugar
-de lanzar consolas externas. También registra en Windows el **menú contextual
-Compass**, la acción **`.gitignore`** y la cascada **Vibe Coding**.
+de lanzar consolas externas, y la salida se pinta con **xterm.js** en el
+frontend. También registra en Windows el **menú contextual Compass**, la acción
+**`.gitignore`** y la cascada **Vibe Coding**.
 
-El producto se distribuye como `compass-go.exe` y con un instalador NSIS
-autónomo (`dist/CompassGo-Setup.exe`).
+El producto se distribuye como `compass-go.exe` (construido desde
+`cmd/compass-web`) y con un instalador NSIS autónomo
+(`dist/CompassGo-Setup.exe`).
 
 ## Requisitos
 
@@ -34,10 +36,17 @@ genérico).
 
 ```
 Compass Go/
-├─ cmd/compass-gui/main.go    # entrypoint GUI: flag_globales, dispatch, IPC
+├─ cmd/compass-web/main.go    # entrypoint GUI (Wails v3): flags, dispatch --task, IPC
+├─ cmd/compass-web/frontend/dist/  # bundle Svelte embebido con //go:embed
+├─ frontend/                  # proyecto Svelte 5 + Vite + TS (fuente de la UI)
+│  └─ src/
+│     ├─ App.svelte           # layout: sidebar, topbar, cards, pestañas ConPTY, paneles
+│     ├─ components/          # Card, Explorer (git status + árbol), Commit
+│     └─ lib/bridge.ts        # Call.ByName + suscripción a eventos pty:*/workspace:changed
 ├─ internal/
-│  ├─ tui/                    # TUI con tcell: model, render, submenu, glow (halo hover)
-│  ├─ container/              # contenedor ConPTY: sesión, encode teclado/ratón, render vt10x→tcell
+│  ├─ webui/                  # puente Go↔JS: Bridge, terminal, menú, temas, git
+│  ├─ tui/                    # solo tipos del menú (MenuItem, Label, Icon, Section)
+│  ├─ container/              # contenedor ConPTY: sesión, scrollback, parser vt10x
 │  ├─ tasks/                  # ejecutores por plataforma + menús contextuales Windows + global tasks
 │  │  └─ assets/              # plantillas PowerShell (env-backup, opencode)
 │  ├─ theme/                  # 20 temas + persistencia
@@ -45,6 +54,7 @@ Compass Go/
 │  ├─ sound/                  # aviso sonoro de fin de build (Beep de kernel32)
 │  ├─ project/                # detección de tipo de proyecto
 │  ├─ shell/                  # envoltorio PowerShell / cmd
+│  ├─ workspace/              # lista de proyectos abiertos + IPC multi-proyecto
 │  ├─ lock/                   # instancia única por proyecto (LockFileEx, Windows)
 │  ├─ window/                 # trae al frente la ventana de otra instancia abierta
 │  ├─ console/                # Ctrl-C handler y bloqueo de cierre (Windows)
@@ -56,11 +66,12 @@ Compass Go/
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload, installer.nsi, setup); desechable
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
-├─ dist.bat                   # compilar + empaquetar el instalador en dist/
+├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
 ├─ corekit/                  # core kits canónicos que viajan dentro de Compass (p.ej. whatsapp)
 │  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs, node.exe, node_modules
+├─ PLAN_SVELTE.md             # estado y plan de la migración a la GUI web
 └─ PLAN.md                    # plan de migración original
 ```
 
@@ -171,13 +182,14 @@ uninstall.bat
 ## Uso del binario (CLI)
 
 ```bat
-compass-go.exe                      # detecta el proyecto y abre el TUI
-compass-go.exe -p "C:\ruta\proyecto"  # abre el TUI sobre una carpeta concreta
-compass-go.exe --pick               # elige la carpeta con un navegador
-compass-go.exe -t windows-dev       # ejecuta una tarea directamente (sin TUI)
+compass-go.exe                      # detecta el proyecto y abre la ventana
+compass-go.exe -p "C:\ruta\proyecto"  # abre la ventana sobre una carpeta concreta
+compass-go.exe -t windows-dev       # ejecuta una tarea directamente (sin ventana)
 compass-go.exe --task context-menu-install
-compass-go.exe --trace              # registra eventos del TUI en <tmp>/compass-tui.log
 ```
+
+> `--pick` y `--trace` pertenecían a la TUI retirada; hoy no están soportados
+> por `cmd/compass-web`.
 
 Flags:
 
@@ -505,26 +517,32 @@ compass-go.exe -p "D:\Mis Proyectos\Go + Wails v3\GymPro" -t whatsapp
 ## Desarrollo
 
 ```bat
-go build -o dist/payload/compass-go.exe ./cmd/compass-gui   # compilar sin instalar
+REM Frontend (Svelte) → cmd/compass-web/frontend/dist (embebido con //go:embed)
+cd frontend && npm install && npm run build && cd ..
+
+go build -o dist/payload/compass-go.exe ./cmd/compass-web   # compilar sin instalar
 go vet ./...                  # análisis estático
-go test ./...                 # tests unitarios (sin TUI real)
+go test ./...                 # tests unitarios (sin ventana real)
 COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binario real)
 ```
 
-- Tests de TUI/container usan `tcell` `SimulationScreen` y no necesitan
-  terminal real.
+- Los tests de `internal/webui` cubren detección de proyecto, fallback al
+  workspace, `git status`, árbol de archivos y subcards; no abren ventana.
 - Los tests e2e (`internal/container/e2e_test.go`) están **tras la variable
   de entorno `COMPASS_E2E=1`** porque arrancan `compass-go.exe` de verdad.
 - Recursos de Windows: `go-winres.json` + `assets/icon/*.ico` → `.syso` en
-  `cmd/compass-gui/rsrc` (generados al compilar con `install.bat` / `dist.bat`).
+  `cmd/compass-web/rsrc` (generados al compilar con `install.bat` / `dist.bat`).
+- Si el frontend no se recompila, el `.exe` embebe el bundle **anterior**:
+  `dist.bat` siempre ejecuta `npm run build` antes de `go build`.
 
 ## Notas de arquitectura / diferencias con el Rust original
 
-- **TUI**: `tcell/v2` en vez de `ratatui` + `crossterm`. El halo de hover
-  animado usa un `cellBuf` intermedio porque tcell no permite leer celdas ya
-  pintadas.
-- **Terminal embebida**: `go-pty` (ConPTY) + `vt10x` (parser VT) en vez de
-  `portable-pty`. **vt10x no tiene scrollback** (solo pantalla visible).
+- **UI**: Wails v3 + Svelte 5 en vez de `ratatui`/Gio. El puente vive en
+  `internal/webui`; el frontend llama `Call.ByName("compass/internal/webui.Bridge.<Metodo>")`.
+- **Terminal embebida**: `go-pty` (ConPTY) + `vt10x` (parser VT) en Go, y
+  xterm.js en el frontend. La salida se reparte con `container.SpawnTap` entre
+  el parser y el evento `pty:data` (nunca dos lectores sobre la misma ConPTY).
+  **vt10x no tiene scrollback**; el scrollback lo aporta xterm.js.
 - **Instancia única por proyecto**: `internal/lock` con
   `x/sys/windows.LockFileEx` sobre un fichero por proyecto en
   `%LOCALAPPDATA%\compass\instances` (no se escribe nada en la carpeta del

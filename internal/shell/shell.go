@@ -4,7 +4,7 @@
 package shell
 
 import (
-	"bufio"
+	"compass/internal/stdin"
 	"fmt"
 	"os"
 	"os/exec"
@@ -524,7 +524,7 @@ func ClearScreen() {
 // un ciclo de imports: ui ya depende de shell.
 func Pause() {
 	fmt.Print("  Presiona Enter para continuar...")
-	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	_ = stdin.ReadLine()
 }
 
 // PauseFor hace una cuenta regresiva y, dentro del contenedor, pide cerrar la

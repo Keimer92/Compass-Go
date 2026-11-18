@@ -24,3 +24,11 @@ bin/
 $RECYCLE.BIN/
 ehthumbs.db
 *.lnk
+
+# Compass project ignore rules
+.task/
+
+# --- Frontend Svelte (generado) ---
+frontend/node_modules/
+frontend/bindings/
+tmp/
