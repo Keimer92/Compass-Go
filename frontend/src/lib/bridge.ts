@@ -76,3 +76,6 @@ export const gitStatus = () => call<Change[]>(M('GitStatus'))
 export const fileTree = () => call<FileNode[]>(M('FileTree'))
 export const generateCommit = () => call<string>(M('GenerateCommit'))
 export const commit = (message: string) => call<string>(M('Commit'), message)
+
+export interface CommitEntry { hash: string; short: string; author: string; date: string; subject: string }
+export const gitLog = () => call<CommitEntry[]>(M('GitLog'))

@@ -7,16 +7,40 @@
   let error = $state('')
   let ok = $state('')
 
+  // Cronometro de la generacion: muestra el tiempo transcurrido mientras el
+  // modelo responde y conserva el ultimo tiempo al terminar.
+  let elapsedMs = $state(0)
+  let lastMs = $state(0)
+  let timer: ReturnType<typeof setInterval> | null = null
+
+  function startTimer() {
+    const start = performance.now()
+    elapsedMs = 0
+    timer = setInterval(() => {
+      elapsedMs = performance.now() - start
+    }, 100)
+  }
+
+  function stopTimer() {
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
+    lastMs = elapsedMs
+  }
+
   async function generate() {
     loading = true
     error = ''
     ok = ''
+    startTimer()
     try {
       message = await generateCommit()
     } catch (e) {
       error = (e as Error).message
     } finally {
       loading = false
+      stopTimer()
     }
   }
 
@@ -42,6 +66,9 @@
 <button class="pill" onclick={generate} disabled={loading}>
   {loading ? 'Generando...' : 'Generar con OpenRouter'}
 </button>
+{#if loading}
+  <div class="progress" aria-label="Generando commit"><div class="bar"></div></div>
+{/if}
 <div class="hint">Se añadirán todos los cambios (git add -A)</div>
 {#if error}<div class="error">{error}</div>{/if}
 {#if ok}<div class="ok">{ok.split('\n')[0]}</div>{/if}
@@ -55,6 +82,9 @@
   .pill { display:block; margin:12px 14px 0; padding:8px 14px; border:none; border-radius:18px; background:color-mix(in srgb, var(--accent) 30%, var(--bg)); color:var(--text); font-size:12px; }
   .pill:hover { background:color-mix(in srgb, var(--accent) 50%, var(--bg)); }
   .pill:disabled { opacity:.55; cursor:default; }
+  .progress { margin:10px 14px 0; height:4px; border-radius:2px; background:color-mix(in srgb, var(--border) 55%, transparent); overflow:hidden; }
+  .progress .bar { width:35%; height:100%; border-radius:2px; background:var(--accent); animation:indeterminate 1.1s ease-in-out infinite; }
+  @keyframes indeterminate { 0% { transform:translateX(-110%); } 100% { transform:translateX(320%); } }
   .commit { background:color-mix(in srgb, var(--green) 30%, var(--bg)); }
   .hint { margin:8px 14px; color:var(--muted); font-size:10px; }
   .error { margin:8px 14px; color:var(--red); font-size:11px; white-space:pre-wrap; }

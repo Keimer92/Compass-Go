@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -251,4 +252,51 @@ func (b *Bridge) Commit(message string) (string, error) {
 		return "", fmt.Errorf("git commit: %s", out)
 	}
 	return out, nil
+}
+
+// ansiRe elimina secuencias de escape ANSI (algunos mensajes de commit las
+// traen embebidas y se verian como basura en el historial).
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+// CommitEntry es una fila del historial de la rama actual.
+type CommitEntry struct {
+	Hash    string `json:"hash"`
+	Short   string `json:"short"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Subject string `json:"subject"`
+}
+
+// GitLog devuelve los ultimos commits de la rama actual (hasta 100).
+// Usa separadores de control (%x1f / %x1e) para no romperse con asuntos que
+// contengan comas o tabuladores.
+func (b *Bridge) GitLog() []CommitEntry {
+	dir := b.projectDir()
+	if dir == "" {
+		return nil
+	}
+	format := "%h%x1f%H%x1f%an%x1f%ad%x1f%s%x1e"
+	out, err := runGit(dir, "log", "-n", "100", "--date=short", "--pretty=format:"+format)
+	if err != nil {
+		return nil
+	}
+	var commits []CommitEntry
+	for _, rec := range strings.Split(out, "\x1e") {
+		rec = strings.TrimLeft(rec, "\r\n")
+		if strings.TrimSpace(rec) == "" {
+			continue
+		}
+		parts := strings.Split(rec, "\x1f")
+		if len(parts) < 5 {
+			continue
+		}
+		commits = append(commits, CommitEntry{
+			Short:   parts[0],
+			Hash:    parts[1],
+			Author:  ansiRe.ReplaceAllString(parts[2], ""),
+			Date:    parts[3],
+			Subject: strings.TrimSpace(ansiRe.ReplaceAllString(parts[4], "")),
+		})
+	}
+	return commits
 }

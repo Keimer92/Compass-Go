@@ -99,6 +99,9 @@ func (b *Bridge) AddProject(dir string) {
 		b.detect(p.Path)
 	}
 	Emit("workspace:changed", b.workspaceInfo())
+	// Si el proyecto llega desde el menu contextual (otra instancia), trae
+	// esta ventana al frente.
+	b.FocusWindow()
 }
 
 // ProjectInfo es la informacion de un proyecto para el frontend.

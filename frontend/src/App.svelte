@@ -12,6 +12,7 @@
   import Card from './components/Card.svelte'
   import Explorer from './components/Explorer.svelte'
   import Commit from './components/Commit.svelte'
+  import History from './components/History.svelte'
   import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption } from './lib/bridge'
 
   interface Tab {
@@ -26,7 +27,7 @@
   let menu = $state<MenuItemInfo[]>([])
   let tabs = $state<Tab[]>([])
   let activeKey = $state<number | null>(null)
-  let rightTab = $state<'explorer' | 'commit'>('explorer')
+  let rightTab = $state<'explorer' | 'commit' | 'log'>('explorer')
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
   let menuTab = $state<'DEV' | 'CFG'>('DEV')
@@ -464,15 +465,20 @@
         <div class="right-tabs">
           <button class:active={rightTab === 'explorer'} onclick={() => (rightTab = 'explorer')}>Explorador</button>
           <button class:active={rightTab === 'commit'} onclick={() => (rightTab = 'commit')}>Commit</button>
+          <button class:active={rightTab === 'log'} onclick={() => (rightTab = 'log')}>Historial</button>
         </div>
         <div class="right-body">
           {#if rightTab === 'explorer'}
             {#key workspace.active}
               <Explorer />
             {/key}
-          {:else}
+          {:else if rightTab === 'commit'}
             {#key workspace.active}
               <Commit />
+            {/key}
+          {:else}
+            {#key workspace.active}
+              <History />
             {/key}
           {/if}
         </div>
