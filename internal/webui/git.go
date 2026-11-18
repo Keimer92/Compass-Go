@@ -155,7 +155,7 @@ func gitSummary(root string) string {
 	return s
 }
 
-// GenerateCommit pide a Ollama Cloud un mensaje de commit para los cambios
+// GenerateCommit pide a OpenRouter un mensaje de commit para los cambios
 // actuales. La key, el modelo y el endpoint se leen de las opciones globales.
 func (b *Bridge) GenerateCommit() (string, error) {
 	dir := b.projectDir()
@@ -167,11 +167,18 @@ func (b *Bridge) GenerateCommit() (string, error) {
 		return "", errors.New("no hay cambios para commitear")
 	}
 	cfg := settings.Load()
-	if strings.TrimSpace(cfg.OllamaAPIKey) == "" {
-		return "", errors.New("falta la API key de Ollama: añádela en Opciones (ollama.com/settings/keys)")
+	if strings.TrimSpace(cfg.OpenRouterAPIKey) == "" {
+		return "", errors.New("falta la API key de OpenRouter: añádela en Opciones (openrouter.ai/keys)")
 	}
-	if strings.TrimSpace(cfg.OllamaModel) == "" {
-		return "", errors.New("falta el modelo de Ollama: añádelo en Opciones")
+	model := strings.TrimSpace(cfg.OpenRouterModel)
+	if model == "" {
+		// Sin modelo elegido: usa el gratuito mas rapido disponible.
+		if opts := b.ListModels(); len(opts) > 0 {
+			model = opts[0].ID
+		}
+	}
+	if model == "" {
+		return "", errors.New("falta el modelo de OpenRouter: elige uno en Opciones")
 	}
 	prompt := "Write a git commit message in ENGLISH. Do NOT explore the repository.\n" +
 		"Use ONLY the change list below. Output exactly this format:\n" +
@@ -181,13 +188,13 @@ func (b *Bridge) GenerateCommit() (string, error) {
 		"No blank lines, no markdown, no quotes, no explanation.\n\n" +
 		"Change list:\n" + summary
 
-	out, err := chatCompletion(cfg.OllamaEndpoint, cfg.OllamaAPIKey, cfg.OllamaModel, prompt)
+	out, err := openRouterChat(cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, model, prompt)
 	if err != nil {
 		return "", err
 	}
 	msg := cleanCommitMessage(out)
 	if strings.TrimSpace(msg) == "" {
-		return "", errors.New("Ollama no devolvió un mensaje utilizable")
+		return "", errors.New("OpenRouter no devolvió un mensaje utilizable")
 	}
 	return msg, nil
 }

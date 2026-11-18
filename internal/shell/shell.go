@@ -55,7 +55,7 @@ func ShellPath() string {
 					return
 				}
 			}
-			if out, err := exec.Command("where.exe", "pwsh").Output(); err == nil {
+			if out, err := hideConsole(exec.Command("where.exe", "pwsh")).Output(); err == nil {
 				if line := firstNonEmptyLine(string(out)); line != "" {
 					shellPath = line
 					return
@@ -109,7 +109,9 @@ func RunPSInDirStatus(script string, dir string) error {
 	if !dirExists(dir) {
 		return fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script))
+	// Sin CREATE_NO_WINDOW: el hijo hereda la consola (la ConPTY) y su salida
+	// llega al panel. CREATE_NO_WINDOW le daria una consola nueva y la perderia.
+	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -144,7 +146,8 @@ func RunPSStatus(script string, dir string, envs map[string]string) (bool, error
 	if !dirExists(dir) {
 		return false, fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script))
+	// Hereda la consola: la salida debe verse en la ConPTY.
+	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-Command", script)
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -171,7 +174,8 @@ func RunPSFile(path string, args []string, dir string, envs map[string]string) (
 	}
 	full := []string{Shell(), "-NoLogo", "-NoProfile", "-File", path}
 	full = append(full, args...)
-	c := hideConsole(exec.Command(full[0], full[1:]...))
+	// Hereda la consola: la salida debe verse en la ConPTY.
+	c := exec.Command(full[0], full[1:]...)
 	c.Dir = dir
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
@@ -205,7 +209,8 @@ func RunInDir(cmd string, dir string, args ...string) ([]byte, error) {
 
 // RunStatus ejecuta un comando; error si falla.
 func RunStatus(cmd string, args ...string) error {
-	c := hideConsole(exec.Command(cmd, args...))
+	// Hereda la consola para que la salida se vea en la ConPTY.
+	c := exec.Command(cmd, args...)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -220,7 +225,8 @@ func RunInDirStatus(cmd string, dir string, args ...string) error {
 	if !dirExists(dir) {
 		return fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	c := hideConsole(exec.Command(cmd, args...))
+	// Hereda la consola para que la salida se vea en la ConPTY.
+	c := exec.Command(cmd, args...)
 	c.Dir = dir
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
@@ -255,10 +261,15 @@ func RunTimeout(cmd string, args []string, timeoutSecs uint) (bool, error) {
 }
 
 // RunProgram ejecuta un programa sin shell, con args, env y dir; devuelve exito.
+// Hereda la consola (ConPTY) para que su salida se vea en el panel: asi las
+// cards que lanzan un proceso (p. ej. `python app.py`) muestran su progreso.
 func RunProgram(program string, args []string, dir string, envs map[string]string) (bool, error) {
-	c := hideConsole(exec.Command(program, args...))
+	c := exec.Command(program, args...)
 	c.Dir = dir
 	c.Env = mergeEnv(envs)
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
 	err := c.Run()
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
@@ -302,7 +313,9 @@ func runShellStatus(command string, dir string, envs map[string]string) bool {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	c.SysProcAttr = noWindowAttrs()
+	// Sin CREATE_NO_WINDOW: hereda la consola (ConPTY) para que la salida se
+	// vea en el panel. Con la bandera, el hijo recibiria una consola nueva y su
+	// salida se perderia.
 	c.Env = mergeEnv(envs)
 	err := c.Run()
 	return err == nil
@@ -604,7 +617,7 @@ func AddUserPathDir(dir string) (bool, error) {
 
 // RefreshEnvironment notifica a Explorer el cambio de entorno.
 func RefreshEnvironment() {
-	_ = exec.Command("ie4uinit.exe", "-show").Start()
+	_ = hideConsole(exec.Command("ie4uinit.exe", "-show")).Start()
 }
 
 func userPathAppendScript(dir string) string {
@@ -639,7 +652,9 @@ func CloseTabRequested() bool {
 // ---- helpers ----
 
 func available(name string) bool {
-	c := exec.Command(name, "-NoLogo", "-NoProfile", "-Command", "exit 0")
+	// Ocultar la consola: esta deteccion corre la primera vez que se usa el
+	// shell y, sin la bandera, abriria una terminal que aparece y desaparece.
+	c := hideConsole(exec.Command(name, "-NoLogo", "-NoProfile", "-Command", "exit 0"))
 	c.Stdin = nil
 	c.Stdout = nil
 	c.Stderr = nil

@@ -21,8 +21,8 @@
 .tabs button.active { background: color-mix(in srgb, var(--accent) 30%, var(--bg)); color: var(--text); }
 .content { flex: 1; display: flex; min-height: 0; }
 .cards-area { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 16px; gap: 14px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; overflow-y: auto; }
-.terminal-panel { height: 42%; min-height: 180px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.cards { flex: 0 0 auto; max-height: 42%; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; overflow-y: auto; }
+.terminal-panel { flex: 1 1 auto; min-height: 180px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .term-tabs { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: color-mix(in srgb, var(--border) 40%, var(--panel)); overflow-x: auto; }
 .term-tab { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-radius: 12px; background: color-mix(in srgb, var(--border) 35%, var(--panel)); color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; border: 1px solid transparent; }
 .term-tab:hover { color: var(--text); }

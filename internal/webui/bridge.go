@@ -284,19 +284,31 @@ func (b *Bridge) ResizeTerminal(id string, cols, rows int) { b.term.Resize(id, c
 // CloseTerminal mata la sesion de la pestana.
 func (b *Bridge) CloseTerminal(id string) { b.term.Close(id) }
 
+// FocusWindow trae al frente la ventana principal de Compass. El frontend lo
+// llama tras lanzar una tarea para recuperar el foco si otra ventana (p. ej.
+// la app en modo dev) se lo roba al abrirse.
+func (b *Bridge) FocusWindow() {
+	if app == nil {
+		return
+	}
+	if w, ok := app.Window.Get("main"); ok && w != nil {
+		w.Focus()
+	}
+}
+
 // GetSettings devuelve las opciones globales. La API key nunca se envia al
 // frontend: se devuelve vacia para que el campo del modal quede en blanco.
 func (b *Bridge) GetSettings() settings.Settings {
 	s := settings.Load()
-	s.OllamaAPIKey = ""
+	s.OpenRouterAPIKey = ""
 	return s
 }
 
 // SetSettings guarda las opciones globales. Si el frontend no envio la key
 // (vacio o enmascarado), se conserva la que ya habia guardada.
 func (b *Bridge) SetSettings(s settings.Settings) {
-	if k := strings.TrimSpace(s.OllamaAPIKey); k == "" || k == "********" {
-		s.OllamaAPIKey = settings.Load().OllamaAPIKey
+	if k := strings.TrimSpace(s.OpenRouterAPIKey); k == "" || k == "********" {
+		s.OpenRouterAPIKey = settings.Load().OpenRouterAPIKey
 	}
 	settings.Save(s)
 }

@@ -52,7 +52,8 @@ func RunPSFileStatus(script string, args []string, dir string, envs map[string]s
 	if !dirExists(dir) {
 		return false, fmt.Errorf("el directorio no existe: %s", dir)
 	}
-	cmd := hideConsole(exec.Command(Shell(), "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script))
+	// Hereda la consola: la salida debe verse en la ConPTY.
+	cmd := exec.Command(Shell(), "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script)
 	cmd.Dir = dir
 	cmd.Args = append(cmd.Args, args...)
 	cmd.Stdin = os.Stdin

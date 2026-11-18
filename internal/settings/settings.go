@@ -19,28 +19,25 @@ type Settings struct {
 	// terminar un build. Por defecto si (comportamiento historico).
 	OpenOutputDir bool `json:"open_output_dir"`
 
-	// CommitModel es un campo legacy de la epoca de opencode. Ya no se usa
-	// para generar commits, pero se conserva para migrar el modelo elegido
-	// por el usuario a OllamaModel en Load().
-	CommitModel string `json:"commit_model,omitempty"`
+	// OpenRouterEndpoint es la base de la API de OpenRouter. Por defecto
+	// https://openrouter.ai/api/v1 (se le anade /chat/completions).
+	OpenRouterEndpoint string `json:"openrouter_endpoint"`
 
-	// OllamaEndpoint es la base de la API de Ollama Cloud. Por defecto
-	// https://ollama.com (se le anade /api/chat).
-	OllamaEndpoint string `json:"ollama_endpoint"`
+	// OpenRouterModel es el modelo usado para generar mensajes de commit.
+	OpenRouterModel string `json:"openrouter_model"`
 
-	// OllamaModel es el modelo cloud usado para generar mensajes de commit.
-	OllamaModel string `json:"ollama_model"`
-
-	// OllamaAPIKey es el bearer token de https://ollama.com/settings/keys.
-	OllamaAPIKey string `json:"ollama_api_key"`
+	// OpenRouterAPIKey es el bearer token de https://openrouter.ai/keys.
+	OpenRouterAPIKey string `json:"openrouter_api_key"`
 }
 
 // Default devuelve los valores de fabrica.
 func Default() Settings {
 	return Settings{
-		OpenOutputDir:  true,
-		OllamaEndpoint: "https://ollama.com",
-		OllamaModel:    "gemma4:31b",
+		OpenOutputDir:      true,
+		OpenRouterEndpoint: "https://openrouter.ai/api/v1",
+		// Vacio: GenerateCommit elige el gratuito mas rapido disponible si el
+		// usuario no ha seleccionado uno en Opciones.
+		OpenRouterModel: "",
 	}
 }
 
@@ -68,20 +65,13 @@ func Load() Settings {
 		return Default()
 	}
 	def := Default()
-	// Migracion: el antiguo commit_model (opencode/...) se convierte en el
-	// modelo de Ollama siempre que no fuera uno reservado de opencode.
-	if strings.TrimSpace(s.OllamaModel) == "" {
-		legacy := strings.TrimSpace(s.CommitModel)
-		if legacy != "" && !strings.HasPrefix(legacy, "opencode/") &&
-			legacy != "hy4-flash-free" && legacy != "nemotron-3.5-lightning-free" {
-			s.OllamaModel = legacy
-		} else {
-			s.OllamaModel = def.OllamaModel
-		}
+	// Los campos antiguos de Ollama/opencode que pueda haber en el fichero se
+	// ignoran (no estan en el struct) y desaparecen al siguiente Save.
+	if strings.TrimSpace(s.OpenRouterEndpoint) == "" {
+		s.OpenRouterEndpoint = def.OpenRouterEndpoint
 	}
-	s.CommitModel = ""
-	if strings.TrimSpace(s.OllamaEndpoint) == "" {
-		s.OllamaEndpoint = def.OllamaEndpoint
+	if strings.TrimSpace(s.OpenRouterModel) == "" {
+		s.OpenRouterModel = def.OpenRouterModel
 	}
 	return s
 }

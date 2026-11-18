@@ -5,20 +5,21 @@
   import {
     getWorkspace, selectProject, removeProject, getMenu, runTask,
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
-    closeTerminal, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
+    closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
     subcards, onWorkspaceChanged,
   } from './lib/bridge'
   import { svg } from './lib/icons'
   import Card from './components/Card.svelte'
   import Explorer from './components/Explorer.svelte'
   import Commit from './components/Commit.svelte'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption } from './lib/bridge'
 
   interface Tab {
     key: number
     label: string
     ptyId: string | null
     exited: boolean
+    project: string
   }
 
   let workspace = $state<WorkspaceInfo>({ projects: [], active: 0 })
@@ -35,11 +36,11 @@
   let previewName = $state<string | null>(null)
   let settings = $state<Settings>({
     open_output_dir: true,
-    commit_model: '',
-    ollama_endpoint: 'https://ollama.com',
-    ollama_model: 'gemma4:31b',
-    ollama_api_key: '',
+    openrouter_endpoint: 'https://openrouter.ai/api/v1',
+    openrouter_model: '',
+    openrouter_api_key: '',
   })
+  let models = $state<ModelOption[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   let seq = 0
@@ -47,6 +48,11 @@
   const mounted = new Set<number>()
 
   const activeTab = () => tabs.find((t) => t.key === activeKey) ?? null
+
+  // Solo se muestran las pestanas del proyecto activo; las de los demas
+  // siguen vivas en `tabs` (y sus xterm montados) pero ocultas.
+  let projectPath = $derived(workspace.projects[workspace.active]?.path ?? '')
+  let visibleTabs = $derived(tabs.filter((t) => t.project === projectPath))
 
   // applyTheme solo pinta (CSS vars + terminales); no toca el tema guardado.
   // Asi se puede llamar en hover para previsualizar sin persistir nada.
@@ -88,6 +94,20 @@
     previewName = null
     applyTheme(theme)
     themeMenu = false
+  }
+
+  async function openOptions() {
+    optionsOpen = true
+    try {
+      models = await listModels()
+    } catch {
+      models = []
+    }
+    // Si el modelo guardado no es gratuito (o esta vacio), preselecciona el
+    // gratuito mas rapido de la lista.
+    if (models.length && !models.some((m) => m.id === settings.openrouter_model)) {
+      settings.openrouter_model = models[0].id
+    }
   }
 
   async function saveSettings() {
@@ -154,18 +174,25 @@
   }
 
   async function pickProject(i: number) {
+    // No se cierran las pestañas: cada proyecto conserva sus terminales
+    // abiertos y se puede volver a ellas al cambiar de proyecto.
     workspace = await selectProject(i)
     menu = await getMenu()
-    await closeAllTabs()
+    // Activa la primera pestaña del proyecto recién seleccionado (si tiene).
+    const first = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
+    if (first) await activate(first.key)
+    else activeKey = null
   }
 
   async function dropProject(i: number) {
+    const removed = workspace.projects[i]?.path
     const wasActive = i === workspace.active
     workspace = await removeProject(i)
-    if (wasActive) {
-      await closeAllTabs()
-      menu = await getMenu()
+    // Solo se cierran las terminales del proyecto eliminado.
+    if (removed) {
+      for (const t of tabs.filter((t) => t.project === removed)) await closeTab(t.key)
     }
+    if (wasActive) menu = await getMenu()
   }
 
   // mountTerm crea el xterm de una pestana y lo engancha a su host.
@@ -185,6 +212,26 @@
       const tab = tabs.find((t) => t.key === key)
       if (tab?.ptyId) writeTerminal(tab.ptyId, bytesToB64(new TextEncoder().encode(data)))
     })
+    // Copiar/pegar: Ctrl+Shift+C copia siempre; Ctrl+C copia solo si hay
+    // seleccion (si no, envia ^C). Ctrl+V pega desde el portapapeles.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true
+      const mod = e.ctrlKey || e.metaKey
+      const k = e.key.toLowerCase()
+      if (mod && k === 'c') {
+        const sel = term.getSelection()
+        if (sel) {
+          navigator.clipboard.writeText(sel).catch(() => {})
+          return false
+        }
+        if (e.shiftKey) return false
+      }
+      if (mod && k === 'v') {
+        navigator.clipboard.readText().then((txt) => { if (txt) term.paste(txt) }).catch(() => {})
+        return false
+      }
+      return true
+    })
     return term
   }
 
@@ -195,6 +242,17 @@
     const entry = terms.get(key)
     if (!el || !entry || mounted.has(key)) return
     entry.term.open(el)
+    // Clic derecho sobre la terminal: copia la seleccion. Se detiene la
+    // propagacion para que el menu contextual de Wails no lo intercepte.
+    el.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      const sel = entry.term.getSelection()
+      if (sel) {
+        navigator.clipboard.writeText(sel).catch(() => {})
+        entry.term.clearSelection()
+      }
+    }, { capture: true })
     mounted.add(key)
     entry.fit.fit()
   }
@@ -230,16 +288,28 @@
     }
     lastError = ''
     entry.term.focus()
+    reclaimFocus()
+  }
+
+  // La app que se lanza en modo dev (o cualquier ventana hija) puede robar el
+  // foco al abrirse. Solo reafirmamos el foco si REALMENTE se perdio: llamar a
+  // Focus() con la ventana ya enfocada provoca un parpadeo del WebView.
+  function reclaimFocus() {
+    for (const ms of [150, 600, 1500, 3000, 6000]) {
+      setTimeout(() => {
+        if (!document.hasFocus()) focusWindow().catch(() => {})
+      }, ms)
+    }
   }
 
   async function openTask(item: MenuItemInfo) {
-    lastError = 'Abriendo ' + item.label + '...'
+    // No se usa un mensaje "Abriendo..." transitorio: hacia aparecer y
+    // desaparecer el banner y desplazaba el layout en cada clic (parpadeo).
     try {
       // Release / Git / Entorno abren un modal con subcards (como en la GUI Gio).
       const subs = await subcards(item.id)
       if (subs?.length) {
         subMenu = { title: item.label, items: subs }
-        lastError = ''
         return
       }
       const task = await runTask(item.id)
@@ -261,8 +331,10 @@
   }
 
   async function runNamedTask(label: string, task: string) {
-    // Reutiliza la pestana de esa card si ya existe.
-    const existing = tabs.find((t) => t.label === label)
+    // Reutiliza la pestana de esa card solo si es del MISMO proyecto; asi dos
+    // proyectos con una card "Windows" no comparten terminal.
+    const project = workspace.projects[workspace.active]?.path ?? ''
+    const existing = tabs.find((t) => t.label === label && t.project === project)
     if (existing) {
       if (existing.ptyId) {
         await activate(existing.key)
@@ -274,7 +346,7 @@
     }
 
     const key = ++seq
-    tabs.push({ key, label, ptyId: null, exited: false })
+    tabs.push({ key, label, ptyId: null, exited: false, project })
     mountTerm(key)
     await attachTerm(key)
     await activate(key)
@@ -290,10 +362,11 @@
       terms.delete(key)
     }
     mounted.delete(key)
-    const i = tabs.findIndex((t) => t.key === key)
     tabs = tabs.filter((t) => t.key !== key)
     if (activeKey === key) {
-      const next = tabs[Math.min(i, tabs.length - 1)]
+      // Siguiente pestaña del MISMO proyecto (no salta a otro proyecto).
+      const sameProject = tabs.filter((t) => t.project === tab?.project)
+      const next = sameProject.find((t) => t.key > key) ?? sameProject[sameProject.length - 1] ?? null
       activeKey = next ? next.key : null
       if (next) await activate(next.key)
     }
@@ -335,7 +408,7 @@
       </div>
       <div class="topbar-actions">
         <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>◈ {theme?.name ?? 'Tema'} ▾</button>
-        <button class="theme-btn" onclick={() => (optionsOpen = true)}>⚙ Opciones</button>
+        <button class="theme-btn" onclick={openOptions}>⚙ Opciones</button>
       </div>
     </header>
 
@@ -348,14 +421,15 @@
         </div>
 
         <div class="terminal-panel">
-          {#if tabs.length}
+          {#if visibleTabs.length}
             <div class="term-tabs">
-              {#each tabs as tab}
+              {#each visibleTabs as tab}
                 <div
                   class="term-tab"
                   class:active={tab.key === activeKey}
                   role="tab"
                   tabindex="0"
+                  title={tab.project}
                   aria-selected={tab.key === activeKey}
                   onclick={() => activate(tab.key)}
                   onkeydown={(e) => e.key === 'Enter' && activate(tab.key)}
@@ -377,7 +451,7 @@
             {#each tabs as tab}
               <div class="term-host" class:hidden={tab.key !== activeKey} id={`term-${tab.key}`}></div>
             {/each}
-            {#if !tabs.length}
+            {#if !visibleTabs.length}
               <div class="term-empty">
                 <p class="muted">Abre una card para lanzar su tarea en una pestaña ConPTY.</p>
               </div>
@@ -459,16 +533,26 @@
         <span>Abrir la carpeta de salida al terminar un build</span>
       </label>
       <label class="opt-row column">
-        <span>Endpoint de Ollama</span>
-        <input class="opt-input" type="text" bind:value={settings.ollama_endpoint} placeholder="https://ollama.com" />
+        <span>Endpoint de OpenRouter</span>
+        <input class="opt-input" type="text" bind:value={settings.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
       </label>
       <label class="opt-row column">
-        <span>Modelo para los commits</span>
-        <input class="opt-input" type="text" bind:value={settings.ollama_model} placeholder="gemma4:31b" />
+        <span>Modelo para los commits <small>(gratuitos · los más rápidos primero)</small></span>
+        <select class="opt-input" bind:value={settings.openrouter_model}>
+          {#if settings.openrouter_model && !models.some((m) => m.id === settings.openrouter_model)}
+            <option value={settings.openrouter_model}>{settings.openrouter_model} (actual)</option>
+          {/if}
+          {#each models as m}
+            <option value={m.id}>{m.name} — {m.id}</option>
+          {/each}
+          {#if !models.length}
+            <option value="">(no se pudieron cargar los modelos)</option>
+          {/if}
+        </select>
       </label>
       <label class="opt-row column">
-        <span>API key de Ollama <small>(se guarda en settings.json)</small></span>
-        <input class="opt-input" type="password" bind:value={settings.ollama_api_key} placeholder="********" autocomplete="off" />
+        <span>API key de OpenRouter <small>(se guarda en settings.json)</small></span>
+        <input class="opt-input" type="password" bind:value={settings.openrouter_api_key} placeholder="********" autocomplete="off" />
       </label>
       <div class="modal-actions">
         <button class="btn-primary" onclick={saveSettings}>Guardar</button>

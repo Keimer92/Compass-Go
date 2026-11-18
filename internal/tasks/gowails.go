@@ -570,7 +570,7 @@ func WailsDev(ctx *project.ProjectContext) error {
 	fmt.Println("╚══════════════════════════════════════════════════╝")
 	fmt.Println()
 	fmt.Println("[INFO] Comando: wails3 task dev")
-	fmt.Println("[INFO] El servidor de Vite y la app se lanzan en la ventana nueva.")
+	fmt.Println("[INFO] El servidor de Vite y la app se ejecutan en esta pestaña.")
 	fmt.Println()
 	return shell.SpawnNewWindowInteractive("Wails Dev", ctx.ScriptDir, "wails3 task dev")
 }

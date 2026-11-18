@@ -37,6 +37,7 @@ export const writeTerminal = (id: string, data: string) => call<void>(M('WriteTe
 export const resizeTerminal = (id: string, cols: number, rows: number) =>
   call<void>(M('ResizeTerminal'), id, cols, rows)
 export const closeTerminal = (id: string) => call<void>(M('CloseTerminal'), id)
+export const focusWindow = () => call<void>(M('FocusWindow'))
 
 export interface ThemeInfo {
   name: string
@@ -57,14 +58,16 @@ export const setTheme = (name: string) => call<ThemeInfo>(M('SetTheme'), name)
 
 export interface Settings {
   open_output_dir: boolean
-  commit_model: string
-  ollama_endpoint: string
-  ollama_model: string
-  ollama_api_key: string
+  openrouter_endpoint: string
+  openrouter_model: string
+  openrouter_api_key: string
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
 export const setSettings = (s: Settings) => call<void>(M('SetSettings'), s)
+
+export interface ModelOption { id: string; name: string; context: number }
+export const listModels = () => call<ModelOption[]>(M('ListModels'))
 
 export interface Change { code: string; path: string; status: string }
 export interface FileNode { name: string; path: string; isDir: boolean; children?: FileNode[] }

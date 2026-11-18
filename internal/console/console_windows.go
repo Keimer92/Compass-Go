@@ -124,6 +124,8 @@ func killPaneTrees() {
 	pidsMu.Unlock()
 	for _, pid := range snapshot {
 		cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F")
+		// CREATE_NO_WINDOW: taskkill no debe abrir una consola visible.
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 		_ = cmd.Run()
 	}
 }
