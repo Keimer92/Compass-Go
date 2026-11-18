@@ -1,8 +1,15 @@
 <script lang="ts">
-  import { svg } from '../lib/icons'
+  import { svg, platformSvg } from '../lib/icons'
   import type { MenuItemInfo } from '../lib/bridge'
   let { item, accent, onOpen }: { item: MenuItemInfo; accent?: string; onOpen: () => void } = $props()
   const color = $derived(accent || 'var(--accent)')
+
+  // Etiqueta legible del distintivo de plataforma.
+  const platformLabel: Record<string, string> = {
+    windows: 'Tarea de Windows',
+    android: 'Tarea de Android',
+    general: 'Tarea general',
+  }
 
   let showTip = $state(false)
   let tipX = $state(0)
@@ -22,7 +29,14 @@
   onmousemove={moveTip}
   onmouseleave={() => (showTip = false)}
 >
-  <span class="icon">{@html svg(item.color, 22)}</span>
+  <span class="icon">
+    {@html svg(item.color, 22)}
+    <span
+      class="platform {item.platform}"
+      title={platformLabel[item.platform] ?? 'Tarea general'}
+      aria-label={platformLabel[item.platform] ?? 'Tarea general'}
+    >{@html platformSvg(item.platform, 16)}</span>
+  </span>
   <span class="text">
     <span class="label">{item.label}</span>
     <span class="desc">{item.description}</span>
@@ -51,11 +65,24 @@
     box-shadow: 0 8px 20px rgba(0,0,0,.35);
   }
   .icon {
+    position: relative;
     display: grid; place-items: center;
     width: 38px; height: 38px; border-radius: 10px;
     background: color-mix(in srgb, var(--accent) 30%, transparent);
     color: var(--accent); flex-shrink: 0;
   }
+  /* Distintivo de plataforma: se superpone al icono de la card. */
+  .platform {
+    position: absolute; right: -7px; bottom: -7px;
+    width: 25px; height: 25px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--panel);
+    border: 1px solid color-mix(in srgb, currentColor 55%, var(--border));
+    box-shadow: 0 1px 4px rgba(0,0,0,.45);
+  }
+  .platform.windows { color: #4cc2ff; }
+  .platform.android { color: #3ddc84; }
+  .platform.general { color: var(--muted); }
   .text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .label { font-size: 14px; font-weight: 600; }
   .desc {

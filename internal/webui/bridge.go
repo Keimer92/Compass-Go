@@ -126,6 +126,9 @@ type MenuItemInfo struct {
 	Icon        string `json:"icon"`
 	Color       string `json:"color"`
 	Section     string `json:"section"`
+	// Platform es "windows", "android" o "general": el frontend lo pinta como
+	// distintivo adicional sobre el icono propio de la card.
+	Platform string `json:"platform"`
 }
 
 // GetWorkspace devuelve los proyectos y el activo.
@@ -206,6 +209,11 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 		if label == "" {
 			continue
 		}
+		// Solo se muestran cards con una tarea real para este tipo de proyecto:
+		// asi no aparecen (p.ej.) HMR o Android en un proyecto Go puro.
+		if !tasks.Available(taskFor(item, ctx.ProjectType), ctx.ProjectType) {
+			continue
+		}
 		out = append(out, MenuItemInfo{
 			ID:          fmt.Sprintf("%d", i),
 			Label:       label,
@@ -213,6 +221,7 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 			Icon:        item.Icon(),
 			Color:       item.ColorKey(),
 			Section:     item.Section(),
+			Platform:    item.Platform(),
 		})
 	}
 	return out

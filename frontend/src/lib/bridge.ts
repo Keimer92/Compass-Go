@@ -8,6 +8,7 @@ export interface MenuItemInfo {
   icon: string
   color: string
   section: string
+  platform: 'windows' | 'android' | 'general'
 }
 export interface WorkspaceInfo { projects: ProjectInfo[]; active: number }
 

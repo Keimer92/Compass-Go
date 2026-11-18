@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"compass/internal/project"
+	"compass/internal/tasks"
 	"compass/internal/tui"
 )
 
@@ -84,6 +85,32 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"git-do-remote", "Conectar con remoto", "Enlazar con GitHub (URL o gh)", "git"},
 			{"git-do-status", "Ver estado", "Rama, remoto y cambios", "debug"},
 		}
+	case tui.Clean:
+		// Mismas acciones que el submenu de la TUI, pero como cards.
+		opts := tasks.CleanupOptions()
+		out := make([]Subcard, 0, len(opts))
+		for _, o := range opts {
+			out = append(out, Subcard{
+				Task:        "clean-do-" + o.Key,
+				Label:       o.Label,
+				Description: o.Description,
+				Icon:        o.ColorKey,
+			})
+		}
+		return out
+	case tui.Signing:
+		// Mismas acciones que el submenu de la TUI, pero como cards.
+		opts := tasks.SigningOptions()
+		out := make([]Subcard, 0, len(opts))
+		for _, o := range opts {
+			out = append(out, Subcard{
+				Task:        "signing-do-" + o.Key,
+				Label:       o.Label,
+				Description: o.Description,
+				Icon:        o.ColorKey,
+			})
+		}
+		return out
 	case tui.Environment:
 		return []Subcard{
 			{"env-do-backup", "Backup completo", "Variables, inventario y archivos", "environment"},
@@ -104,12 +131,12 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 	case tui.AndroidDev:
 		return "android-dev"
 	case tui.AndroidHmr:
-		switch pt {
-		case project.TypeGoWails, project.TypePython:
+		// Solo Python registra esta tarea; en el resto de tipos la card no se
+		// muestra (Label devuelve "").
+		if pt == project.TypePython {
 			return "android-hmr"
-		case project.TypeGo:
-			return "go-hmr"
 		}
+		return ""
 	case tui.WindowsBuild:
 		switch pt {
 		case project.TypeGo, project.TypeGoWails:

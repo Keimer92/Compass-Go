@@ -58,7 +58,7 @@ body, .app, .sidebar, .topbar, .cards-area, .card, .right, .terminal-panel, .mod
   transition: background-color .18s ease, color .18s ease, border-color .18s ease;
 }
 .topbar-actions { display: flex; gap: 8px; }
-.sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 70vh; overflow-y: auto; }
 .sub-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 60%, var(--bg)); color: var(--text); text-align: left; }
 .sub-card:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg)); }
 .sub-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); flex-shrink: 0; }

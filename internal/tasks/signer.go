@@ -30,7 +30,38 @@ func init() {
 		Register("signing", pt, SigningManage)
 		Register("sha1", pt, SigningManage)
 		Register("keystore", pt, SigningManage)
+
+		// Acciones individuales para las subcards nativas de la GUI (mismo
+		// estilo que las de Windows release): cada una ejecuta su accion una
+		// sola vez en la pestana, sin dibujar el submenu de la TUI.
+		for _, e := range signingEntries() {
+			Register("signing-do-"+e.key, pt, e.run)
+		}
 	}
+}
+
+// SigningOption es una accion del submenu de firmas expuesta a la GUI.
+type SigningOption struct {
+	Key         string
+	Label       string
+	Description string
+	ColorKey    string
+}
+
+// SigningOptions devuelve las acciones del submenu en el mismo orden que la
+// TUI, para que la GUI pinte las mismas cards.
+func SigningOptions() []SigningOption {
+	entries := signingEntries()
+	out := make([]SigningOption, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, SigningOption{
+			Key:         e.key,
+			Label:       e.card.Label,
+			Description: e.card.Description,
+			ColorKey:    e.card.ColorKey,
+		})
+	}
+	return out
 }
 
 // Props representa los campos de keystore.properties / key.properties.

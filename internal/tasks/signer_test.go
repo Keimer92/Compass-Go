@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"compass/internal/project"
 	"compass/internal/theme"
 )
 
@@ -280,6 +281,18 @@ func TestSigningCardsUseDistinctPaletteKeys(t *testing.T) {
 		seen[key] = true
 		if !known[key] {
 			t.Errorf("%q no es una clave de CardKeys", key)
+		}
+	}
+}
+
+func TestSigningOptionsAreRegistered(t *testing.T) {
+	opts := SigningOptions()
+	if len(opts) == 0 {
+		t.Fatal("SigningOptions no devolvio ninguna accion")
+	}
+	for _, o := range opts {
+		if !Available("signing-do-"+o.Key, project.TypeFlutter) {
+			t.Errorf("la accion %q no esta registrada para Flutter", o.Key)
 		}
 	}
 }

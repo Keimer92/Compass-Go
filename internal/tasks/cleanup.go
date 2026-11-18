@@ -20,7 +20,37 @@ func init() {
 		Register("clean", pt, CleanupManage)
 		Register("clean-cache", pt, CleanupManage)
 		Register("clean-project", pt, CleanupManage)
+
+		// Acciones individuales para las subcards nativas de la GUI (mismo
+		// estilo que Windows release o Firmas).
+		for _, e := range cleanupEntries() {
+			Register("clean-do-"+e.key, pt, e.run)
+		}
 	}
+}
+
+// CleanupOption es una accion del submenu de limpieza expuesta a la GUI.
+type CleanupOption struct {
+	Key         string
+	Label       string
+	Description string
+	ColorKey    string
+}
+
+// CleanupOptions devuelve las acciones del submenu en el mismo orden que la
+// TUI, para que la GUI pinte las mismas cards.
+func CleanupOptions() []CleanupOption {
+	entries := cleanupEntries()
+	out := make([]CleanupOption, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, CleanupOption{
+			Key:         e.key,
+			Label:       e.card.Label,
+			Description: e.card.Description,
+			ColorKey:    e.card.ColorKey,
+		})
+	}
+	return out
 }
 
 // ── Utilidades ────────────────────────────────────────────────────────────────

@@ -24,3 +24,18 @@ export function svg(color: string, size = 20): string {
   const d = icons[color] || icons.terminal
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`
 }
+
+// Distintivo de plataforma que se superpone al icono propio de cada card.
+export const platformIcons: Record<string, string> = {
+  windows:
+    '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>',
+  android:
+    '<rect x="3" y="11" width="18" height="9" rx="3"/><circle cx="12" cy="6" r="2"/><path d="M12 8v3"/><path d="M8 15h.01M16 15h.01"/>',
+  general:
+    '<path d="M4 21v-6M4 11V3M12 21v-8M12 9V3M20 21v-4M20 13V3"/><path d="M1 15h6M9 9h6M17 17h6"/>',
+}
+
+export function platformSvg(platform: string, size = 11): string {
+  const d = platformIcons[platform] || platformIcons.general
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`
+}

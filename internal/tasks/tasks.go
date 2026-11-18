@@ -22,6 +22,16 @@ func Register(task string, pt project.ProjectType, fn TaskFn) {
 	registry[fmt.Sprintf("%s|%d", task, pt)] = fn
 }
 
+// Available indica si la tarea esta registrada para ese tipo de proyecto. La
+// GUI lo usa para no mostrar cards que no harian nada al pulsarlas.
+func Available(task string, pt project.ProjectType) bool {
+	if task == "" {
+		return false
+	}
+	_, ok := registry[fmt.Sprintf("%s|%d", task, pt)]
+	return ok
+}
+
 // RunTaskDirect ejecuta una tarea por su nombre, ya resuelta la carpeta y el
 // contexto. Devuelve error si la tarea no aplica o no esta implementada.
 //

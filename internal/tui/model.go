@@ -136,6 +136,20 @@ func (m MenuItem) Section() string {
 	}
 }
 
+// Platform clasifica la card por destino para pintar un distintivo extra en la
+// GUI: "windows", "android" o "general" (utilidades y tareas del proyecto).
+func (m MenuItem) Platform() string {
+	switch m {
+	case WindowsDev, WindowsBuild:
+		return "windows"
+	case AndroidDev, AndroidBuildArm64, AndroidBuildArmv7, AndroidBuildAll,
+		InstallDebug, DebugAndroid:
+		return "android"
+	default:
+		return "general"
+	}
+}
+
 // Tab devuelve la pestana a la que pertenece la card.
 func (m MenuItem) Tab() Tab {
 	if m.Section() == "CFG" {
@@ -202,16 +216,13 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		}
 		return "Android"
 	case AndroidHmr:
-		if pt == project.TypeGoWails {
-			// Wails v3 no ofrece HMR para Android (no existe `wails3 task
-			// android:dev` en la doc oficial). Ocultar la card devolviendo
-			// una etiqueta vacia: GetMenu descarta las cards sin label.
-			return ""
-		}
+		// Solo Python tiene una tarea real detras (android-hmr -> recarga del
+		// script). En Go puro, Flutter y Kotlin no hay nada que ejecutar, asi
+		// que la card se oculta (GetMenu descarta las cards sin label).
 		if pt == project.TypePython {
 			return "Reload"
 		}
-		return "HMR"
+		return ""
 	case WindowsBuild:
 		switch pt {
 		case project.TypeGo, project.TypeGoWails:
@@ -248,6 +259,11 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 	case DebugAndroid:
 		return "Debug Andr"
 	case Signing:
+		// Solo hay firma Android en Flutter/Kotlin/Go+Wails; en Go puro y
+		// Python la tarea solo respondia "No aplicable".
+		if pt == project.TypeGo || pt == project.TypePython {
+			return ""
+		}
 		return "Signing"
 	case VersionItem:
 		return "Version"
