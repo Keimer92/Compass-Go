@@ -24,10 +24,60 @@ func nsisValue(s string) string {
 	return s
 }
 
+// whatsappInstallerPayload describe los archivos del motor que deben viajar
+// dentro del instalador generico.
+type whatsappInstallerPayload struct {
+	NodeExe   string
+	BundleDir string
+}
+
+// whatsappInstallerInfo devuelve el payload del motor si el proyecto lo usa y
+// los archivos estan disponibles. En caso contrario devuelve nil.
+func whatsappInstallerInfo(ctx *project.ProjectContext) *whatsappInstallerPayload {
+	if !projectUsesWhatsappEngine(ctx) {
+		return nil
+	}
+	node, bundle := whatsappPayloadPaths(ctx)
+	if !whatsappPayloadValid(node, bundle) {
+		return nil
+	}
+	return &whatsappInstallerPayload{NodeExe: node, BundleDir: bundle}
+}
+
+// renderAppInstallerScript sustituye todos los marcadores de la plantilla NSIS.
+// Separado de buildAppInstaller para poder comprobar los bloques del kit sin
+// invocar makensis.
+func renderAppInstallerScript(appName, version, exePath, iconPath, outFile, regKey string, wa *whatsappInstallerPayload) string {
+	files, uninstall := "", ""
+	if wa != nil && wa.NodeExe != "" && wa.BundleDir != "" {
+		files = "\r\n" +
+			"  SetOutPath \"$INSTDIR\\resources\"\r\n" +
+			"  File \"" + nsisValue(wa.NodeExe) + "\"\r\n" +
+			"  SetOutPath \"$INSTDIR\\resources\\whatsapp-engine-bundle\"\r\n" +
+			"  File /r \"" + nsisValue(filepath.Join(wa.BundleDir, "*.*")) + "\"\r\n" +
+			"  SetOutPath \"$INSTDIR\"\r\n"
+		uninstall = "\r\n" +
+			"  Delete \"$INSTDIR\\resources\\node.exe\"\r\n" +
+			"  RMDir /r \"$INSTDIR\\resources\\whatsapp-engine-bundle\"\r\n" +
+			"  RMDir \"$INSTDIR\\resources\"\r\n"
+	}
+	return strings.NewReplacer(
+		"@APPNAME@", nsisValue(appName),
+		"@APPEXE@", nsisValue(filepath.Base(exePath)),
+		"@APPVER@", nsisValue(version),
+		"@APPICON@", nsisValue(iconPath),
+		"@APPSRC@", nsisValue(exePath),
+		"@OUTFILE@", nsisValue(outFile),
+		"@REGKEY@", nsisValue(regKey),
+		"@WHATSAPP_FILES@", files,
+		"@WHATSAPP_UNINSTALL@", uninstall,
+	).Replace(appInstallerTemplate)
+}
+
 // buildAppInstaller genera "<Nombre> v<ver> [arch] Setup.exe" junto al ejecutable
 // del proyecto, con la pagina final que ofrece crear acceso directo y ejecutar
-// ahora.
-func buildAppInstaller(appName, version, label, exePath, iconPath string) (string, error) {
+// ahora. wa puede ser nil si el proyecto no usa el motor de WhatsApp.
+func buildAppInstaller(appName, version, label, exePath, iconPath string, wa *whatsappInstallerPayload) (string, error) {
 	if appName == "" {
 		appName = sanitizeAppName(strings.TrimSuffix(filepath.Base(exePath), filepath.Ext(exePath)))
 	}
@@ -46,16 +96,7 @@ func buildAppInstaller(appName, version, label, exePath, iconPath string) (strin
 
 	dir := filepath.Dir(exePath)
 	outFile := filepath.Join(dir, artifactBase(appName, version, label)+" Setup.exe")
-
-	script := strings.NewReplacer(
-		"@APPNAME@", nsisValue(appName),
-		"@APPEXE@", nsisValue(filepath.Base(exePath)),
-		"@APPVER@", nsisValue(version),
-		"@APPICON@", nsisValue(iconPath),
-		"@APPSRC@", nsisValue(exePath),
-		"@OUTFILE@", nsisValue(outFile),
-		"@REGKEY@", nsisValue(regKey),
-	).Replace(appInstallerTemplate)
+	script := renderAppInstallerScript(appName, version, exePath, iconPath, outFile, regKey, wa)
 
 	tmp, err := os.CreateTemp("", "compass-app-*.nsi")
 	if err != nil {
@@ -106,7 +147,7 @@ func findProjectIcon(ctx *project.ProjectContext) string {
 // withAppInstaller devuelve [exe] o [exe, instalador]. Si NSIS falta o falla,
 // avisa y sigue con el portable: el release no se aborta por no poder empaquetar.
 func withAppInstaller(ctx *project.ProjectContext, appName, version, label, exePath string) []string {
-	installer, err := buildAppInstaller(appName, version, label, exePath, findProjectIcon(ctx))
+	installer, err := buildAppInstaller(appName, version, label, exePath, findProjectIcon(ctx), whatsappInstallerInfo(ctx))
 	if err != nil {
 		fmt.Printf("\n[WARN] No se genero el instalador: %v\n", err)
 		return []string{exePath}

@@ -31,6 +31,9 @@ export const platformIcons: Record<string, string> = {
     '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>',
   android:
     '<rect x="3" y="11" width="18" height="9" rx="3"/><circle cx="12" cy="6" r="2"/><path d="M12 8v3"/><path d="M8 15h.01M16 15h.01"/>',
+  // Go (gopher): orejas + dos ojos.
+  go:
+    '<path d="M7 8l1.2 2.2M17 8l-1.2 2.2"/><rect x="4" y="10" width="16" height="10" rx="5"/><circle cx="9" cy="14.5" r="1"/><circle cx="15" cy="14.5" r="1"/>',
   general:
     '<path d="M4 21v-6M4 11V3M12 21v-8M12 9V3M20 21v-4M20 13V3"/><path d="M1 15h6M9 9h6M17 17h6"/>',
 }

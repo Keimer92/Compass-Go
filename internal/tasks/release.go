@@ -377,6 +377,13 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 		return artifacts, nil
 	}
 
+	// Cada arquitectura vuelve a etapar el motor al entrar, así que podemos
+	// borrar el resources/ suelto al terminar esta arquitectura: el portable
+	// (un único exe) y el instalador ya llevan dentro su propia copia.
+	if projectUsesWhatsappEngine(ctx) {
+		defer cleanupStagedWhatsappResources(ctx)
+	}
+
 	switch ctx.ProjectType {
 	case project.TypeGo:
 		target, ok := goArchOf(key)
@@ -388,13 +395,48 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 			return nil, err
 		}
 		name := strings.TrimSuffix(executableName(ctx.ScriptDir), ".exe")
-		return withAppInstaller(ctx, name, "", target.label(), exe), nil
+		// El instalador se genera desde el exe real. El portable se envuelve
+		// aparte en un unico .exe si el proyecto usa el motor de WhatsApp.
+		artifacts := withAppInstaller(ctx, name, "", target.label(), exe)
+		if projectUsesWhatsappEngine(ctx) && len(artifacts) > 0 {
+			// El instalador ya se genero desde el exe real; el portable con el
+			// kit lo reemplaza en su mismo nombre para dejar un solo exe.
+			wrapped, err := buildWhatsappPortable(ctx, exe, name, "", target.goarch(), exe)
+			if err != nil {
+				fmt.Printf("[WARN] No se pudo generar el portable unico de WhatsApp: %v\n", err)
+			} else if wrapped != "" {
+				artifacts[0] = wrapped
+			}
+		}
+		return artifacts, nil
 	case project.TypeGoWails:
 		target, ok := desktopArchOf(key)
 		if !ok {
 			return nil, fmt.Errorf("[ERROR] Arquitectura sin equivalente.")
 		}
-		return wailsBuildDesktopArch(ctx, target)
+		artifacts, err := wailsBuildDesktopArch(ctx, target)
+		if err != nil {
+			return nil, err
+		}
+		// El primer artefacto es el portable; lo reemplazamos por el portable
+		// con el kit dentro, conservando su nombre para dejar un solo exe.
+		if projectUsesWhatsappEngine(ctx) && len(artifacts) > 0 {
+			_, version := wailsReleaseMeta(ctx)
+			goarch := "amd64"
+			if target == archX86 {
+				goarch = "386"
+			} else if target == archArm64 {
+				goarch = "arm64"
+			}
+			portable := artifacts[0]
+			wrapped, err := buildWhatsappPortable(ctx, portable, wailsAppName(ctx), version, goarch, portable)
+			if err != nil {
+				fmt.Printf("[WARN] No se pudo generar el portable unico de WhatsApp: %v\n", err)
+			} else if wrapped != "" {
+				artifacts[0] = wrapped
+			}
+		}
+		return artifacts, nil
 	default:
 		return nil, fmt.Errorf("[ERROR] %s no compila escritorio por arquitectura.", ctx.ProjectType.Label())
 	}

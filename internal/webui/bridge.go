@@ -126,8 +126,8 @@ type MenuItemInfo struct {
 	Icon        string `json:"icon"`
 	Color       string `json:"color"`
 	Section     string `json:"section"`
-	// Platform es "windows", "android" o "general": el frontend lo pinta como
-	// distintivo adicional sobre el icono propio de la card.
+	// Platform es "windows", "android", "go" o "general": el frontend lo pinta
+	// como distintivo adicional sobre el icono propio de la card.
 	Platform string `json:"platform"`
 }
 
@@ -221,7 +221,7 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 			Icon:        item.Icon(),
 			Color:       item.ColorKey(),
 			Section:     item.Section(),
-			Platform:    item.Platform(),
+			Platform:    item.Platform(ctx.ProjectType),
 		})
 	}
 	return out

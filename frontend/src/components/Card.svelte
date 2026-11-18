@@ -8,6 +8,7 @@
   const platformLabel: Record<string, string> = {
     windows: 'Tarea de Windows',
     android: 'Tarea de Android',
+    go: 'Tarea de Go',
     general: 'Tarea general',
   }
 
@@ -82,6 +83,7 @@
   }
   .platform.windows { color: #4cc2ff; }
   .platform.android { color: #3ddc84; }
+  .platform.go { color: #00add8; }
   .platform.general { color: var(--muted); }
   .text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .label { font-size: 14px; font-weight: 600; }

@@ -29,10 +29,10 @@ var errScanStop = errors.New("stop scan")
 
 // whatsappEngineSource devuelve la ruta del motor de WhatsApp canónico.
 // Orden de resolución:
-//   1. COMPASS_WHATSAPP_ENGINE (override explícito).
-//   2. <dir del exe>/corekit/whatsapp (instalación / binario compilado).
-//   3. <cwd>/corekit/whatsapp (desarrollo con `go run`).
-//   4. fallback a (2).
+//  1. COMPASS_WHATSAPP_ENGINE (override explícito).
+//  2. <dir del exe>/corekit/whatsapp (instalación / binario compilado).
+//  3. <cwd>/corekit/whatsapp (desarrollo con `go run`).
+//  4. fallback a (2).
 func whatsappEngineSource() string {
 	if v := os.Getenv("COMPASS_WHATSAPP_ENGINE"); v != "" {
 		return filepath.Clean(v)
@@ -56,10 +56,10 @@ func whatsappEngineSource() string {
 
 // projectUsesWhatsappEngine indica si el proyecto debe incrustar el motor.
 // Criterios (cualquiera basta):
-//   1. tiene una carpeta whatsapp_engine local (motor propio del proyecto);
-//   2. tiene el marcador use-whatsapp-engine en su raíz (opt-in explícito);
-//   3. sus fuentes Go importan un paquete cuya ruta referencia whatsapp
-//      (detección automática).
+//  1. tiene una carpeta whatsapp_engine local (motor propio del proyecto);
+//  2. tiene el marcador use-whatsapp-engine en su raíz (opt-in explícito);
+//  3. sus fuentes Go importan un paquete cuya ruta referencia whatsapp
+//     (detección automática).
 func projectUsesWhatsappEngine(ctx *project.ProjectContext) bool {
 	if ctx.HasWhatsAppEngine {
 		return true
@@ -175,4 +175,30 @@ func stageWhatsappEngine(ctx *project.ProjectContext) {
 		_ = copyFile(filepath.Join(src, "node.exe"), filepath.Join(dest, "node.exe"))
 	}
 	fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s\n", dest)
+}
+
+// cleanupStagedWhatsappResources borra el resources/ temporario que
+// stageWhatsappEngine deja junto al binario. Tras el release, el portable (un
+// único exe) y el instalador ya llevan cada uno su propia copia embebida, así
+// que no debe quedar el motor como archivo suelto en la carpeta de salida.
+// En Go/Go+Wails ese resources/ es íntegramente generado por Compass (bin/
+// resources); en el resto de plataformas solo se quitan los archivos del kit
+// por si la carpeta contiene otros recursos del proyecto.
+func cleanupStagedWhatsappResources(ctx *project.ProjectContext) {
+	if !projectUsesWhatsappEngine(ctx) {
+		return
+	}
+	dest := engineOutputResources(ctx)
+	if ctx.ProjectType == project.TypeGo || ctx.ProjectType == project.TypeGoWails {
+		if err := os.RemoveAll(dest); err != nil {
+			fmt.Printf("[WARN] No se pudo limpiar %s: %v\n", dest, err)
+		}
+		return
+	}
+	if err := os.Remove(filepath.Join(dest, "node.exe")); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("[WARN] No se pudo borrar node.exe de %s: %v\n", dest, err)
+	}
+	if err := os.RemoveAll(filepath.Join(dest, "whatsapp-engine-bundle")); err != nil {
+		fmt.Printf("[WARN] No se pudo limpiar el bundle en %s: %v\n", dest, err)
+	}
 }

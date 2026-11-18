@@ -84,14 +84,16 @@ var (
 // VersionBump actualiza la version del proyecto (port de versionar.bat).
 // Equivalente de tasks/version.rs::bump.
 func VersionBump(ctx *project.ProjectContext) error {
-	shell.ClearScreen()
-	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║              VERSIONADOR DE PROYECTO              ║")
-	fmt.Println("╚══════════════════════════════════════════════════╝")
-	fmt.Println()
+	printVersionBanner()
 
-	if ctx.ProjectType == project.TypeFlutter || ctx.ProjectType == project.TypeKotlin ||
-		ctx.ProjectType == project.TypeGo {
+	// Go puro guarda la version en un `const version` de un archivo Go. No se
+	// puede usar go.mod: una directiva `version = "..."` rompe el build con
+	// "unknown directive: version".
+	if ctx.ProjectType == project.TypeGo {
+		return versionBumpGo(ctx)
+	}
+
+	if ctx.ProjectType == project.TypeFlutter || ctx.ProjectType == project.TypeKotlin {
 		fmt.Println("[INFO] No aplicable: la version se gestiona en la configuracion propia del proyecto.")
 		fmt.Println()
 		ui.Pause()
@@ -234,6 +236,150 @@ func VersionBump(ctx *project.ProjectContext) error {
 	fmt.Println()
 	ui.Pause()
 	return nil
+}
+
+func printVersionBanner() {
+	shell.ClearScreen()
+	fmt.Println("╔══════════════════════════════════════════════════╗")
+	fmt.Println("║              VERSIONADOR DE PROYECTO              ║")
+	fmt.Println("╚══════════════════════════════════════════════════╝")
+	fmt.Println()
+}
+
+// goVersionFile elige el archivo Go de la raiz que guarda `const version`.
+// Preferimos main.go (lo habitual); si no existe, usamos version.go (que se
+// creara con un package valido deducido del module de go.mod).
+func goVersionFile(root string) string {
+	mainGo := filepath.Join(root, "main.go")
+	if fileExists(mainGo) {
+		return mainGo
+	}
+	return filepath.Join(root, "version.go")
+}
+
+// goPackageFromModule deduce un nombre de package Go valido desde la directiva
+// `module` de go.mod (parte final, caracteres no validos -> '_').
+func goPackageFromModule(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return "main"
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "module ") {
+			continue
+		}
+		name := strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		base := name
+		if i := strings.LastIndexAny(base, "/"); i >= 0 {
+			base = base[i+1:]
+		}
+		var b strings.Builder
+		for _, ch := range base {
+			if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' ||
+				(ch >= '0' && ch <= '9' && b.Len() > 0) {
+				b.WriteRune(ch)
+			} else {
+				b.WriteRune('_')
+			}
+		}
+		if b.Len() > 0 {
+			return b.String()
+		}
+	}
+	return "main"
+}
+
+// versionBumpGo actualiza `const version = "x.y.z"` en un archivo Go de la
+// raiz. Si no existe el archivo o no tiene el const, lo crea/inserta.
+func versionBumpGo(ctx *project.ProjectContext) error {
+	path := goVersionFile(ctx.ScriptDir)
+	var text string
+	if fileExists(path) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("no se pudo leer %s: %w", path, err)
+		}
+		text = strings.TrimPrefix(string(data), "\ufeff")
+	} else {
+		text = fmt.Sprintf("package %s\n", goPackageFromModule(ctx.ScriptDir))
+	}
+
+	cur, hasCur := detectVersion(fmtGoConst, text)
+
+	fmt.Printf("  Tipo de proyecto: GO\n\n")
+	rel, _ := filepath.Rel(ctx.ScriptDir, path)
+	shown := cur
+	if !hasCur {
+		shown = "(sin version - se agregara)"
+	}
+	fmt.Printf("  %-34s : %s\n", rel, shown)
+	fmt.Println()
+
+	newVer := ui.AskText("Nueva version (X.Y.Z, opcional sufijo -pre/+build)", "")
+	newVer = strings.TrimSpace(newVer)
+	if newVer == "" {
+		return fmt.Errorf("version vacia")
+	}
+	if !reNewVersion.MatchString(newVer) {
+		return fmt.Errorf("formato invalido. Usa X.Y.Z (ej: 1.2.3) o con sufijo (ej: 2.0.0-beta.1)")
+	}
+
+	newText := applyGoVersion(text, hasCur, newVer)
+	if err := os.WriteFile(path, []byte(newText), 0644); err != nil {
+		return fmt.Errorf("no se pudo escribir %s: %w", path, err)
+	}
+
+	fmt.Printf("[OK] Version actualizada a %s en %s.\n", newVer, rel)
+	fmt.Println()
+	ui.Pause()
+	return nil
+}
+
+// applyGoVersion reemplaza el `const version` existente o lo inserta en un
+// punto seguro cuando el archivo aun no lo tiene: despues del bloque de
+// imports (o tras el `package` si no hay imports), para no dejar un `import`
+// despues de una declaracion, que seria codigo Go invalido.
+func applyGoVersion(text string, hasCur bool, newVer string) string {
+	if hasCur {
+		return reGoConstReplace.ReplaceAllString(text, fmt.Sprintf(`${1}%s${2}`, newVer))
+	}
+	lines := strings.SplitAfter(text, "\n")
+	at := len(lines)
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "package ") {
+			at = i + 1
+			break
+		}
+	}
+	// Si hay imports, el const va despues del ultimo bloque `import`.
+	inImport := false
+	lastImport := at
+	for i := at; i < len(lines); i++ {
+		t := strings.TrimSpace(lines[i])
+		if !inImport {
+			// `import "fmt"` es de una linea; `import (` abre un bloque.
+			if strings.HasPrefix(t, "import ") {
+				lastImport = i + 1
+				if strings.Contains(t, "(") && !strings.Contains(t, ")") {
+					inImport = true
+				}
+			}
+			continue
+		}
+		// Dentro de un bloque de imports, hasta el `)` de cierre.
+		lastImport = i + 1
+		if strings.HasPrefix(t, ")") {
+			inImport = false
+		}
+	}
+	if lastImport > at {
+		at = lastImport
+	}
+	block := []string{"\n// version es la version de la app, gestionada por Compass Go.\n",
+		fmt.Sprintf("const version = %q\n", newVer)}
+	lines = append(lines[:at], append(block, lines[at:]...)...)
+	return strings.Join(lines, "")
 }
 
 func versionConfigs(ctx *project.ProjectContext) []sourceFile {

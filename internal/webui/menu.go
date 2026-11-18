@@ -119,6 +119,11 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"env-do-validate", "Validar backup", "Diff sin modificar nada", "debug"},
 			{"env-do-open", "Abrir respaldos", "Carpeta de respaldos de Compass", "git"},
 		}
+	case tui.BuildWhatsApp:
+		return []Subcard{
+			{"whatsapp", "Compilar motor", "Genera/actualiza el bundle del motor", "build"},
+			{"whatsapp-portable", "Portable (un exe)", "Envuelve un .exe con el motor dentro", "apk"},
+		}
 	}
 	return nil
 }
@@ -131,10 +136,13 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 	case tui.AndroidDev:
 		return "android-dev"
 	case tui.AndroidHmr:
-		// Solo Python registra esta tarea; en el resto de tipos la card no se
-		// muestra (Label devuelve "").
-		if pt == project.TypePython {
+		// Python recarga Uvicorn (android-hmr) y Go puro usa Air (go-hmr).
+		// En el resto de tipos la card no se muestra (Label devuelve "").
+		switch pt {
+		case project.TypePython:
 			return "android-hmr"
+		case project.TypeGo:
+			return "go-hmr"
 		}
 		return ""
 	case tui.WindowsBuild:

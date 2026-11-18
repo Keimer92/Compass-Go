@@ -137,8 +137,17 @@ func (m MenuItem) Section() string {
 }
 
 // Platform clasifica la card por destino para pintar un distintivo extra en la
-// GUI: "windows", "android" o "general" (utilidades y tareas del proyecto).
-func (m MenuItem) Platform() string {
+// GUI: "windows", "android", "go" (tareas de un proyecto Go puro) o "general"
+// (utilidades y tareas del proyecto).
+func (m MenuItem) Platform(pt project.ProjectType) string {
+	// En Go puro, Run / Win Release / HMR / Test son tareas del propio Go
+	// (go run, go build, air, go test), no tareas de Windows ni de Android.
+	if pt == project.TypeGo {
+		switch m {
+		case WindowsDev, WindowsBuild, AndroidHmr, Tests:
+			return "go"
+		}
+	}
 	switch m {
 	case WindowsDev, WindowsBuild:
 		return "windows"
@@ -216,11 +225,14 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		}
 		return "Android"
 	case AndroidHmr:
-		// Solo Python tiene una tarea real detras (android-hmr -> recarga del
-		// script). En Go puro, Flutter y Kotlin no hay nada que ejecutar, asi
-		// que la card se oculta (GetMenu descarta las cards sin label).
-		if pt == project.TypePython {
+		// Go puro (air -> go-hmr) y Python (recarga Uvicorn) tienen una tarea
+		// real detras. Flutter/Kotlin/Wails no: la card se oculta (GetMenu
+		// descarta las cards sin label).
+		switch pt {
+		case project.TypePython:
 			return "Reload"
+		case project.TypeGo:
+			return "HMR"
 		}
 		return ""
 	case WindowsBuild:

@@ -60,6 +60,9 @@ Section "Instalar"
   SectionIn RO
   SetOutPath "$INSTDIR"
   File "@APPSRC@"
+; Si el proyecto usa el motor de WhatsApp, Compass sustituye este marcador por
+; la inclusion de node.exe y del bundle en $INSTDIR\resources.
+@WHATSAPP_FILES@
 
   CreateDirectory "$SMPROGRAMS\@APPNAME@"
   CreateShortcut "$SMPROGRAMS\@APPNAME@\@APPNAME@.lnk" "$INSTDIR\@APPEXE@"
@@ -82,6 +85,8 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\@APPNAME@\@APPNAME@.lnk"
   RMDir  "$SMPROGRAMS\@APPNAME@"
   Delete "$INSTDIR\@APPEXE@"
+; Companero del bloque @WHATSAPP_FILES@: borra el motor al desinstalar.
+@WHATSAPP_UNINSTALL@
   Delete "$INSTDIR\Uninstall.exe"
   RMDir  "$INSTDIR"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\@REGKEY@"

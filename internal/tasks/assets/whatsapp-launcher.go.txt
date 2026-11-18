@@ -1,0 +1,122 @@
+// Plantilla del "stub" portable de Compass para proyectos que usan el motor de
+// WhatsApp. NO se compila dentro de Compass: buildWhatsappPortable la copia a un
+// modulo Go temporal, mete el exe real + node.exe + bundle en payload/ y compila
+// con go build. El resultado es un UNICO .exe que, al arrancar, extrae el payload
+// a %LOCALAPPDATA%\<App>\<buildID>\ y lanza la app real desde ahi.
+package main
+
+import (
+	"embed"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+//go:embed payload
+var payload embed.FS
+
+// Valores inyectados en tiempo de build con -ldflags "-X main.appName=..." por
+// buildWhatsappPortable (internal/tasks/whatsapp_portable.go).
+var (
+	appName = "CompassApp" // nombre sanitizado, seguro como componente de ruta
+	appExe  = "app.exe"    // nombre de archivo del ejecutable real dentro de payload/
+	buildID = "dev"        // hash del contenido del payload; cambia la carpeta de cache
+)
+
+// markerName se escribe al final de la extraccion. Si no coincide con buildID,
+// el siguiente arranque vuelve a extraer (proteccion ante extracciones a medias).
+const markerName = ".compass-ready"
+
+func localAppData() string {
+	if v := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); v != "" {
+		return v
+	}
+	if v, err := os.UserCacheDir(); err == nil && v != "" {
+		return v
+	}
+	return os.TempDir()
+}
+
+func installDir() string {
+	return filepath.Join(localAppData(), filepath.FromSlash(appName), filepath.FromSlash(buildID))
+}
+
+func isReady(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, markerName))
+	return err == nil && strings.TrimSpace(string(data)) == buildID
+}
+
+func extractPayload(dir string) error {
+	sub, err := fs.Sub(payload, "payload")
+	if err != nil {
+		return err
+	}
+	// La carpeta lleva el buildID en el nombre: si el marcador no coincidia,
+	// reconstruirla entera evita dejar archivos de una version anterior.
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	err = fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == "." {
+			return nil
+		}
+		target := filepath.Join(dir, filepath.FromSlash(path))
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		data, err := fs.ReadFile(sub, path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
+	if err != nil {
+		return err
+	}
+	// El marcador va al final: si falla algo antes, el proximo arranque re-extrae.
+	return os.WriteFile(filepath.Join(dir, markerName), []byte(buildID), 0o644)
+}
+
+func main() {
+	dir := installDir()
+	if !isReady(dir) {
+		fmt.Printf("[WhatsApp Portable] Extrayendo payload en %s ...\n", dir)
+		if err := extractPayload(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "[WhatsApp Portable] Error al extraer: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	exe := filepath.Join(dir, filepath.FromSlash(appExe))
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Dir = dir
+	// El consumidor resuelve node.exe + whatsapp-engine-bundle desde cwd o desde
+	// COMPASS_WHATSAPP_ENGINE; apuntamos las dos al resources/ extraido.
+	cmd.Env = append(os.Environ(), "COMPASS_WHATSAPP_ENGINE="+filepath.Join(dir, "resources"))
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		os.Exit(exitErr.ExitCode())
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WhatsApp Portable] No se pudo lanzar %s: %v\n", exe, err)
+		os.Exit(1)
+	}
+}

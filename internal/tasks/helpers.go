@@ -116,6 +116,18 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0644)
 }
 
+// moveFile deja src en dst sobrescribiendo el destino. Prueba rename primero;
+// si falla (p.ej. distinta unidad: temp en C:, artefacto en D:) copia y borra.
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	if err := copyFile(src, dst); err != nil {
+		return err
+	}
+	return os.Remove(src)
+}
+
 // dataDir devuelve %LOCALAPPDATA% (carpeta de datos de la aplicacion).
 func dataDir() string {
 	if v := os.Getenv("LOCALAPPDATA"); v != "" {

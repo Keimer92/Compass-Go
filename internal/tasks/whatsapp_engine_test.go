@@ -64,3 +64,50 @@ func TestWhatsappDetection(t *testing.T) {
 		t.Error("no se detectó el marcador use-whatsapp-engine")
 	}
 }
+
+func TestCleanupStagedWhatsappResources(t *testing.T) {
+	root := t.TempDir()
+
+	// Go puro / Go+Wails: se va el resources/ entero porque Compass lo genera.
+	goRes := filepath.Join(root, "bin", "resources")
+	if err := os.MkdirAll(filepath.Join(goRes, "whatsapp-engine-bundle"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goRes, "node.exe"), []byte("node"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goRes, "whatsapp-engine-bundle", "index.js"), []byte("//"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goCtx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGo, HasWhatsAppEngine: true}
+	cleanupStagedWhatsappResources(goCtx)
+	if _, err := os.Stat(goRes); !os.IsNotExist(err) {
+		t.Fatalf("quedo el resources/ etapado en Go: %v", err)
+	}
+
+	// Otras plataformas: solo se van los archivos del kit; se conserva lo demás.
+	flutterRes := filepath.Join(root, "resources")
+	if err := os.MkdirAll(filepath.Join(flutterRes, "whatsapp-engine-bundle"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"node.exe", "icon.ico"} {
+		if err := os.WriteFile(filepath.Join(flutterRes, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(flutterRes, "whatsapp-engine-bundle", "index.js"), []byte("//"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	flutterCtx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter, HasWhatsAppEngine: true}
+	cleanupStagedWhatsappResources(flutterCtx)
+	if !fileExists(filepath.Join(flutterRes, "icon.ico")) {
+		t.Error("se borro un recurso del proyecto que no es del kit")
+	}
+	if fileExists(filepath.Join(flutterRes, "node.exe")) || dirExists(filepath.Join(flutterRes, "whatsapp-engine-bundle")) {
+		t.Error("quedaron archivos del kit en la plataforma no-Go")
+	}
+
+	// Sin kit no se toca nada.
+	noKit := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGo}
+	cleanupStagedWhatsappResources(noKit)
+}

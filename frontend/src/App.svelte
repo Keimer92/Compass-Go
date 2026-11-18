@@ -481,9 +481,7 @@
               <Explorer />
             {/key}
           {:else if rightTab === 'commit'}
-            {#key workspace.active}
-              <Commit />
-            {/key}
+            <Commit projectPath={projectPath} />
           {:else}
             {#key workspace.active}
               <History />

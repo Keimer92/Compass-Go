@@ -671,6 +671,14 @@ func wailsBuildDesktopArch(ctx *project.ProjectContext, a desktopArch) ([]string
 		if err != nil {
 			return nil, err
 		}
+		// Si el proyecto usa el motor de WhatsApp, parcheamos su project.nsi
+		// para que el instalador incluya node.exe + el bundle. Se restaura al
+		// terminar para no ensuciar el repo del proyecto.
+		restoreNsi, err := injectWhatsappIntoWailsNsi(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer restoreNsi()
 		ok, err := shell.RunShellStatus(fmt.Sprintf("wails3 task package ARCH=%s", arg), ctx.ScriptDir, envs)
 		if err != nil {
 			return nil, err

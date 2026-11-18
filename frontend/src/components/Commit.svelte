@@ -1,101 +1,44 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
-  import { generateCommit, cancelCommit, commit } from '../lib/bridge'
+  import { draftFor, runFor, setMessage, generateFor, cancelFor, commitFor } from '../lib/commitStore.svelte'
 
-  let message = $state('')
-  let loading = $state(false)
-  let committing = $state(false)
-  let error = $state('')
-  let ok = $state('')
+  let { projectPath }: { projectPath: string } = $props()
 
-  // Cronometro de la generacion: muestra el tiempo transcurrido mientras el
-  // modelo responde y conserva el ultimo tiempo al terminar.
-  let elapsedMs = $state(0)
-  let lastMs = $state(0)
-  let timer: ReturnType<typeof setInterval> | null = null
-
-  function startTimer() {
-    const start = performance.now()
-    elapsedMs = 0
-    timer = setInterval(() => {
-      elapsedMs = performance.now() - start
-    }, 100)
-  }
-
-  function stopTimer() {
-    if (timer) {
-      clearInterval(timer)
-      timer = null
-    }
-    lastMs = elapsedMs
-  }
-
-  onDestroy(() => {
-    if (timer) clearInterval(timer)
-  })
-
-  async function generate() {
-    loading = true
-    error = ''
-    ok = ''
-    startTimer()
-    try {
-      message = await generateCommit()
-    } catch (e) {
-      const msg = (e as Error).message
-      // Cancelar no es un fallo: se avisa en tono neutro.
-      if (msg.includes('cancelada')) ok = 'Generación cancelada'
-      else error = msg
-    } finally {
-      loading = false
-      stopTimer()
-    }
-  }
-
-  async function cancel() {
-    try {
-      await cancelCommit()
-    } catch {
-      /* si ya habia terminado, no hay nada que cancelar */
-    }
-  }
-
-  async function doCommit() {
-    committing = true
-    error = ''
-    ok = ''
-    try {
-      ok = await commit(message)
-      message = ''
-    } catch (e) {
-      error = (e as Error).message
-    } finally {
-      committing = false
-    }
-  }
+  // El mensaje y el estado de generación viven en el store, no aquí: así
+  // sobreviven al cambio de proyecto y la generación sigue en curso aunque se
+  // cierre esta pestaña lateral.
+  let draft = $derived(draftFor(projectPath))
+  let state = $derived(runFor(projectPath))
 </script>
 
 <div class="head">
   <span>Commit con OpenRouter</span>
 </div>
-<textarea placeholder="Mensaje del commit..." bind:value={message}></textarea>
-<button class="pill" onclick={generate} disabled={loading}>
-  {loading ? 'Generando...' : 'Generar con OpenRouter'}
+<textarea
+  placeholder="Mensaje del commit..."
+  value={draft.message}
+  oninput={(e) => setMessage(projectPath, e.currentTarget.value)}
+></textarea>
+<button class="pill" onclick={() => generateFor(projectPath)} disabled={state.loading}>
+  {state.loading ? 'Generando...' : 'Generar con OpenRouter'}
 </button>
-{#if loading}
+{#if state.loading}
   <div class="gen-row">
     <div class="progress" aria-label="Generando commit"><div class="bar"></div></div>
-    <span class="elapsed">{(elapsedMs / 1000).toFixed(1)} s</span>
+    <span class="elapsed">{(state.elapsedMs / 1000).toFixed(1)} s</span>
   </div>
-  <button class="pill cancel" onclick={cancel}>Cancelar</button>
-{:else if lastMs > 0}
-  <div class="elapsed done">Última generación: {(lastMs / 1000).toFixed(1)} s</div>
+  <button class="pill cancel" onclick={cancelFor}>Cancelar</button>
+{:else if draft.lastMs > 0}
+  <div class="elapsed done">Última generación: {(draft.lastMs / 1000).toFixed(1)} s</div>
 {/if}
 <div class="hint">Se añadirán todos los cambios (git add -A)</div>
-{#if error}<div class="error">{error}</div>{/if}
-{#if ok}<div class="ok">{ok.split('\n')[0]}</div>{/if}
-<button class="pill commit" onclick={doCommit} disabled={committing || !message.trim()}>
-  {committing ? 'Commiteando...' : 'Commit'}
+{#if state.error}<div class="error">{state.error}</div>{/if}
+{#if state.ok}<div class="ok">{state.ok.split('\n')[0]}</div>{/if}
+<button
+  class="pill commit"
+  onclick={() => commitFor(projectPath)}
+  disabled={state.committing || !draft.message.trim()}
+>
+  {state.committing ? 'Commiteando...' : 'Commit'}
 </button>
 
 <style>
