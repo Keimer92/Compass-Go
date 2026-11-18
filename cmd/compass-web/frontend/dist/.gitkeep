@@ -1,0 +1,3 @@
+Este directorio lo genera `npm run build` en `frontend/` (lo embebe
+//go:embed en cmd/compass-web/main.go). El .gitkeep solo mantiene la carpeta
+para que `go build` funcione en un clon limpio; no contiene la UI.

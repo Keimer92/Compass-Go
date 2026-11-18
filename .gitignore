@@ -20,15 +20,21 @@ bin/
 !.env.example
 *.log
 
+# --- Task (go-task): cache de checksums ---
+.task/
+
 # --- Windows ---
 $RECYCLE.BIN/
 ehthumbs.db
 *.lnk
 
 # Compass project ignore rules
-.task/
-
-# --- Frontend Svelte (generado) ---
+*.syso
+coverage.out
+*.coverprofile
+node_modules/
 frontend/node_modules/
+frontend/dist/
 frontend/bindings/
-tmp/
+dist/
+**/frontend/dist/
