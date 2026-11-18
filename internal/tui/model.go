@@ -202,6 +202,12 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		}
 		return "Android"
 	case AndroidHmr:
+		if pt == project.TypeGoWails {
+			// Wails v3 no ofrece HMR para Android (no existe `wails3 task
+			// android:dev` en la doc oficial). Ocultar la card devolviendo
+			// una etiqueta vacia: GetMenu descarta las cards sin label.
+			return ""
+		}
 		if pt == project.TypePython {
 			return "Reload"
 		}
@@ -657,7 +663,7 @@ func keepForType(item MenuItem, pt project.ProjectType) bool {
 		}
 	case project.TypeGoWails:
 		switch item {
-		case AndroidBuildArmv7, FlutterProfile, Tests:
+		case AndroidBuildArmv7, FlutterProfile, AndroidHmr, Tests:
 			return false
 		}
 	case project.TypePython:
