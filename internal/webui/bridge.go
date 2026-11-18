@@ -189,6 +189,9 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 		return out
 	}
 	for i, item := range allMenuItems {
+		if hiddenMenuItems[item] {
+			continue
+		}
 		label := item.Label(ctx.ProjectType)
 		if label == "" {
 			continue

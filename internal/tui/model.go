@@ -640,6 +640,10 @@ func menuGroupOf(it MenuItem, pt project.ProjectType) int {
 
 // keepForType replica el filtro por tipo de proyecto de MenuState::new.
 func keepForType(item MenuItem, pt project.ProjectType) bool {
+	// El modo --profile de Flutter esta retirado: ocultar en todos los tipos.
+	if item == FlutterProfile {
+		return false
+	}
 	switch pt {
 	case project.TypeFlutter:
 		switch item {

@@ -18,6 +18,13 @@ var menuItems = []tui.MenuItem{
 
 var allMenuItems = menuItems
 
+// hiddenMenuItems son cards retiradas del menu. Se deja el item en menuItems
+// (y en el enum de tui) para no desplazar los indices que usan los temas y los
+// IDs de pestaña, pero no se muestra nunca.
+var hiddenMenuItems = map[tui.MenuItem]bool{
+	tui.FlutterProfile: true, // modo --profile de Flutter retirado
+}
+
 // menuItem devuelve la card del indice. WindowsDev vale 0, asi que el valor
 // cero NO puede usarse como centinela de "no existe".
 func menuItem(i int) (tui.MenuItem, bool) {
@@ -116,8 +123,6 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 		return "android-aab"
 	case tui.InstallDebug:
 		return "android-install-debug"
-	case tui.FlutterProfile:
-		return "flutter-profile"
 	case tui.Tests:
 		switch pt {
 		case project.TypePython:

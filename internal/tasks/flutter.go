@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"compass/internal/project"
 	"compass/internal/prompts"
@@ -20,9 +19,6 @@ func init() {
 	Register("android-all", project.TypeFlutter, FlutterBuildAab)
 	Register("android-arm64", project.TypeFlutter, FlutterBuildApk)
 	Register("clean", project.TypeFlutter, FlutterClean)
-	Register("flutter-profile", project.TypeFlutter, flutterProfile)
-	Register("flutter-profile-windows", project.TypeFlutter, FlutterProfileWindows)
-	Register("flutter-profile-android", project.TypeFlutter, FlutterProfileAndroid)
 	Register("debug-android", project.TypeFlutter, flutterDebugAndroid)
 }
 
@@ -68,47 +64,6 @@ func FlutterRunAndroid(ctx *project.ProjectContext) error {
 	}
 	return shell.SpawnNewWindowInteractive("Flutter Android (Dev)", ctx.ScriptDir,
 		fmt.Sprintf("flutter run -d %s", serial))
-}
-
-// FlutterProfileWindows lanza 'flutter run --profile -d windows'.
-func FlutterProfileWindows(ctx *project.ProjectContext) error {
-	if err := ensurePubget(ctx); err != nil {
-		return err
-	}
-	ensureWhatsappNpm(ctx)
-	return shell.SpawnNewWindowInteractive("Flutter Desktop (Profile)", ctx.ScriptDir,
-		"flutter run --profile -d windows")
-}
-
-// FlutterProfileAndroid lanza 'flutter run --profile -d <serial>'.
-func FlutterProfileAndroid(ctx *project.ProjectContext) error {
-	if err := ensurePubget(ctx); err != nil {
-		return err
-	}
-	serial, err := selectAndroidDevice(ctx)
-	if err != nil {
-		return err
-	}
-	return shell.SpawnNewWindowInteractive("Flutter Android (Profile)", ctx.ScriptDir,
-		fmt.Sprintf("flutter run --profile -d %s", serial))
-}
-
-// flutterProfile pregunta la plataforma (Windows/Android) y lanza el run en
-// modo profile. Es el despacho de la tarea "flutter-profile" (card Flutter).
-func flutterProfile(ctx *project.ProjectContext) error {
-	fmt.Println("\n[INFO] Selecciona la plataforma para Profile:")
-	fmt.Println()
-	fmt.Println("  1. Windows")
-	fmt.Println("  2. Android")
-	option := strings.TrimSpace(ui.AskText("Opción", ""))
-	switch option {
-	case "1":
-		return FlutterProfileWindows(ctx)
-	case "2":
-		return FlutterProfileAndroid(ctx)
-	}
-	fmt.Println("[ERROR] Opción no válida.")
-	return nil
 }
 
 // flutterDebugAndroid: Flutter depura con su propio run (no hay logcat propio).

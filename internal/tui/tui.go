@@ -411,10 +411,6 @@ func menuItemToTask(item MenuItem, pt project.ProjectType) string {
 		}
 	case InstallDebug:
 		return "android-install-debug"
-	case FlutterProfile:
-		if pt == project.TypeFlutter {
-			return "flutter-profile"
-		}
 	case Tests:
 		switch pt {
 		case project.TypePython:
