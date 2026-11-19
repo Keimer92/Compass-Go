@@ -369,6 +369,14 @@ func NewestArtifact(folder string, exts []string) string {
 	return bestPath
 }
 
+// sidecarDirs son carpetas que Compass etaja junto al binario (motor de
+// WhatsApp, recursos). Su contenido (node.exe) puede ser mas reciente que el
+// ejecutable de la app y no es nunca el artefacto del build.
+var sidecarDirs = map[string]bool{
+	"whatsapp_engine": true,
+	"resources":       true,
+}
+
 func walk(dir string, exts []string, bestTime *time.Time, bestPath *string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -377,10 +385,18 @@ func walk(dir string, exts []string, bestTime *time.Time, bestPath *string) {
 	for _, e := range entries {
 		p := filepath.Join(dir, e.Name())
 		if e.IsDir() {
+			if sidecarDirs[e.Name()] {
+				continue
+			}
 			walk(p, exts, bestTime, bestPath)
 			continue
 		}
 		if !matchExt(p, exts) {
+			continue
+		}
+		// node.exe es el sidecar de Node del motor de WhatsApp: nunca es el
+		// artefacto del proyecto, aunque su fecha sea la mas reciente.
+		if strings.EqualFold(e.Name(), "node.exe") {
 			continue
 		}
 		if info, err := e.Info(); err == nil {
@@ -487,19 +503,20 @@ func windowsPathForExplorer(path string) string {
 }
 
 // OpenInExplorer abre el Explorer resaltando path.
+//
+// Ojo: explorer.exe exige el modificador "/select," y la ruta como DOS
+// argumentos separados. Si se concatenan en uno ("/select,\"C:\\...\\x.exe\""),
+// el runtime de Go re-escapa las comillas y Explorer no reconoce la ruta: cae
+// en la carpeta Documents en vez de abrir la carpeta del archivo.
 func OpenInExplorer(path string) {
 	p := windowsPathForExplorer(path)
-	_ = exec.Command("explorer", "/select,"+quoteForExplorer(p)).Start()
+	_ = exec.Command("explorer", "/select,", p).Start()
 }
 
 // OpenFolder abre una carpeta en el Explorer.
 func OpenFolder(folder string) {
 	p := windowsPathForExplorer(folder)
 	_ = exec.Command("explorer", p).Start()
-}
-
-func quoteForExplorer(p string) string {
-	return "\"" + p + "\""
 }
 
 // SetConsoleTitle fija el titulo de la consola (OSC 0). Dentro de una pestana

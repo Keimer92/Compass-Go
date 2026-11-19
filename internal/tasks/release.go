@@ -57,6 +57,7 @@ const (
 	iconAndroid   = "\U0001f4f1"
 	iconUniversal = "\U0001f4e6"
 	iconAll       = "\u2705"
+	iconInstall   = "\U0001f4e5" // 📥 instalador
 )
 
 // Claves de arquitectura compartidas por ambos submenús.
@@ -67,6 +68,9 @@ const (
 	archKeyArmv7     = "armv7"
 	archKeyUniversal = "universal"
 	archKeyAll       = "all"
+	// Solo Flutter: no hay build por arquitectura, se ofrecen artefactos.
+	archKeyPortable  = "portable"
+	archKeyInstaller = "installer"
 )
 
 // revealMode decide qué se resalta al terminar un lote.
@@ -79,7 +83,7 @@ const (
 
 func windowsSupported(pt project.ProjectType) bool {
 	switch pt {
-	case project.TypeGo, project.TypeGoWails:
+	case project.TypeGo, project.TypeGoWails, project.TypeFlutter:
 		return true
 	}
 	return false
@@ -140,6 +144,24 @@ type releaseEntry struct {
 func windowsEntries(ctx *project.ProjectContext) []releaseEntry {
 	if !windowsSupported(ctx.ProjectType) {
 		return nil
+	}
+	// Flutter solo compila para la arquitectura del equipo, asi que no hay
+	// menu de arquitecturas: se ofrecen los artefactos.
+	if ctx.ProjectType == project.TypeFlutter {
+		return []releaseEntry{
+			{archKeyX64, tui.SubItem{
+				Icon: iconDesktop, Label: "Windows " + HostArchLabel(),
+				Description: "Build del release · equipo actual", ColorKey: "run",
+			}},
+			{archKeyPortable, tui.SubItem{
+				Icon: iconUniversal, Label: "Portable (un exe)",
+				Description: "Todo dentro · extrae al ejecutar", ColorKey: "install",
+			}},
+			{archKeyInstaller, tui.SubItem{
+				Icon: iconInstall, Label: "Instalador",
+				Description: "Setup.exe con todo dentro", ColorKey: "build",
+			}},
+		}
 	}
 	return []releaseEntry{
 		{archKeyX64, tui.SubItem{
@@ -213,7 +235,8 @@ func ReleaseWindows(ctx *project.ProjectContext) error {
 		return runReleaseMenu(ctx, releaseTitleWindows, windowsEntries(ctx), reveal,
 			func(key string) ([]string, error) { return windowsArtifacts(ctx, key) })
 	case project.TypeFlutter:
-		return FlutterBuildWindows(ctx)
+		return runReleaseMenu(ctx, releaseTitleWindows, windowsEntries(ctx), revealLastArtifact,
+			func(key string) ([]string, error) { return windowsArtifacts(ctx, key) })
 	case project.TypeKotlin:
 		return KotlinBuildWindows(ctx)
 	case project.TypePython:
@@ -385,6 +408,8 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 	}
 
 	switch ctx.ProjectType {
+	case project.TypeFlutter:
+		return flutterArtifacts(ctx, key)
 	case project.TypeGo:
 		target, ok := goArchOf(key)
 		if !ok {
@@ -439,6 +464,37 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 		return artifacts, nil
 	default:
 		return nil, fmt.Errorf("[ERROR] %s no compila escritorio por arquitectura.", ctx.ProjectType.Label())
+	}
+}
+
+// flutterArtifacts compila el release de escritorio y, segun la card elegida,
+// devuelve el exe, el portable de un unico exe o el instalador. Flutter no tiene
+// builds por arquitectura: siempre es la del equipo.
+func flutterArtifacts(ctx *project.ProjectContext, key string) ([]string, error) {
+	releaseDir, err := flutterBuildRelease(ctx)
+	if err != nil {
+		return nil, err
+	}
+	exe := flutterReleaseExe(releaseDir)
+	if exe == "" {
+		return nil, fmt.Errorf("[ERROR] No se encontro el ejecutable del release.")
+	}
+	name, version := flutterAppMeta(ctx)
+	switch key {
+	case archKeyPortable:
+		out, err := buildFolderPortable(ctx, releaseDir, filepath.Base(exe), name, version)
+		if err != nil {
+			return nil, err
+		}
+		return []string{out}, nil
+	case archKeyInstaller:
+		out, err := buildFolderInstaller(ctx, releaseDir, filepath.Base(exe), name, version)
+		if err != nil {
+			return nil, err
+		}
+		return []string{out}, nil
+	default:
+		return []string{exe}, nil
 	}
 }
 

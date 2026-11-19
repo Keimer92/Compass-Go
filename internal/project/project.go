@@ -49,6 +49,10 @@ func (t ProjectType) WhatsappPath(root string) string {
 // WhatsappBundlePath devuelve la ruta del bundle compilado del motor WhatsApp.
 func (t ProjectType) WhatsappBundlePath(root string) string {
 	switch t {
+	case TypeFlutter:
+		// Flutter usa un unico index.js autocontenido (modo --single) dentro de
+		// whatsapp_engine/, que windows/CMakeLists.txt empaqueta junto al exe.
+		return filepath.Join(root, "whatsapp_engine")
 	case TypeKotlin:
 		return filepath.Join(root, "composeApp", "resources", "whatsapp-engine-bundle")
 	default:
@@ -113,7 +117,10 @@ func Detect() (*ProjectContext, error) {
 
 	hasNodeModules := dirExists(filepath.Join(root, "node_modules"))
 	hasAndroid := androidProjectPresent(pt, root)
-	hasWhatsApp := dirExists(pt.WhatsappPath(root))
+	// Motor propio del proyecto: solo cuenta si trae la fuente (engine.js). La
+	// carpeta whatsapp_engine/ tambien la crea Compass al etajar el motor
+	// canónico (index.js + node.exe), y eso no es un motor local.
+	hasWhatsApp := hasLocalWhatsappEngine(pt, root)
 
 	return &ProjectContext{
 		ScriptDir:         root,
@@ -126,6 +133,14 @@ func Detect() (*ProjectContext, error) {
 		HasAndroidProject: hasAndroid,
 		HasWhatsAppEngine: hasWhatsApp,
 	}, nil
+}
+
+// hasLocalWhatsappEngine indica si el proyecto trae la fuente del motor
+// (whatsapp_engine/engine.js), es decir, un motor propio que hay que compilar.
+// La carpeta whatsapp_engine/ también la crea Compass al etajar el motor
+// canónico (index.js + node.exe), y eso NO es un motor local.
+func hasLocalWhatsappEngine(pt ProjectType, root string) bool {
+	return fileExists(filepath.Join(pt.WhatsappPath(root), "engine.js"))
 }
 
 // androidProjectPresent indica si el proyecto tiene un modulo Android ya

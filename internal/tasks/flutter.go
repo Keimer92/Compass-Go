@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"compass/internal/project"
 	"compass/internal/prompts"
@@ -15,6 +17,8 @@ func init() {
 	Register("windows-dev", project.TypeFlutter, FlutterRunWindows)
 	Register("android-dev", project.TypeFlutter, FlutterRunAndroid)
 	Register("windows-build", project.TypeFlutter, FlutterBuildWindows)
+	Register("flutter-portable", project.TypeFlutter, FlutterBuildPortable)
+	Register("flutter-installer", project.TypeFlutter, FlutterBuildInstaller)
 	Register("android-aab", project.TypeFlutter, FlutterBuildAab)
 	Register("android-all", project.TypeFlutter, FlutterBuildAab)
 	Register("android-arm64", project.TypeFlutter, FlutterBuildApk)
@@ -49,7 +53,7 @@ func FlutterRunWindows(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
-	ensureWhatsappNpm(ctx)
+	prepareWhatsappEngine(ctx)
 	return shell.SpawnNewWindowInteractive("Flutter Desktop (Dev)", ctx.ScriptDir, "flutter run -d windows")
 }
 
@@ -72,13 +76,132 @@ func flutterDebugAndroid(*project.ProjectContext) error {
 	return nil
 }
 
+// flutterReleaseDir devuelve la carpeta del build de escritorio. Flutter solo
+// compila para la arquitectura del equipo, asi que se busca cualquier x64/x86/
+// arm64 que exista.
+func flutterReleaseDir(ctx *project.ProjectContext) string {
+	matches, err := filepath.Glob(filepath.Join(ctx.ScriptDir, "build", "windows", "*", "runner", "Release"))
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+// flutterReleaseExe devuelve el ejecutable de la app dentro del release
+// (ignora node.exe, que es el sidecar del motor de WhatsApp). Puede haber un
+// exe viejo renombrado por un build anterior con espacios en el nombre, asi que
+// se prefiere el mas reciente y, entre iguales, el que no tenga espacios.
+func flutterReleaseExe(releaseDir string) string {
+	entries, err := os.ReadDir(releaseDir)
+	if err != nil {
+		return ""
+	}
+	var best string
+	var bestTime time.Time
+	bestHasSpace := true
+	for _, e := range entries {
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".exe") {
+			continue
+		}
+		if strings.EqualFold(e.Name(), "node.exe") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		hasSpace := strings.ContainsAny(e.Name(), " \t")
+		if best == "" || info.ModTime().After(bestTime) || (hasSpace != bestHasSpace && !hasSpace) {
+			best = filepath.Join(releaseDir, e.Name())
+			bestTime = info.ModTime()
+			bestHasSpace = hasSpace
+		}
+	}
+	return best
+}
+
+// flutterBuildRelease compila el release de escritorio y devuelve la carpeta
+// generada, sin revelar nada (lo hace el llamador con el artefacto final).
+func flutterBuildRelease(ctx *project.ProjectContext) (string, error) {
+	if err := ensurePubget(ctx); err != nil {
+		return "", err
+	}
+	// Un motor de un build/prueba anterior deja node.exe abierto dentro del
+	// Release; Windows no permite sobrescribirlo y CMake falla con Permission
+	// denied. Se cierran solo los motores de este proyecto antes de etapar.
+	closeProjectWhatsappEngines(ctx.ScriptDir)
+	prepareWhatsappEngine(ctx)
+	command := "flutter build windows --release"
+	fmt.Printf("\n[INFO] Ejecutando: %s\n\n", command)
+	ok, err := shell.RunShellStatus(command, ctx.ScriptDir, nil)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("[ERROR] `%s` fallo.", command)
+	}
+	dir := flutterReleaseDir(ctx)
+	if dir == "" {
+		return "", fmt.Errorf("[ERROR] No se encontro la carpeta del release.")
+	}
+	return dir, nil
+}
+
+// FlutterBuildPortable compila el release y lo empaqueta en un unico .exe
+// autocontenido que se extrae a %LOCALAPPDATA% al arrancar.
+func FlutterBuildPortable(ctx *project.ProjectContext) error {
+	releaseDir, err := flutterBuildRelease(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanupStagedWhatsappResources(ctx)
+
+	exe := flutterReleaseExe(releaseDir)
+	if exe == "" {
+		return fmt.Errorf("[ERROR] No se encontro el ejecutable del release.")
+	}
+	name, version := flutterAppMeta(ctx)
+	out, err := buildFolderPortable(ctx, releaseDir, filepath.Base(exe), name, version)
+	if err != nil {
+		return err
+	}
+	shell.ShowArtifact(out)
+	ui.Pause()
+	return nil
+}
+
+// FlutterBuildInstaller compila el release y genera un Setup NSIS con la
+// carpeta completa dentro.
+func FlutterBuildInstaller(ctx *project.ProjectContext) error {
+	releaseDir, err := flutterBuildRelease(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanupStagedWhatsappResources(ctx)
+
+	exe := flutterReleaseExe(releaseDir)
+	if exe == "" {
+		return fmt.Errorf("[ERROR] No se encontro el ejecutable del release.")
+	}
+	name, version := flutterAppMeta(ctx)
+	out, err := buildFolderInstaller(ctx, releaseDir, filepath.Base(exe), name, version)
+	if err != nil {
+		return err
+	}
+	shell.ShowArtifact(out)
+	ui.Pause()
+	return nil
+}
+
 // FlutterBuildWindows compila el release de escritorio y revela el artefacto.
 func FlutterBuildWindows(ctx *project.ProjectContext) error {
 	fmt.Println("\n[INFO] Compilando aplicación de escritorio (Release)...")
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
-	ensureWhatsappNpm(ctx)
+	// Cierra motores huérfanos del proyecto antes de que CMake copie node.exe.
+	closeProjectWhatsappEngines(ctx.ScriptDir)
+	prepareWhatsappEngine(ctx)
 
 	name, version := flutterAppMeta(ctx)
 	rename := ""
@@ -90,9 +213,17 @@ func FlutterBuildWindows(ctx *project.ProjectContext) error {
 		}
 	}
 	releaseDir := filepath.Join(ctx.ScriptDir, "build")
-	_, err := shell.RunBuildAndReveal("flutter build windows --release", ctx.ScriptDir,
+	outcome, err := shell.RunBuildAndReveal("flutter build windows --release", ctx.ScriptDir,
 		releaseDir, []string{"exe"}, rename)
-	return err
+	if err != nil {
+		return err
+	}
+	// El motor etajado solo hace falta durante el build: CMake ya copio su
+	// propia version al release, asi que no se deja duplicado en el proyecto.
+	if outcome.Success {
+		cleanupStagedWhatsappResources(ctx)
+	}
+	return nil
 }
 
 // apkOutputDir es la carpeta de salida de APKs de Flutter.

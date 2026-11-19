@@ -57,8 +57,18 @@ func TestWindowsEntriesAreOfferedOnlyByDesktopArchTypes(t *testing.T) {
 			t.Errorf("%s: Windows x64 y Todos deben ser las primeras opciones", kind.Label())
 		}
 	}
+	// Flutter ofrece una sola arquitectura (la del equipo) mas portable e
+	// instalador, porque no compila por arquitectura como Go/Wails.
+	flutterWant := []string{
+		"Windows " + HostArchLabel(),
+		"Portable (un exe)",
+		"Instalador",
+	}
+	if got := releaseLabels(windowsEntries(releaseCtx(t, project.TypeFlutter))); !equalStrings(got, flutterWant) {
+		t.Errorf("Flutter: %v, quiero %v", got, flutterWant)
+	}
 	for _, kind := range []project.ProjectType{
-		project.TypeFlutter, project.TypeKotlin, project.TypePython,
+		project.TypeKotlin, project.TypePython,
 	} {
 		if entries := windowsEntries(releaseCtx(t, kind)); entries != nil {
 			t.Errorf("%s no debería ofrecer release de escritorio por arch", kind.Label())

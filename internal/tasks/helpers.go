@@ -17,14 +17,16 @@ func runNpmInstall(dir string) {
 	}
 }
 
-// ensureWhatsappNpm instala las dependencias del motor WhatsApp si el proyecto
-// lo tiene.
+// ensureWhatsappNpm instala las dependencias de un motor WhatsApp que viva
+// dentro del propio proyecto. Si no hay package.json no hay motor local que
+// instalar: el canónico vive en el corekit y su staging gestiona las deps.
 func ensureWhatsappNpm(ctx *project.ProjectContext) {
-	if ctx.HasWhatsAppEngine {
-		engine := ctx.ProjectType.WhatsappPath(ctx.ScriptDir)
-		fmt.Println("[INFO] Instalando dependencias del motor WhatsApp...")
-		runNpmInstall(engine)
+	engine := ctx.ProjectType.WhatsappPath(ctx.ScriptDir)
+	if !fileExists(filepath.Join(engine, "package.json")) {
+		return
 	}
+	fmt.Println("[INFO] Instalando dependencias del motor WhatsApp...")
+	runNpmInstall(engine)
 }
 
 // fmtWarn imprime un aviso en stderr (consistente con el resto de tareas).

@@ -1,0 +1,168 @@
+// Plantilla del "stub" portable de carpeta de Compass (Flutter y cualquier
+// proyecto cuyo release sea una carpeta con el exe + DLLs + datos).
+//
+// NO se compila dentro de Compass: buildFolderPortable la copia a un modulo Go
+// temporal, genera payload.tar.gz con el contenido del release y compila con
+// go build. El resultado es un UNICO .exe que, al arrancar, extrae el payload a
+// %LOCALAPPDATA%\<App>\<buildID>\ y lanza la app real desde ahi.
+package main
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"embed"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+//go:embed payload.tar.gz
+var payloadFS embed.FS
+
+// Valores inyectados en tiempo de build con -ldflags "-X main.appName=..." por
+// buildFolderPortable (internal/tasks/folder_artifacts.go).
+var (
+	appName = "CompassApp" // nombre sanitizado, seguro como componente de ruta
+	appExe  = "app.exe"    // ejecutable real dentro del payload extraido
+	buildID = "dev"        // hash del contenido; cambia la carpeta de cache
+)
+
+const (
+	archiveName = "payload.tar.gz"
+	// markerName se escribe al final de la extraccion. Si no coincide con
+	// buildID, el siguiente arranque vuelve a extraer (protege ante cortes).
+	markerName = ".compass-ready"
+)
+
+func localAppData() string {
+	if v := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); v != "" {
+		return v
+	}
+	if v, err := os.UserCacheDir(); err == nil && v != "" {
+		return v
+	}
+	return os.TempDir()
+}
+
+func installDir() string {
+	return filepath.Join(localAppData(), filepath.FromSlash(appName), filepath.FromSlash(buildID))
+}
+
+func isReady(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, markerName))
+	return err == nil && strings.TrimSpace(string(data)) == buildID
+}
+
+func extractPayload(dir string) error {
+	f, err := payloadFS.Open(archiveName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+
+	// La carpeta lleva el buildID en el nombre: si el marcador no coincidia,
+	// reconstruirla entera evita mezclar archivos de otra version.
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	root := filepath.Clean(dir)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+
+	tr := tar.NewReader(zr)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		name := filepath.FromSlash(strings.TrimPrefix(hdr.Name, "./"))
+		if name == "" || name == "." {
+			continue
+		}
+		target := filepath.Join(root, name)
+		// Defensa contra entradas que intenten salir de la carpeta destino.
+		if target != root && !strings.HasPrefix(target, root+string(os.PathSeparator)) {
+			continue
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			if err := out.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	// El marcador va al final: si algo falla antes, el proximo arranque re-extrae.
+	return os.WriteFile(filepath.Join(dir, markerName), []byte(buildID), 0o644)
+}
+
+// engineDir devuelve la carpeta del motor de WhatsApp si viaja en el payload.
+func engineDir(dir string) string {
+	for _, rel := range []string{"resources", "whatsapp_engine"} {
+		if info, err := os.Stat(filepath.Join(dir, rel)); err == nil && info.IsDir() {
+			return filepath.Join(dir, rel)
+		}
+	}
+	return ""
+}
+
+func main() {
+	dir := installDir()
+	if !isReady(dir) {
+		fmt.Printf("[Compass Portable] Extrayendo en %s ...\n", dir)
+		if err := extractPayload(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "[Compass Portable] Error al extraer: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	exe := filepath.Join(dir, filepath.FromSlash(appExe))
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Dir = dir
+	env := os.Environ()
+	if engine := engineDir(dir); engine != "" {
+		env = append(env, "COMPASS_WHATSAPP_ENGINE="+engine)
+	}
+	cmd.Env = env
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		os.Exit(exitErr.ExitCode())
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[Compass Portable] No se pudo lanzar %s: %v\n", exe, err)
+		os.Exit(1)
+	}
+}

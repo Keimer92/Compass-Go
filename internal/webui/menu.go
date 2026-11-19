@@ -71,6 +71,13 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 				{"windows-release-arm64", "Windows ARM64", "Snapdragon X · bajo consumo", "install"},
 			}
 		}
+		if ctx.ProjectType == project.TypeFlutter {
+			return []Subcard{
+				{"windows-build", "Windows " + tasks.HostArchLabel(), "Build del release · equipo actual", "run"},
+				{"flutter-portable", "Portable (un exe)", "Todo dentro · extrae al ejecutar", "install"},
+				{"flutter-installer", "Instalador", "Setup.exe con todo dentro", "build"},
+			}
+		}
 	case tui.AndroidBuildArm64, tui.AndroidBuildAll:
 		return []Subcard{
 			{"android-release-arm64", "Android arm64", "arm64-v8a · móviles modernos", "android"},

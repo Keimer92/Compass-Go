@@ -260,15 +260,21 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
 - **Detección de uso (opt-in + automática)** (`projectUsesWhatsappEngine` /
   `projectImportsWhatsapp` en `internal/tasks/whatsapp_engine.go`): un proyecto
   recibe el runtime si se cumple **cualquiera** de estos criterios:
-  1. tiene una carpeta `whatsapp_engine` local (motor propio del proyecto);
+  1. tiene una carpeta `whatsapp_engine` local **con `engine.js`** (motor propio
+     del proyecto que hay que compilar);
   2. tiene el marcador `use-whatsapp-engine` en su raíz (opt-in explícito);
-  3. **escaneo automático**: sus fuentes Go importan un paquete cuya ruta
+  3. en **Flutter**, `windows/CMakeLists.txt` o el código Dart de `lib/`
+     mencionan `whatsapp_engine`;
+  4. **escaneo automático**: sus fuentes Go importan un paquete cuya ruta
      referencia `whatsapp` (p.ej. `miproyecto/internal/whatsapp`). El escaneo
      recorre recursivamente los `.go` y omite `node_modules`, `vendor`, `.git`,
      `bin`, `resources`, `out` y `corekit` (para no rallar ni falsar positivos
      dentro del propio Compass); para en cuanto encuentra una coincidencia.
-  El criterio 3 es el principal: basta con que el código del proyecto importe el
-  paquete WhatsApp para que Compass etaje el motor, sin marcadores manuales.
+  El marcador `use-whatsapp-engine` es el mecanismo **canónico y
+  multiplataforma**: sirve igual para Flutter, Kotlin, Python, Go y Go+Wails y
+  sobrevive a refactors del código. Los criterios 3 y 4 son atajos heredados.
+  La carpeta `whatsapp_engine/` **no** hace falta en el repo: Compass la genera
+  al compilar (con solo `index.js` + `node.exe` no cuenta como motor propio).
 - **Auto-instalación de dependencias**: solo cuando hay que reconstruir el
   bundle (falta `index.js` o `engine.js` es más nuevo), y si `package.json` es
   más reciente que `node_modules`, Compass ejecuta `npm install` en el kit. La
@@ -277,7 +283,29 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
 - **Etapado en build**: `stageWhatsappEngine` (llamado desde `windowsArtifacts`
   en el release de escritorio) reconstruye el bundle si `engine.js` cambió y
   copia `node.exe` + `whatsapp-engine-bundle` al `bin/resources/` del proyecto
-  (o al `resources/` de Flutter/Kotlin según tipo).
+  (o al `resources/` de Flutter/Kotlin según tipo). En **Flutter** el destino es
+  `whatsapp_engine/` (index.js `--single` + `node.exe`).
+- **Flutter: staging efímero**: tras un release correcto (`FlutterBuildWindows`)
+  se llama a `cleanupStagedWhatsappResources`, que borra `whatsapp_engine/` del
+  proyecto porque CMake ya instaló su copia en el bundle del release. El motor
+  no queda duplicado en el repo; solo existe durante el build. No se limpia si
+  el build falló ni si falta la regla `install()` (el release no tendría copia).
+- **Flutter: cierre de motores huérfanos antes del build**: `closeProjectWhatsappEngines`
+  (`whatsapp_process_windows.go`, llamado antes de `prepareWhatsappEngine` en los
+  builds `windows-build` / `flutter-portable` / `flutter-installer`) enumera los
+  `node.exe` con `CreateToolhelp32Snapshot`, obtiene su ruta con
+  `QueryFullProcessImageName` y termina solo los que viven bajo la carpeta del
+  proyecto (`whatsapp_engine/` o `resources/whatsapp-engine-bundle/`). Windows no
+  deja sobrescribir un `.exe` en uso: si quedó un motor vivo de una prueba
+  anterior, CMake fallaba al copiar `node.exe` al Release con `Permission denied`
+  (envuelto en el `MSB3073` de MSBuild). Nunca toca los `node.exe` del sistema ni
+  de otros proyectos; si no puede cerrar uno avisa con `[WARN]`. No hace falta
+  compilador alternativo: Flutter Windows solo usa MSVC.
+- **Flutter: regla CMake automática**: si el proyecto usa el motor y
+  `windows/CMakeLists.txt` no menciona `whatsapp_engine`, Compass inyecta el
+  bloque `install(DIRECTORY "${CMAKE_SOURCE_DIR}/../whatsapp_engine" ...)` al
+  final (`ensureFlutterWhatsappCmakeRule`, idempotente y respetando CRLF/LF).
+  Así el motor viaja al release sin que el proyecto tenga que mantener la regla.
 - **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
 - `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador
   (sin los artefactos de build del motor: `node_modules`, `out`, `examples`).
@@ -578,5 +606,23 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
   página final ofrece "Crear un acceso directo en el escritorio" y "Ejecutar
   ahora". Go+Wails sigue usando el instalador nativo de su framework
   (necesario para WebView2).
+- **Releases de Flutter**: la tarjeta Windows Build ofrece tres subcards —
+  build del host, **portable** (`flutter-portable`) e **instalador**
+  (`flutter-installer`). Flutter no compila por arquitectura (no acepta
+  `--target-platform`), así que solo se ofrece la del equipo (`HostArchLabel`).
+  - `internal/tasks/folder_artifacts.go`: `writeFolderArchive` empaqueta la
+    carpeta Release completa en `payload.tar.gz` (gzip `BestCompression`,
+    renombrando el exe real a `app.exe` para esquivar espacios en ldflags);
+    `buildFolderPortable` genera un stub Go (`assets/portable-launcher.go.txt`)
+    que extrae a `%LOCALAPPDATA%\<App>\<hash>\`, marca con `.compass-ready` y
+    lanza el exe con cwd ahí, heredando args y propagando el exit code;
+    `buildFolderInstaller` usa `assets/app-folder-installer.nsi` (`File /r` de
+    todo el Release). Salidas en `<proyecto>/bin`.
+  - Un release de ~136 MB (Flutter + `whatsapp_engine/`) da un portable de
+    ~48 MB y un Setup NSIS de ~32 MB. El portable tarda ~2-4 s la primera vez
+    en extraer; el stub precisó ~46 MB de payload comprimido en la prueba real.
+  - Tanto `FlutterBuildPortable`/`FlutterBuildInstaller` como `flutterArtifacts`
+    limpian el `whatsapp_engine/` etajado al terminar (si la regla `install()`
+    del CMake existe), ya que CMake copió su propia copia al Release.
 - **Plataformas soportadas**: solo **Windows** como aplicación de escritorio;
   Android sigue como destino de compilación para los proyectos compatibles.

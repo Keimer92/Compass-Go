@@ -58,7 +58,9 @@ func whatsappEngineSource() string {
 // Criterios (cualquiera basta):
 //  1. tiene una carpeta whatsapp_engine local (motor propio del proyecto);
 //  2. tiene el marcador use-whatsapp-engine en su raíz (opt-in explícito);
-//  3. sus fuentes Go importan un paquete cuya ruta referencia whatsapp
+//  3. es Flutter y su build (windows/CMakeLists.txt) o su código Dart
+//     referencian whatsapp_engine (aunque la carpeta ya no viva en el proyecto);
+//  4. sus fuentes Go importan un paquete cuya ruta referencia whatsapp
 //     (detección automática).
 func projectUsesWhatsappEngine(ctx *project.ProjectContext) bool {
 	if ctx.HasWhatsAppEngine {
@@ -67,7 +69,42 @@ func projectUsesWhatsappEngine(ctx *project.ProjectContext) bool {
 	if fileExists(filepath.Join(ctx.ScriptDir, whatsappEngineMarker)) {
 		return true
 	}
+	if ctx.ProjectType == project.TypeFlutter && flutterUsesWhatsappEngine(ctx.ScriptDir) {
+		return true
+	}
 	return projectImportsWhatsapp(ctx.ScriptDir)
+}
+
+// flutterUsesWhatsappEngine detecta que un proyecto Flutter depende del motor
+// aunque la carpeta whatsapp_engine ya no esté en el proyecto (ahora vive en el
+// corekit de Compass): lo delata la regla install() del CMakeLists de Windows
+// o la resolución de rutas del servicio Dart.
+func flutterUsesWhatsappEngine(root string) bool {
+	if textFileContains(filepath.Join(root, "windows", "CMakeLists.txt"), "whatsapp_engine") {
+		return true
+	}
+	found := false
+	_ = filepath.WalkDir(filepath.Join(root, "lib"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".dart" {
+			return nil
+		}
+		if textFileContains(path, "whatsapp_engine") {
+			found = true
+			return errScanStop
+		}
+		return nil
+	})
+	return found
+}
+
+// textFileContains indica si el archivo de texto contiene needle, sin
+// distinguir mayúsculas.
+func textFileContains(path, needle string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(data)), strings.ToLower(needle))
 }
 
 // projectImportsWhatsapp escanea recursivamente las fuentes Go del proyecto en
@@ -119,14 +156,25 @@ func engineOutputResources(ctx *project.ProjectContext) string {
 	switch ctx.ProjectType {
 	case project.TypeGo, project.TypeGoWails:
 		return filepath.Join(wailsBinDir(ctx), "resources")
+	case project.TypeFlutter:
+		// El motor Flutter se etaja en whatsapp_engine/ (index.js + node.exe).
+		return ctx.ProjectType.WhatsappBundlePath(ctx.ScriptDir)
 	default:
 		return filepath.Dir(ctx.ProjectType.WhatsappBundlePath(ctx.ScriptDir))
 	}
 }
 
-// stageWhatsappEngine asegura que node.exe + el bundle del motor canónico estén
-// en el resources/ de salida del proyecto. Es un no-op si el proyecto no usa el
-// motor o el motor canónico no existe.
+// prepareWhatsappEngine deja el motor listo antes de compilar o ejecutar:
+// instala las dependencias de un motor local (si existe) y etaja el canónico
+// cuando el proyecto lo consume.
+func prepareWhatsappEngine(ctx *project.ProjectContext) {
+	ensureWhatsappNpm(ctx)
+	stageWhatsappEngine(ctx)
+}
+
+// stageWhatsappEngine asegura que el motor canónico esté en la salida del
+// proyecto. Es un no-op si el proyecto no usa el motor o el motor canónico no
+// existe.
 func stageWhatsappEngine(ctx *project.ProjectContext) {
 	if !projectUsesWhatsappEngine(ctx) {
 		return
@@ -137,29 +185,14 @@ func stageWhatsappEngine(ctx *project.ProjectContext) {
 		return
 	}
 
-	// ¿Hay que reconstruir el bundle? Solo entonces hacen falta las
-	// dependencias (node_modules), que en la copia instalada no se envian:
-	// el bundle ya viene compilado y es autocontenido.
-	bundleSrc := filepath.Join(src, "whatsapp-engine-bundle")
-	indexJs := filepath.Join(bundleSrc, "index.js")
-	engineJs := filepath.Join(src, "engine.js")
-	needRebuild := !fileExists(indexJs) || isNewer(engineJs, indexJs)
-
-	if needRebuild && isNewer(filepath.Join(src, "package.json"), filepath.Join(src, "node_modules")) {
-		fmt.Println("[INFO] Instalando dependencias del motor de WhatsApp canónico...")
-		shell.RunNpmInstall(src)
+	// Flutter consume un único index.js autocontenido dentro de whatsapp_engine/.
+	if ctx.ProjectType == project.TypeFlutter {
+		stageFlutterWhatsappEngine(ctx, src)
+		return
 	}
 
-	if needRebuild {
-		fmt.Println("[INFO] Compilando motor de WhatsApp canónico (ncc)...")
-		if err := shell.RunInDirStatus("node", src, "bundle.mjs"); err != nil {
-			if fileExists(indexJs) {
-				fmt.Printf("[WARN] No se pudo recompilar el bundle; se usa el existente: %v\n", err)
-			} else {
-				fmt.Printf("[WARN] No se pudo compilar el motor canónico: %v\n", err)
-				return
-			}
-		}
+	if !ensureWhatsappAssetBundle(src) {
+		return
 	}
 
 	dest := engineOutputResources(ctx)
@@ -177,6 +210,126 @@ func stageWhatsappEngine(ctx *project.ProjectContext) {
 	fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s\n", dest)
 }
 
+// ensureWhatsappAssetBundle asegura whatsapp-engine-bundle/index.js (modo
+// assetBuilds, ideal para Go/Wails) en el motor canónico.
+func ensureWhatsappAssetBundle(src string) bool {
+	indexJs := filepath.Join(src, "whatsapp-engine-bundle", "index.js")
+	needRebuild := !fileExists(indexJs) || isNewer(filepath.Join(src, "engine.js"), indexJs)
+	if needRebuild && isNewer(filepath.Join(src, "package.json"), filepath.Join(src, "node_modules")) {
+		fmt.Println("[INFO] Instalando dependencias del motor de WhatsApp canónico...")
+		shell.RunNpmInstall(src)
+	}
+	if needRebuild {
+		fmt.Println("[INFO] Compilando motor de WhatsApp canónico (ncc)...")
+		if err := shell.RunInDirStatus("node", src, "bundle.mjs"); err != nil {
+			if fileExists(indexJs) {
+				fmt.Printf("[WARN] No se pudo recompilar el bundle; se usa el existente: %v\n", err)
+				return true
+			}
+			fmt.Printf("[WARN] No se pudo compilar el motor canónico: %v\n", err)
+			return false
+		}
+	}
+	return fileExists(indexJs)
+}
+
+// ensureWhatsappSingleBundle asegura single/index.js (modo --single: un solo
+// archivo autocontenido, ideal para Flutter).
+func ensureWhatsappSingleBundle(src string) bool {
+	indexJs := filepath.Join(src, "single", "index.js")
+	needRebuild := !fileExists(indexJs) || isNewer(filepath.Join(src, "engine.js"), indexJs)
+	if needRebuild && isNewer(filepath.Join(src, "package.json"), filepath.Join(src, "node_modules")) {
+		fmt.Println("[INFO] Instalando dependencias del motor de WhatsApp canónico...")
+		shell.RunNpmInstall(src)
+	}
+	if needRebuild {
+		fmt.Println("[INFO] Compilando motor de WhatsApp canónico (single-file)...")
+		if err := shell.RunInDirStatus("node", src, "bundle.mjs", "--single"); err != nil {
+			if fileExists(indexJs) {
+				fmt.Printf("[WARN] No se pudo recompilar el bundle; se usa el existente: %v\n", err)
+				return true
+			}
+			fmt.Printf("[WARN] No se pudo compilar el motor canónico: %v\n", err)
+			return false
+		}
+	}
+	return fileExists(indexJs)
+}
+
+// stageFlutterWhatsappEngine deja whatsapp_engine/index.js + node.exe en la raíz
+// del proyecto: es lo que empaqueta windows/CMakeLists.txt junto al exe y lo que
+// el servicio Dart resuelve en runtime.
+func stageFlutterWhatsappEngine(ctx *project.ProjectContext, src string) {
+	if !ensureWhatsappSingleBundle(src) {
+		return
+	}
+	dest := ctx.ProjectType.WhatsappBundlePath(ctx.ScriptDir)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		fmt.Printf("[WARN] No se pudo crear %s: %v\n", dest, err)
+		return
+	}
+	if err := copyFile(filepath.Join(src, "single", "index.js"), filepath.Join(dest, "index.js")); err != nil {
+		fmt.Printf("[WARN] No se pudo copiar el bundle de WhatsApp: %v\n", err)
+		return
+	}
+	if fileExists(filepath.Join(src, "node.exe")) {
+		_ = copyFile(filepath.Join(src, "node.exe"), filepath.Join(dest, "node.exe"))
+	}
+	fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s\n", dest)
+
+	// El motor se etaja, pero quien lo mete en el release es la regla install()
+	// del CMakeLists. Si falta, se inyecta: sin ella el build sale sin motor y
+	// el fallo solo se ve en runtime.
+	if !textFileContains(filepath.Join(ctx.ScriptDir, "windows", "CMakeLists.txt"), "whatsapp_engine") {
+		wrote, err := ensureFlutterWhatsappCmakeRule(ctx.ScriptDir)
+		if err != nil {
+			fmt.Printf("[WARN] No se pudo añadir la regla de empaquetado a windows/CMakeLists.txt: %v\n", err)
+		} else if wrote {
+			fmt.Println("[OK] Añadida la regla install() del motor en windows/CMakeLists.txt")
+		}
+	}
+}
+
+// whatsappCmakeRule instala whatsapp_engine/ junto al ejecutable del build de
+// Windows. Va con saltos \n; se adaptan al estilo del archivo al inyectarla.
+const whatsappCmakeRule = `# Compass Go: bundle del motor de WhatsApp junto al ejecutable.
+# La carpeta la genera Compass en cada build; no editar a mano.
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/../whatsapp_engine"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime
+  OPTIONAL
+  PATTERN "node_modules" EXCLUDE
+  PATTERN ".git" EXCLUDE)
+`
+
+// ensureFlutterWhatsappCmakeRule añade la regla install() del motor al final de
+// windows/CMakeLists.txt si no está. Es idempotente: si el archivo ya menciona
+// whatsapp_engine no lo toca. Devuelve true solo cuando escribe.
+func ensureFlutterWhatsappCmakeRule(root string) (bool, error) {
+	path := filepath.Join(root, "windows", "CMakeLists.txt")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	content := string(data)
+	if strings.Contains(strings.ToLower(content), "whatsapp_engine") {
+		return false, nil
+	}
+	eol := "\n"
+	if strings.Contains(content, "\r\n") {
+		eol = "\r\n"
+	}
+	if !strings.HasSuffix(content, "\n") {
+		content += eol
+	}
+	// Una sola linea en blanco de separacion con lo que ya hubiera.
+	if !strings.HasSuffix(content, eol+eol) {
+		content += eol
+	}
+	content += strings.ReplaceAll(whatsappCmakeRule, "\n", eol)
+	return true, os.WriteFile(path, []byte(content), 0o644)
+}
+
 // cleanupStagedWhatsappResources borra el resources/ temporario que
 // stageWhatsappEngine deja junto al binario. Tras el release, el portable (un
 // único exe) y el instalador ya llevan cada uno su propia copia embebida, así
@@ -189,16 +342,32 @@ func cleanupStagedWhatsappResources(ctx *project.ProjectContext) {
 		return
 	}
 	dest := engineOutputResources(ctx)
-	if ctx.ProjectType == project.TypeGo || ctx.ProjectType == project.TypeGoWails {
+	switch ctx.ProjectType {
+	case project.TypeGo, project.TypeGoWails:
 		if err := os.RemoveAll(dest); err != nil {
 			fmt.Printf("[WARN] No se pudo limpiar %s: %v\n", dest, err)
 		}
 		return
+	case project.TypeFlutter:
+		// Solo se limpia si el release ya se llevo su propia copia (la regla
+		// install() del CMakeLists). Sin ella, borrar dejaria el proyecto sin
+		// ninguna copia del motor.
+		if !textFileContains(filepath.Join(ctx.ScriptDir, "windows", "CMakeLists.txt"), "whatsapp_engine") {
+			return
+		}
 	}
 	if err := os.Remove(filepath.Join(dest, "node.exe")); err != nil && !os.IsNotExist(err) {
 		fmt.Printf("[WARN] No se pudo borrar node.exe de %s: %v\n", dest, err)
 	}
 	if err := os.RemoveAll(filepath.Join(dest, "whatsapp-engine-bundle")); err != nil {
 		fmt.Printf("[WARN] No se pudo limpiar el bundle en %s: %v\n", dest, err)
+	}
+	// Flutter: el index.js single-file también lo genera Compass.
+	if ctx.ProjectType == project.TypeFlutter {
+		if err := os.Remove(filepath.Join(dest, "index.js")); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("[WARN] No se pudo borrar index.js de %s: %v\n", dest, err)
+		}
+		// Solo elimina la carpeta si quedó vacía (no toca archivos del proyecto).
+		_ = os.Remove(dest)
 	}
 }

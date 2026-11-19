@@ -401,12 +401,25 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 coverage/
+*.iml
+
+# --- Salidas generadas por plataforma ---
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+ios/Flutter/ephemeral/
+
+# --- Artefactos de release generados por Compass (portable + instalador) ---
+bin/
 
 # --- Android (Gradle) ---
 android/build/
 android/.gradle/
 android/.cxx/
 android/app/build/
+android/app/debug/
+android/app/profile/
+android/app/release/
 android/local.properties
 android/key.properties
 *.jks
@@ -438,9 +451,9 @@ Desktop.ini
 
 # --- Variables de entorno ---
 .env
-.env.example
 .env.local
 .env.*.local
+!.env.example
 
 # --- Logs ---
 *.log
@@ -496,9 +509,9 @@ Desktop.ini
 
 # --- Environment ---
 .env
-.env.example
 .env.local
 .env.*.local
+!.env.example
 
 # --- Logs ---
 *.log
@@ -560,9 +573,9 @@ Desktop.ini
 
 # --- Environment ---
 .env
-.env.example
 .env.local
 .env.*.local
+!.env.example
 
 # --- Logs ---
 *.log
@@ -660,7 +673,35 @@ func gitignoreContent(pt project.ProjectType) string {
 	default:
 		content = gitignoreGo
 	}
-	return withCommonRules(withTaskCacheRules(content))
+	return withWhatsappRules(withCommonRules(withTaskCacheRules(content)))
+}
+
+// whatsappStagedRules cubren el motor de WhatsApp que Compass etaja en cada
+// build (node.exe + bundle). Se regenera desde el corekit, asi que nunca debe
+// versionarse: son ~74 MB por proyecto.
+var whatsappStagedRules = []string{
+	"whatsapp_engine/",
+	"resources/whatsapp-engine-bundle/",
+	"composeApp/resources/whatsapp-engine-bundle/",
+}
+
+// withWhatsappRules anade las reglas del motor etajado que falten.
+func withWhatsappRules(content string) string {
+	var missing []string
+	for _, rule := range whatsappStagedRules {
+		if !hasIgnoreRule(content, rule) {
+			missing = append(missing, rule)
+		}
+	}
+	if len(missing) == 0 {
+		return content
+	}
+	content = strings.TrimRight(content, "\n \t")
+	content += "\n\n# --- Motor WhatsApp etajado por Compass (se regenera en cada build) ---\n"
+	for _, rule := range missing {
+		content += rule + "\n"
+	}
+	return content
 }
 
 // commonIgnoreRules ensucian el arbol en cualquier proyecto: dependencias Node

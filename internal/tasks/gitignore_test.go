@@ -35,6 +35,46 @@ func TestGitignoreGoIgnoresFrontendArtifacts(t *testing.T) {
 	}
 }
 
+func TestGitignoreContentIgnoresWhatsappStagedEngine(t *testing.T) {
+	for _, pt := range allTypes() {
+		content := gitignoreContent(pt)
+		for _, rule := range whatsappStagedRules {
+			if !strings.Contains(content, "\n"+rule+"\n") {
+				t.Errorf("gitignoreContent(%v) no ignora %q", pt, rule)
+			}
+		}
+	}
+}
+
+func TestGitignoreFlutterIgnoresGeneratedPlatformDirs(t *testing.T) {
+	content := gitignoreContent(project.TypeFlutter)
+	for _, rule := range []string{
+		"windows/flutter/ephemeral/",
+		"linux/flutter/ephemeral/",
+		"macos/Flutter/ephemeral/",
+		"ios/Flutter/ephemeral/",
+		"*.iml",
+		"android/app/release/",
+		"bin/",
+	} {
+		if !strings.Contains(content, "\n"+rule+"\n") {
+			t.Errorf("el .gitignore de Flutter no incluye %q", rule)
+		}
+	}
+}
+
+func TestGitignoreKeepsEnvExample(t *testing.T) {
+	for _, pt := range allTypes() {
+		content := gitignoreContent(pt)
+		if strings.Contains(content, "\n.env.example\n") {
+			t.Errorf("gitignoreContent(%v) ignora .env.example, que debe versionarse", pt)
+		}
+		if !strings.Contains(content, "\n!.env.example\n") {
+			t.Errorf("gitignoreContent(%v) no re-incluye .env.example", pt)
+		}
+	}
+}
+
 func TestMergeGitignoreAddsOnlyMissingRules(t *testing.T) {
 	existing := "# mio\nnode_modules/\n*.log\n"
 	merged := mergeGitignore(existing, gitignoreContentForPlatform(project.TypeGo))

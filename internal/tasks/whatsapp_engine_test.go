@@ -3,6 +3,7 @@ package tasks
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"compass/internal/project"
@@ -85,29 +86,202 @@ func TestCleanupStagedWhatsappResources(t *testing.T) {
 		t.Fatalf("quedo el resources/ etapado en Go: %v", err)
 	}
 
-	// Otras plataformas: solo se van los archivos del kit; se conserva lo demás.
-	flutterRes := filepath.Join(root, "resources")
-	if err := os.MkdirAll(filepath.Join(flutterRes, "whatsapp-engine-bundle"), 0o755); err != nil {
+	// Flutter: el motor se etaja en whatsapp_engine/ (index.js + node.exe); se
+	// conserva cualquier archivo propio del proyecto (p. ej. engine.js). Solo se
+	// limpia si el CMakeLists instala la carpeta (el release ya tiene su copia).
+	flutterDir := filepath.Join(root, "whatsapp_engine")
+	if err := os.MkdirAll(flutterDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"node.exe", "icon.ico"} {
-		if err := os.WriteFile(filepath.Join(flutterRes, f), []byte("x"), 0o644); err != nil {
+	for _, f := range []string{"node.exe", "index.js", "engine.js"} {
+		if err := os.WriteFile(filepath.Join(flutterDir, f), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(flutterRes, "whatsapp-engine-bundle", "index.js"), []byte("//"), 0o644); err != nil {
+	flutterCtx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter, HasWhatsAppEngine: true}
+
+	// Sin regla install() no se toca nada: el motor no viajo al release.
+	cleanupStagedWhatsappResources(flutterCtx)
+	if !fileExists(filepath.Join(flutterDir, "index.js")) {
+		t.Fatal("se limpio el motor sin que el release lo hubiera copiado")
+	}
+
+	// Con la regla install() se quitan los archivos del kit y queda la carpeta
+	// (tiene engine.js del proyecto).
+	win := filepath.Join(root, "windows")
+	if err := os.MkdirAll(win, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	flutterCtx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter, HasWhatsAppEngine: true}
-	cleanupStagedWhatsappResources(flutterCtx)
-	if !fileExists(filepath.Join(flutterRes, "icon.ico")) {
-		t.Error("se borro un recurso del proyecto que no es del kit")
+	cmake := "install(DIRECTORY \"${CMAKE_SOURCE_DIR}/../whatsapp_engine\" DESTINATION \"${INSTALL_BUNDLE_LIB_DIR}\")"
+	if err := os.WriteFile(filepath.Join(win, "CMakeLists.txt"), []byte(cmake), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if fileExists(filepath.Join(flutterRes, "node.exe")) || dirExists(filepath.Join(flutterRes, "whatsapp-engine-bundle")) {
-		t.Error("quedaron archivos del kit en la plataforma no-Go")
+	cleanupStagedWhatsappResources(flutterCtx)
+	if !fileExists(filepath.Join(flutterDir, "engine.js")) {
+		t.Error("se borro un archivo del proyecto que no es del kit")
+	}
+	if fileExists(filepath.Join(flutterDir, "node.exe")) || fileExists(filepath.Join(flutterDir, "index.js")) {
+		t.Error("quedaron archivos del kit en Flutter")
+	}
+
+	// Si la carpeta solo tenía archivos del kit, desaparece.
+	onlyKit := filepath.Join(root, "solo_kit", "whatsapp_engine")
+	if err := os.MkdirAll(onlyKit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"node.exe", "index.js"} {
+		if err := os.WriteFile(filepath.Join(onlyKit, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	onlyKitRoot := filepath.Join(root, "solo_kit")
+	if err := os.MkdirAll(filepath.Join(onlyKitRoot, "windows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(onlyKitRoot, "windows", "CMakeLists.txt"), []byte(cmake), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cleanupStagedWhatsappResources(&project.ProjectContext{ScriptDir: onlyKitRoot, ProjectType: project.TypeFlutter, HasWhatsAppEngine: true})
+	if dirExists(onlyKit) {
+		t.Error("la carpeta del kit deberia desaparecer si queda vacia")
 	}
 
 	// Sin kit no se toca nada.
 	noKit := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGo}
 	cleanupStagedWhatsappResources(noKit)
+}
+
+// TestFlutterMarkerEnablesEngine verifica que el marcador use-whatsapp-engine
+// (el mismo de GymPro) habilite el motor en Flutter sin depender de que el
+// CMakeLists o el código Dart mencionen whatsapp_engine.
+func TestFlutterMarkerEnablesEngine(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "pubspec.yaml"), []byte("name: demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter}
+	if projectUsesWhatsappEngine(ctx) {
+		t.Fatal("sin marcador ni referencias no debe usar el motor")
+	}
+
+	if err := os.WriteFile(filepath.Join(root, whatsappEngineMarker), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !projectUsesWhatsappEngine(ctx) {
+		t.Fatal("el marcador use-whatsapp-engine debe habilitar el motor en Flutter")
+	}
+}
+
+// TestFlutterUsesWhatsappEngine verifica que un proyecto Flutter se detecte como
+// consumidor del kit aunque la carpeta whatsapp_engine ya no viva en el
+// proyecto: basta la regla del CMakeLists o la resolución del servicio Dart.
+// TestEnsureFlutterWhatsappCmakeRule verifica la inyeccion de la regla
+// install() del motor en windows/CMakeLists.txt, respetando el fin de linea del
+// archivo y sin duplicarla en llamadas posteriores.
+func TestEnsureFlutterWhatsappCmakeRule(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		eol  string
+	}{
+		{"crlf", "\r\n"},
+		{"lf", "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			win := filepath.Join(root, "windows")
+			if err := os.MkdirAll(win, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(win, "CMakeLists.txt")
+			original := "set(INSTALL_BUNDLE_LIB_DIR \"${CMAKE_INSTALL_PREFIX}\")" + tc.eol +
+				"install(TARGETS app RUNTIME DESTINATION \"${CMAKE_INSTALL_PREFIX}\")" + tc.eol
+			if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			wrote, err := ensureFlutterWhatsappCmakeRule(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !wrote {
+				t.Fatal("no inyecto la regla")
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := string(data)
+			if !strings.Contains(got, `install(DIRECTORY "${CMAKE_SOURCE_DIR}/../whatsapp_engine"`) {
+				t.Fatalf("falta la regla install():\n%s", got)
+			}
+			if !strings.Contains(got, `DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"`) {
+				t.Fatalf("falta el destino del bundle:\n%s", got)
+			}
+			if !strings.HasPrefix(got, original) {
+				t.Fatalf("se altero el contenido original:\n%s", got)
+			}
+			if strings.Contains(got, tc.eol+tc.eol+tc.eol) {
+				t.Fatalf("demasiadas lineas en blanco antes de la regla:\n%s", got)
+			}
+			if tc.eol == "\r\n" && strings.Count(got, "\n") != strings.Count(got, "\r\n") {
+				t.Fatalf("mezcla de finales de linea en un archivo CRLF")
+			}
+			if tc.eol == "\n" && strings.Contains(got, "\r\n") {
+				t.Fatalf("se colaron CRLF en un archivo LF")
+			}
+
+			wrote, err = ensureFlutterWhatsappCmakeRule(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if wrote {
+				t.Fatal("deberia ser idempotente")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != got {
+				t.Fatal("la segunda llamada modifico el archivo")
+			}
+		})
+	}
+}
+
+func TestFlutterUsesWhatsappEngine(t *testing.T) {
+	root := t.TempDir()
+	if flutterUsesWhatsappEngine(root) {
+		t.Fatal("un proyecto vacío no debe usar el motor")
+	}
+
+	win := filepath.Join(root, "windows")
+	if err := os.MkdirAll(win, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmake := "install(DIRECTORY \"${CMAKE_SOURCE_DIR}/../whatsapp_engine\"\n  DESTINATION \"${INSTALL_BUNDLE_LIB_DIR}\")"
+	if err := os.WriteFile(filepath.Join(win, "CMakeLists.txt"), []byte(cmake), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !flutterUsesWhatsappEngine(root) {
+		t.Error("no se detectó whatsapp_engine en windows/CMakeLists.txt")
+	}
+
+	// Sin CMake, la detección también funciona por el código Dart.
+	root2 := t.TempDir()
+	lib := filepath.Join(root2, "lib", "services")
+	if err := os.MkdirAll(lib, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dart := "final candidates = ['${Directory.current.path}/whatsapp_engine'];"
+	if err := os.WriteFile(filepath.Join(lib, "whatsapp_service.dart"), []byte(dart), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !flutterUsesWhatsappEngine(root2) {
+		t.Error("no se detectó whatsapp_engine en el código Dart")
+	}
+
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter}
+	if !projectUsesWhatsappEngine(ctx) {
+		t.Error("projectUsesWhatsappEngine no detectó el proyecto Flutter")
+	}
 }

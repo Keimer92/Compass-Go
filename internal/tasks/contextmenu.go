@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	ctxCompassKey   = "zz_CompassGo"
+	ctxCompassKey = "zz_CompassGo"
 	// La clave ordena despues de zz_VibeCoding (Explorer ordena por nombre de
 	// clave), asi que la entrada aparece debajo de Vibe Coding.
 	ctxGitignoreKey = "zz_VibeGitignore"
@@ -225,7 +225,16 @@ func compassContextCommand(shellName, exe, placeholder string) string {
 	return fmt.Sprintf(`"%s" -p "%s"`, exe, placeholder)
 }
 
-func gitignoreContextCommand(shellName, exe, placeholder string) string {
+// gitignoreNotifyScript devuelve el cuerpo PowerShell que ejecuta la tarea y
+// muestra el aviso.
+//
+// Importante: este texto se inyecta en `-Command "..."`, y cmd.exe NO escapa
+// las comillas internas (a diferencia de PowerShell al lanzar un proceso). Por
+// eso el script no puede contener ningun caracter `"` literal: la comilla que
+// envuelve la ruta se construye con [char]34. Si aparece una comilla suelta,
+// -Command termina ahi y la tarea nunca se ejecuta (el aviso decia "No se pudo
+// crear el .gitignore" sin crear nada).
+func gitignoreNotifyScript(exe, placeholder string) string {
 	// El binario es de subsistema GUI: al lanzarlo con `&` PowerShell NO espera
 	// y $LASTEXITCODE queda vacio, asi que el aviso decia siempre "No se pudo
 	// crear" aunque el .gitignore se hubiera escrito. Start-Process -Wait
@@ -233,10 +242,11 @@ func gitignoreContextCommand(shellName, exe, placeholder string) string {
 	//
 	// Ojo: -ArgumentList une los elementos sin comillas; se construye a mano la
 	// linea con la ruta entre comillas para que no se parta con espacios.
-	script := fmt.Sprintf(`
+	return fmt.Sprintf(`
 $exe = %s
 $path = %s
-$argLine = '--task context-gitignore --path "' + $path + '"'
+$q = [char]34
+$argLine = '--task context-gitignore --path ' + $q + $path + $q
 $p = $null
 try { $p = Start-Process -FilePath $exe -ArgumentList $argLine -Wait -PassThru -WindowStyle Hidden } catch { }
 Add-Type -AssemblyName System.Windows.Forms
@@ -251,6 +261,10 @@ if ($p -ne $null -and $p.ExitCode -eq 0) {
 }
 Start-Sleep -Seconds 4
 $n.Dispose()`, shell.PsQuote(exe), shell.PsQuote(placeholder))
+}
+
+func gitignoreContextCommand(shellName, exe, placeholder string) string {
+	script := gitignoreNotifyScript(exe, placeholder)
 	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -WindowStyle Hidden -Command "%s"`, shellName, script)
 }
 

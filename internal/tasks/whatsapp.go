@@ -52,8 +52,17 @@ func WhatsappBuild(ctx *project.ProjectContext) error {
 		return nil
 	}
 
+	// Flutter consume un único index.js (modo --single); el resto de
+	// plataformas usa el bundle con assets.
+	args := []string{"bundle.mjs"}
+	bundleDir := filepath.Join(src, "whatsapp-engine-bundle")
+	if ctx.ProjectType == project.TypeFlutter {
+		args = append(args, "--single")
+		bundleDir = filepath.Join(src, "single")
+	}
+
 	fmt.Println("[INFO] Compilando motor de WhatsApp con ncc...")
-	if err := shell.RunInDirStatus("node", src, "bundle.mjs"); err != nil {
+	if err := shell.RunInDirStatus("node", src, args...); err != nil {
 		fmt.Printf("[ERROR] Falló la compilación del motor: %v\n", err)
 		ui.Pause()
 		return nil
@@ -63,7 +72,6 @@ func WhatsappBuild(ctx *project.ProjectContext) error {
 
 	stageWhatsappEngine(ctx)
 
-	bundleDir := filepath.Join(src, "whatsapp-engine-bundle")
 	if dirExists(bundleDir) {
 		var total int64
 		_ = filepath.Walk(bundleDir, func(_ string, info os.FileInfo, _ error) error {
