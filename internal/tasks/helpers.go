@@ -73,25 +73,41 @@ func sanitizeAppName(name string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-// readPubspecMeta lee name/version de pubspec.yaml (Flutter).
+// yamlScalar limpia un valor escalar simple de YAML: recorta espacios y quita
+// comillas simples/dobles envolventes.
+func yamlScalar(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && ((s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"')) {
+		s = s[1 : len(s)-1]
+	}
+	return strings.TrimSpace(s)
+}
+
+// readPubspecMeta lee el nombre visible, el nombre técnico y la versión de
+// pubspec.yaml (Flutter). `display_name:` (opcional) se usa para nombrar los
+// artefactos de release tal cual el proyecto lo declara; `name:` sigue siendo
+// el nombre técnico y el fallback cuando no hay display_name.
 func readPubspecMeta(ctx *project.ProjectContext) (string, string) {
 	data, err := os.ReadFile(filepath.Join(ctx.ScriptDir, "pubspec.yaml"))
 	if err != nil {
-		return sanitizeAppName(filepath.Base(ctx.ScriptDir)), ""
+		base := sanitizeAppName(filepath.Base(ctx.ScriptDir))
+		return base, ""
 	}
-	var name, version string
+	var name, displayName, version string
 	for _, line := range strings.Split(string(data), "\n") {
 		t := strings.TrimSpace(line)
 		if strings.HasPrefix(t, "name:") && name == "" {
-			name = strings.Trim(strings.TrimPrefix(t, "name:"), "'\"")
+			name = yamlScalar(strings.TrimPrefix(t, "name:"))
+		}
+		if strings.HasPrefix(t, "display_name:") && displayName == "" {
+			displayName = yamlScalar(strings.TrimPrefix(t, "display_name:"))
 		}
 		if strings.HasPrefix(t, "version:") && version == "" {
-			v := strings.Trim(strings.TrimPrefix(t, "version:"), "'\"")
-			version = strings.Split(v, "+")[0]
+			version = strings.Split(yamlScalar(strings.TrimPrefix(t, "version:")), "+")[0]
 		}
-		if name != "" && version != "" {
-			break
-		}
+	}
+	if displayName != "" {
+		name = displayName
 	}
 	if name == "" {
 		name = sanitizeAppName(filepath.Base(ctx.ScriptDir))

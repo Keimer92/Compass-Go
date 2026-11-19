@@ -33,6 +33,9 @@ const (
 	fmtInfoJSON
 	fmtGradle
 	fmtPlist
+	fmtPubspec
+	fmtWinres
+	fmtRunnerRC
 )
 
 type versionSource int
@@ -72,13 +75,24 @@ var (
 	reIJFile         = regexp.MustCompile(`"file_version"\s*:\s*"([^"]+)"`)
 	reIJProduct      = regexp.MustCompile(`"product_version"\s*:\s*"([^"]+)"`)
 	reIJProductCap   = regexp.MustCompile(`"ProductVersion"\s*:\s*"([^"]+)"`)
-	reGradleName     = regexp.MustCompile(`(?m)^[ \t]*versionName[ \t]+"([^"]+)"`)
-	reGradleCode     = regexp.MustCompile(`(?m)^[ \t]*versionCode[ \t]+(\d+)`)
-	reGradleNameRep  = regexp.MustCompile(`(?m)^([ \t]*versionName[ \t]+")[^"]+(")`)
-	reGradleCodeRep  = regexp.MustCompile(`(?m)^([ \t]*versionCode[ \t]+)(\d+)`)
+	reGradleName     = regexp.MustCompile(`(?m)^[ \t]*versionName[ \t]*=?[ \t]*"([^"]+)"`)
+	reGradleCode     = regexp.MustCompile(`(?m)^[ \t]*versionCode[ \t]*=?[ \t]*(\d+)`)
+	reGradleNameRep  = regexp.MustCompile(`(?m)^([ \t]*versionName[ \t]*=?[ \t]*")[^"]+(")`)
+	reGradleCodeRep  = regexp.MustCompile(`(?m)^([ \t]*versionCode[ \t]*=?[ \t]*)(\d+)`)
 	rePyprojectVer   = regexp.MustCompile(`(?m)^([ \t]*version[ \t]*=[ \t]*")[^"]+(".*)$`)
 	rePackage        = regexp.MustCompile(`(?m)^\[package\]\s*$`)
 	reNewVersion     = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$`)
+
+	// Flutter: version: 1.2.3+45 (build number despues del '+').
+	rePubspec        = regexp.MustCompile(`(?m)^[ \t]*version:[ \t]*(\d+\.\d+\.\d+)(?:\+(\d+))?[ \t]*$`)
+	rePubspecReplace = regexp.MustCompile(`(?m)^([ \t]*version:[ \t]*)(\d+\.\d+\.\d+)(?:\+\d+)?([ \t]*)$`)
+	// go-winres.json (Wails v3): todos los campos de version.
+	reWinresIdentity = regexp.MustCompile(`("version"[ \t]*:[ \t]*")[^"]+(")`)
+	reWinresFixed    = regexp.MustCompile(`("(?:file_version|product_version)"[ \t]*:[ \t]*")[^"]+(")`)
+	reWinresInfo     = regexp.MustCompile(`("(?:FileVersion|ProductVersion)"[ \t]*:[ \t]*")[^"]+(")`)
+	// Flutter Windows: valores fallback de Runner.rc cuando no hay defines.
+	reRCStr = regexp.MustCompile(`(?m)^([ \t]*#define[ \t]+VERSION_AS_STRING[ \t]+")[^"]+(")`)
+	reRCNum = regexp.MustCompile(`(?m)^([ \t]*#define[ \t]+VERSION_AS_NUMBER[ \t]+)\d+,\d+,\d+,\d+`)
 )
 
 // VersionBump actualiza la version del proyecto (port de versionar.bat).
@@ -91,13 +105,6 @@ func VersionBump(ctx *project.ProjectContext) error {
 	// "unknown directive: version".
 	if ctx.ProjectType == project.TypeGo {
 		return versionBumpGo(ctx)
-	}
-
-	if ctx.ProjectType == project.TypeFlutter || ctx.ProjectType == project.TypeKotlin {
-		fmt.Println("[INFO] No aplicable: la version se gestiona en la configuracion propia del proyecto.")
-		fmt.Println()
-		ui.Pause()
-		return nil
 	}
 
 	configs := versionConfigs(ctx)
@@ -122,16 +129,18 @@ func VersionBump(ctx *project.ProjectContext) error {
 		var cur string
 		var hasCur bool
 		if sf.format == fmtGradle {
-			cc, ok := gradleCode(text)
-			if ok {
-				cur, hasCur = gradleName(text)
-			} else {
-				cur, hasCur = "", false
-			}
-			if hasCur {
-				if !ok {
+			cc, hasCode := gradleCode(text)
+			cur, hasCur = gradleName(text)
+			if hasCur && !hasCode {
+				// Kotlin DSL/Gradle sin versionCode: no se puede mantener el
+				// entero sincronizado. Si es fuente obligatoria, avisamos; si no,
+				// la omitimos (p. ej. build.gradle de un modulo que no aplica).
+				if sf.source == srcRequired {
 					return fmt.Errorf("no se encontro `versionCode` en: %s\n  Anadelo dentro del bloque defaultConfig.", sf.path)
 				}
+				hasCur = false
+			}
+			if hasCur {
 				files = append(files, versionFile{path: sf.path, format: sf.format, current: cur, hasCurrent: true, currentCode: cc, hasCode: true, text: text})
 				continue
 			}
@@ -141,6 +150,13 @@ func VersionBump(ctx *project.ProjectContext) error {
 
 		if hasCur {
 			files = append(files, versionFile{path: sf.path, format: sf.format, current: cur, hasCurrent: true, text: text})
+			continue
+		}
+
+		// Sin marcador: una fuente opcional que no sabemos insertar con
+		// seguridad se omite en lugar de abortar todo el versionado.
+		if sf.source == srcOptional && !isInsertableFormat(sf.format) {
+			omitted = append(omitted, sf.path)
 			continue
 		}
 
@@ -166,6 +182,10 @@ func VersionBump(ctx *project.ProjectContext) error {
 			}
 		}
 		files = append(files, versionFile{path: sf.path, format: sf.format, hasCurrent: false, text: text})
+	}
+
+	if len(files) == 0 {
+		return fmt.Errorf("no se encontro ningun archivo de version reconocido para %s", projectTypeLabel(ctx.ProjectType))
 	}
 
 	fmt.Printf("  Tipo de proyecto: %s\n", projectTypeLabel(ctx.ProjectType))
@@ -202,11 +222,17 @@ func VersionBump(ctx *project.ProjectContext) error {
 			if f.format == fmtGradle {
 				gradleNotes = append(gradleNotes, fmt.Sprintf("%s -> %d", f.path, f.currentCode+1))
 			}
-			newText = applyFormat(f, newVer)
+			var err error
+			newText, err = applyFormat(f, newVer)
+			if err != nil {
+				return fmt.Errorf("%s: %w", f.path, err)
+			}
 		} else {
 			added++
 			if f.format == fmtTOML {
 				newText = rePackage.ReplaceAllString(f.text, fmt.Sprintf("[package]\nversion = \"%s\"", newVer))
+			} else if f.format == fmtGoConst {
+				newText = applyGoVersion(f.text, false, newVer)
 			} else {
 				idx := strings.Index(f.text, "{")
 				if idx < 0 {
@@ -388,11 +414,38 @@ func versionConfigs(ctx *project.ProjectContext) []sourceFile {
 		return sourceFile{path: filepath.Join(root, rel), format: f, source: s}
 	}
 	switch ctx.ProjectType {
-	case project.TypeGoWails:
+	case project.TypeFlutter:
+		// La fuente canonica es pubspec.yaml (version: X.Y.Z+B). El resto se
+		// deriva de ella en tiempo de build, pero se sincroniza si existe.
 		return []sourceFile{
-			mk("build/config.yml", fmtYAML, srcRequired),
-			mk("main.go", fmtGoConst, srcOptional),
+			mk("pubspec.yaml", fmtPubspec, srcRequired),
+			mk("android/app/build.gradle", fmtGradle, srcOptional),
+			mk("android/app/build.gradle.kts", fmtGradle, srcOptional),
+			mk("ios/Runner/Info.plist", fmtPlist, srcOptional),
+			mk("ios/Flutter/Info.plist", fmtPlist, srcOptional),
+			mk("macos/Runner/Info.plist", fmtPlist, srcOptional),
+			mk("windows/runner/Runner.rc", fmtRunnerRC, srcOptional),
+		}
+	case project.TypeKotlin:
+		// Kotlin Multiplatform: build.gradle(.kts) en la raiz y en los modulos.
+		// Sintaxis Groovy (`versionName "x"`) y Kotlin DSL (`versionName = "x"`).
+		return []sourceFile{
+			mk("build.gradle", fmtGradle, srcOptional),
+			mk("build.gradle.kts", fmtGradle, srcOptional),
+			mk("app/build.gradle", fmtGradle, srcOptional),
+			mk("app/build.gradle.kts", fmtGradle, srcOptional),
+			mk("composeApp/build.gradle", fmtGradle, srcOptional),
+			mk("composeApp/build.gradle.kts", fmtGradle, srcOptional),
+		}
+	case project.TypeGoWails:
+		// Wails v3 no usa build/config.yml: la version vive en go-winres.json
+		// y en frontend/package.json. Se conservan las rutas v1/v2 como
+		// opcionales para proyectos antiguos; ninguna es obligatoria.
+		return []sourceFile{
+			mk("go-winres.json", fmtWinres, srcOptional),
 			mk("frontend/package.json", fmtJSON, srcOptional),
+			mk("main.go", fmtGoConst, srcOptional),
+			mk("build/config.yml", fmtYAML, srcOptional),
 			mk("build/windows/nsis/project.nsi", fmtNsis, srcOptional),
 			mk("build/windows/info.json", fmtInfoJSON, srcOptional),
 			mk("build/android/app/build.gradle", fmtGradle, srcOptional),
@@ -435,8 +488,75 @@ func detectVersion(f versionFormat, text string) (string, bool) {
 		return gradleName(text)
 	case fmtPlist:
 		return cap1(rePlistFirst, text)
+	case fmtPubspec:
+		return pubspecVersion(text)
+	case fmtWinres:
+		return winresVersion(text)
+	case fmtRunnerRC:
+		return cap1(reRCStr, text)
 	}
 	return "", false
+}
+
+// isInsertableFormat indica si sabemos anadir el campo version a un archivo
+// que aun no lo tiene sin correr el riesgo de dejarlo invalido.
+func isInsertableFormat(f versionFormat) bool {
+	return f == fmtJSON || f == fmtTOML || f == fmtGoConst
+}
+
+// pubspecVersion devuelve "X.Y.Z+B" (o "X.Y.Z" si no hay build number).
+func pubspecVersion(text string) (string, bool) {
+	m := rePubspec.FindStringSubmatch(text)
+	if m == nil {
+		return "", false
+	}
+	if m[2] != "" {
+		return m[1] + "+" + m[2], true
+	}
+	return m[1], true
+}
+
+// winresVersion lee la version de go-winres.json. El formato Windows tiene
+// cuatro componentes (1.0.0.0); mostramos los tres primeros.
+func winresVersion(text string) (string, bool) {
+	// reJSON captura el valor de "version" (identity); reIJFile es fallback
+	// para perfiles sin identity. reWinresIdentity es solo de reemplazo: su
+	// grupo 1 es el prefijo, no la version.
+	v, ok := cap1(reJSON, text)
+	if !ok {
+		v, ok = cap1(reIJFile, text)
+	}
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSuffix(v, ".0"), true
+}
+
+// pubspecTarget calcula la version final de Flutter. Si el usuario no da un
+// build number explicito (+B), se incrementa el actual (practica habitual en
+// Flutter: cada release sube el build).
+func pubspecTarget(newVer, current string) (string, error) {
+	semver := newVer
+	explicitBuild := ""
+	if i := strings.IndexByte(newVer, '+'); i >= 0 {
+		semver, explicitBuild = newVer[:i], newVer[i+1:]
+	}
+	if i := strings.IndexByte(semver, '-'); i >= 0 {
+		return "", fmt.Errorf("pubspec.yaml no admite sufijos -pre: usa solo X.Y.Z o X.Y.Z+B (B numerico)")
+	}
+	if explicitBuild != "" {
+		if _, err := strconv.ParseUint(explicitBuild, 10, 64); err != nil {
+			return "", fmt.Errorf("en Flutter el build number debe ser numerico (p. ej. 1.2.3+5)")
+		}
+		return semver + "+" + explicitBuild, nil
+	}
+	var build uint64
+	if i := strings.IndexByte(current, '+'); i >= 0 {
+		if n, err := strconv.ParseUint(current[i+1:], 10, 64); err == nil {
+			build = n
+		}
+	}
+	return fmt.Sprintf("%s+%d", semver, build+1), nil
 }
 
 func cap1(re *regexp.Regexp, text string) (string, bool) {
@@ -481,35 +601,77 @@ func missingHint(f versionFormat) string {
 		return `se esperaban "CFBundleShortVersionString" y "CFBundleVersion" (Info.plist)`
 	case fmtPyproject:
 		return "se esperaba `version` bajo [project] o [tool.poetry]"
+	case fmtPubspec:
+		return `se esperaba "version: x.y.z+b" en la raiz de pubspec.yaml`
+	case fmtWinres:
+		return `se esperaban los campos de version en go-winres.json`
+	case fmtRunnerRC:
+		return `se esperaban VERSION_AS_STRING / VERSION_AS_NUMBER en windows/runner/Runner.rc`
 	}
 	return ""
 }
 
-func applyFormat(f *versionFile, newVer string) string {
+// windowsVersion separa la parte numerica de X.Y.Z (ignorando sufijos) para
+// los formatos que exigen cuatro componentes (go-winres, Runner.rc).
+func windowsVersion(newVer string) (dotted, comma string) {
+	s := strings.SplitN(newVer, "-", 2)[0]
+	s = strings.SplitN(s, "+", 2)[0]
+	parts := strings.Split(s, ".")
+	for len(parts) < 3 {
+		parts = append(parts, "0")
+	}
+	major := parts[0]
+	if major == "" {
+		major = "0"
+	}
+	dotted = major + "." + parts[1] + "." + parts[2]
+	comma = major + "," + parts[1] + "," + parts[2] + ",0"
+	return
+}
+
+func applyFormat(f *versionFile, newVer string) (string, error) {
 	switch f.format {
 	case fmtJSON:
-		return reJSON.ReplaceAllString(f.text, fmt.Sprintf(`"version": "%s"`, newVer))
+		return reJSON.ReplaceAllString(f.text, fmt.Sprintf(`"version": "%s"`, newVer)), nil
 	case fmtTOML:
-		return reTOML.ReplaceAllString(f.text, fmt.Sprintf(`version = "%s"`, newVer))
+		return reTOML.ReplaceAllString(f.text, fmt.Sprintf(`version = "%s"`, newVer)), nil
 	case fmtYAML:
-		return reYAMLReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}version: "%s"`, newVer))
+		return reYAMLReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}version: "%s"`, newVer)), nil
 	case fmtPyproject:
-		return replacePyprojectVersion(f.text, newVer)
+		return replacePyprojectVersion(f.text, newVer), nil
 	case fmtGoConst:
-		return reGoConstReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer))
+		return reGoConstReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer)), nil
 	case fmtNsis:
-		return reNsisReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer))
+		return reNsisReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer)), nil
 	case fmtInfoJSON:
 		first := reIJFile.ReplaceAllString(f.text, fmt.Sprintf(`"file_version": "%s.0"`, newVer))
 		second := reIJProduct.ReplaceAllString(first, fmt.Sprintf(`"product_version": "%s.0"`, newVer))
-		return reIJProductCap.ReplaceAllString(second, fmt.Sprintf(`"ProductVersion": "%s"`, newVer))
+		return reIJProductCap.ReplaceAllString(second, fmt.Sprintf(`"ProductVersion": "%s"`, newVer)), nil
 	case fmtGradle:
 		renamed := reGradleNameRep.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer))
-		return reGradleCodeRep.ReplaceAllString(renamed, fmt.Sprintf(`${1}%d`, f.currentCode+1))
+		return reGradleCodeRep.ReplaceAllString(renamed, fmt.Sprintf(`${1}%d`, f.currentCode+1)), nil
 	case fmtPlist:
-		return rePlist.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer))
+		return rePlist.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer)), nil
+	case fmtPubspec:
+		target, err := pubspecTarget(newVer, f.current)
+		if err != nil {
+			return "", err
+		}
+		return rePubspecReplace.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${3}`, target)), nil
+	case fmtWinres:
+		dotted, _ := windowsVersion(newVer)
+		v4 := dotted + ".0"
+		// Los tres regex capturan la clave (grupo 1), asi que se conserva tal
+		// cual: file_version y product_version no deben confundirse.
+		text := reWinresIdentity.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, v4))
+		text = reWinresFixed.ReplaceAllString(text, fmt.Sprintf(`${1}%s${2}`, v4))
+		return reWinresInfo.ReplaceAllString(text, fmt.Sprintf(`${1}%s${2}`, v4)), nil
+	case fmtRunnerRC:
+		dotted, comma := windowsVersion(newVer)
+		text := reRCStr.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, dotted))
+		return reRCNum.ReplaceAllString(text, fmt.Sprintf(`${1}%s`, comma)), nil
 	}
-	return f.text
+	return f.text, nil
 }
 
 func tomlSectionRange(text, name string) (int, int, bool) {

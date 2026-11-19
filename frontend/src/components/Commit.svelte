@@ -18,9 +18,22 @@
   value={draft.message}
   oninput={(e) => setMessage(projectPath, e.currentTarget.value)}
 ></textarea>
-<button class="pill" onclick={() => generateFor(projectPath)} disabled={state.loading}>
-  {state.loading ? 'Generando...' : 'Generar con OpenRouter'}
-</button>
+<div class="actions">
+  <button
+    class="pill generate"
+    onclick={() => generateFor(projectPath)}
+    disabled={state.loading || !!draft.message.trim()}
+  >
+    {state.loading ? 'Generando...' : 'Generar con OpenRouter'}
+  </button>
+  <button
+    class="pill commit"
+    onclick={() => commitFor(projectPath)}
+    disabled={state.committing || !draft.message.trim()}
+  >
+    {state.committing ? 'Commiteando...' : 'Commit'}
+  </button>
+</div>
 {#if state.loading}
   <div class="gen-row">
     <div class="progress" aria-label="Generando commit"><div class="bar"></div></div>
@@ -32,14 +45,7 @@
 {/if}
 <div class="hint">Se añadirán todos los cambios (git add -A)</div>
 {#if state.error}<div class="error">{state.error}</div>{/if}
-{#if state.ok}<div class="ok">{state.ok.split('\n')[0]}</div>{/if}
-<button
-  class="pill commit"
-  onclick={() => commitFor(projectPath)}
-  disabled={state.committing || !draft.message.trim()}
->
-  {state.committing ? 'Commiteando...' : 'Commit'}
-</button>
+{#if state.ok}<div class="ok">{state.ok}</div>{/if}
 
 <style>
   .head { display:flex; justify-content:space-between; align-items:center; padding:14px; color:var(--accent); font-weight:700; font-size:13px; }
@@ -47,6 +53,9 @@
   .pill { display:block; margin:12px 14px 0; padding:8px 14px; border:none; border-radius:18px; background:color-mix(in srgb, var(--accent) 30%, var(--bg)); color:var(--text); font-size:12px; }
   .pill:hover { background:color-mix(in srgb, var(--accent) 50%, var(--bg)); }
   .pill:disabled { opacity:.55; cursor:default; }
+  .actions { display:flex; gap:8px; margin:12px 14px 0; }
+  .actions .pill { margin:0; }
+  .actions .generate { flex:1; }
   .gen-row { display:flex; align-items:center; gap:10px; margin:10px 14px 0; }
   .gen-row .progress { flex:1; }
   .progress { height:4px; border-radius:2px; background:color-mix(in srgb, var(--border) 55%, transparent); overflow:hidden; }

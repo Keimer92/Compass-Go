@@ -8,6 +8,7 @@
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
     subcards, onWorkspaceChanged,
   } from './lib/bridge'
+  import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
   import Card from './components/Card.svelte'
   import Explorer from './components/Explorer.svelte'
@@ -153,6 +154,9 @@
         tab.exited = true
         tab.ptyId = null
       }
+      // El comando/tarea pudo tocar el repo (git, builds, generacion de
+      // codigo): que el explorador vuelva a leer el estado.
+      notifyRepoChanged()
     })
     window.addEventListener('resize', () => {
       const entry = activeKey != null ? terms.get(activeKey) : null
@@ -161,8 +165,17 @@
       entry.fit.fit()
       if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
     })
+    // Cambios hechos fuera de Compass (otra terminal, IDE, Explorer): al volver
+    // a la ventana se refresca el estado git del explorador.
+    window.addEventListener('focus', notifyRepoChanged)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') notifyRepoChanged()
+    })
     loadTheme()
-    onWorkspaceChanged(() => refresh())
+    onWorkspaceChanged(() => {
+      refresh()
+      notifyRepoChanged()
+    })
     refresh()
   })
 

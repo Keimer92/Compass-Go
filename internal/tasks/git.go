@@ -19,14 +19,10 @@ func init() {
 	for _, pt := range allTypes() {
 		Register("git", pt, GitManage)
 		Register("git-init", pt, GitManage)
-		Register("gitignore", pt, GitManage)
 		Register("context-gitignore", pt, addContextGitignoreTask)
 		// Acciones individuales para las subcards nativas de la GUI.
 		Register("git-do-init", pt, func(ctx *project.ProjectContext) error {
 			return GitAction(ctx, "init")
-		})
-		Register("git-do-gitignore", pt, func(ctx *project.ProjectContext) error {
-			return GitAction(ctx, "gitignore")
 		})
 		Register("git-do-remote", pt, func(ctx *project.ProjectContext) error {
 			return GitAction(ctx, "remote")
@@ -847,116 +843,6 @@ func AddContextGitignoreFromDir(start string) error {
 	return writeContextGitignore(start, gitignoreContentForPlatform(project.TypeGo))
 }
 
-func printPreserved(pt project.ProjectType) {
-	switch pt {
-	case project.TypeFlutter:
-		fmt.Println("  - lib/ (codigo Dart)")
-		fmt.Println("  - test/ (pruebas)")
-		fmt.Println("  - pubspec.yaml + pubspec.lock")
-		fmt.Println("  - android/ (configuracion)")
-		fmt.Println("  - ios/ (configuracion)")
-		fmt.Println("  - web/ (configuracion)")
-	case project.TypeKotlin:
-		fmt.Println("  - composeApp/src/ (codigo Kotlin)")
-		fmt.Println("  - composeApp/build.gradle.kts")
-		fmt.Println("  - settings.gradle.kts, gradle.properties")
-		fmt.Println("  - gradle/wrapper/ (Gradle Wrapper)")
-		fmt.Println("  - gradlew + gradlew.bat (wrappers de ambas plataformas)")
-	case project.TypeGo:
-		fmt.Println("  - archivos .go (codigo fuente)")
-		fmt.Println("  - go.mod + go.sum")
-		fmt.Println("  - binarios compilados en bin/")
-	case project.TypeGoWails:
-		fmt.Println("  - main.go, internal/ (codigo Go)")
-		fmt.Println("  - go.mod + go.sum")
-		fmt.Println("  - Taskfile.yml + build/ (assets de build de Wails)")
-		fmt.Println("  - frontend/src/ (codigo del frontend)")
-		fmt.Println("  - frontend/package.json + package-lock.json")
-	case project.TypePython:
-		fmt.Println("  - pyproject.toml")
-		fmt.Println("  - codigo Python y pruebas")
-		fmt.Println("  - requirements*.txt / lockfiles si existen")
-	}
-}
-
-func printInstructions(pt project.ProjectType) {
-	switch pt {
-	case project.TypeFlutter:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. flutter pub get")
-		fmt.Println("  3. flutter run (Desktop) / flutter run (Android)")
-	case project.TypeKotlin:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. ./gradlew build")
-		fmt.Println("  3. ./gradlew :composeApp:run (Desktop)")
-		fmt.Println("  4. ./gradlew :composeApp:installDebug (Android)")
-	case project.TypeGo:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. go mod download")
-		fmt.Println("  3. go run . / go test ./...")
-	case project.TypeGoWails:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. go install github.com/wailsapp/wails/v3/cmd/wails3@latest")
-		fmt.Println("  3. npm install  (en frontend/)")
-		fmt.Println("  4. wails3 task dev  (Desktop) / wails3 task build")
-	case project.TypePython:
-		fmt.Println("  1. git clone <repo>")
-		fmt.Println("  2. python -m venv .venv")
-		fmt.Println("  3. instala las dependencias del proyecto")
-		fmt.Println("  4. ejecuta el entry point del proyecto")
-	}
-}
-
-func gitignoreBanner(pt project.ProjectType) string {
-	switch pt {
-	case project.TypeFlutter:
-		return "CREAR .gitignore PARA FLUTTER/DART"
-	case project.TypeKotlin:
-		return "CREAR .gitignore PARA KOTLIN MULTIPLATFORM"
-	case project.TypeGo:
-		return "CREAR .gitignore PARA GO"
-	case project.TypeGoWails:
-		return "CREAR .gitignore PARA GO + WAILS"
-	case project.TypePython:
-		return "CREAR .gitignore PARA PYTHON"
-	default:
-		return "CREAR .gitignore"
-	}
-}
-
-func writeGitignore(ctx *project.ProjectContext) error {
-	shell.ClearScreen()
-	ui.BoxBanner(gitignoreBanner(ctx.ProjectType))
-	fmt.Println()
-	fmt.Println("Se ignoraran archivos de compilacion, dependencias, caches")
-	fmt.Println("y archivos del sistema/IDE.")
-	fmt.Println("Se conservara codigo fuente, configuraciones y assets.")
-	fmt.Println()
-
-	ok, _ := prompts.Confirm("¿Crear/sobrescribir .gitignore?", false)
-	if !ok {
-		fmt.Println("[INFO] Operacion cancelada.")
-		ui.Pause()
-		return nil
-	}
-
-	if err := os.WriteFile(filepath.Join(ctx.ScriptDir, ".gitignore"), []byte(gitignoreContent(ctx.ProjectType)), 0644); err != nil {
-		return fmt.Errorf("no se pudo escribir .gitignore: %w", err)
-	}
-
-	fmt.Println()
-	fmt.Println("[OK] .gitignore creado exitosamente!")
-	fmt.Println()
-	fmt.Println("Archivos PRESERVADOS en git (esenciales para compilar):")
-	printPreserved(ctx.ProjectType)
-	fmt.Println()
-	fmt.Println("Para compilar en maquina nueva:")
-	printInstructions(ctx.ProjectType)
-	fmt.Println()
-	ui.Pause()
-	return nil
-}
-
 // ── Menú unificado de Git (submenu de cards) ───────────────────────────────
 
 type gitItem struct {
@@ -971,10 +857,6 @@ func gitEntries() []gitItem {
 			Icon: "\U0001f4c1", Label: "Inicializar repositorio",
 			Description: "git init + main + primer commit", ColorKey: "build",
 		}, gitInit},
-		{"gitignore", tui.SubItem{
-			Icon: "\U0001f6ab", Label: "Crear/actualizar .gitignore",
-			Description: "Plantilla por tipo de proyecto", ColorKey: "clean",
-		}, writeGitignore},
 		{"remote", tui.SubItem{
 			Icon: "\U0001f517", Label: "Conectar con remoto",
 			Description: "Enlazar con GitHub (URL o gh)", ColorKey: "git",
@@ -986,7 +868,7 @@ func gitEntries() []gitItem {
 	}
 }
 
-// GitManage es el punto de entrada de las tareas git/git-init/gitignore.
+// GitManage es el punto de entrada de las tareas git/git-init.
 //
 // Tras ejecutar una accion se vuelve al submenu (como en Rust): la accion
 // imprime y pide Enter con la consola normal, y despues se repinta.

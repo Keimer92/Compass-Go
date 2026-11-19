@@ -88,7 +88,6 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 	case tui.Git:
 		return []Subcard{
 			{"git-do-init", "Inicializar repositorio", "git init + rama main + primer commit", "build"},
-			{"git-do-gitignore", "Crear/actualizar .gitignore", "Plantilla por tipo de proyecto", "clean"},
 			{"git-do-remote", "Conectar con remoto", "Enlazar con GitHub (URL o gh)", "git"},
 			{"git-do-status", "Ver estado", "Rama, remoto y cambios", "debug"},
 		}

@@ -2,6 +2,7 @@
 // componente: cambiar de proyecto (o de pestaña lateral) no debe borrar el
 // mensaje generado ni cancelar una generación en curso.
 import { generateCommit, cancelCommit, commit } from './bridge'
+import { notifyRepoChanged } from './repoChanged'
 
 const STORAGE_KEY = 'compass.go.commit.drafts.v1'
 
@@ -134,10 +135,11 @@ export async function commitFor(path: string) {
   state.error = ''
   state.ok = ''
   try {
-    const out = await commit(message)
-    state.ok = out.split('\n')[0]
+    await commit(message)
+    state.ok = 'Commit realizado correctamente'
     drafts[path] = { message: '', lastMs: draft.lastMs }
     persist()
+    notifyRepoChanged()
   } catch (e) {
     state.error = (e as Error).message
   } finally {

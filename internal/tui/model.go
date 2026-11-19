@@ -313,7 +313,7 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 		case Signing:
 			return "Firmas y huellas"
 		case Git:
-			return "Init · gitignore · remoto"
+			return "Init · remoto · estado"
 		case BuildWhatsApp:
 			return "Compila WhatsApp"
 		case ConfigureTerminal:
@@ -344,7 +344,7 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 		case Signing:
 			return "Firmas y huellas"
 		case Git:
-			return "Init · gitignore · remoto"
+			return "Init · remoto · estado"
 		case BuildWhatsApp:
 			return "Compila WhatsApp"
 		case ConfigureTerminal:
@@ -375,7 +375,7 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 		case Signing:
 			return "Firmas y huellas"
 		case Git:
-			return "Init · gitignore"
+			return "Init · remoto · estado"
 		case BuildWhatsApp:
 			return "Compila WhatsApp"
 		case VersionItem:
@@ -398,7 +398,7 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 		case VersionItem:
 			return "Actualiza pyproject.toml"
 		case Git:
-			return "Init · gitignore · remoto"
+			return "Init · remoto · estado"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:
@@ -417,7 +417,7 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 		case Clean:
 			return "Limpia binarios"
 		case Git:
-			return "Init · gitignore · remoto"
+			return "Init · remoto · estado"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:

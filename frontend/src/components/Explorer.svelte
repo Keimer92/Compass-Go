@@ -2,23 +2,42 @@
   import { onMount } from 'svelte'
   import { gitStatus, fileTree } from '../lib/bridge'
   import type { Change, FileNode } from '../lib/bridge'
+  import { onRepoChanged } from '../lib/repoChanged'
+  import { svg } from '../lib/icons'
 
   let changes = $state<Change[]>([])
   let tree = $state<FileNode[]>([])
   let expanded = $state<Set<string>>(new Set())
   let error = $state('')
+  let refreshing = $state(false)
+  let queued = false
 
   async function refresh() {
+    // Si ya hay una lectura en curso, se marca para repetirla al terminar y
+    // asi no se pierde un cambio que ocurrio mientras se estaba leyendo.
+    if (refreshing) {
+      queued = true
+      return
+    }
+    refreshing = true
     try {
-      error = ''
-      changes = await gitStatus()
-      tree = await fileTree()
+      do {
+        queued = false
+        error = ''
+        changes = await gitStatus()
+        tree = await fileTree()
+      } while (queued)
     } catch (e) {
       error = (e as Error).message
+    } finally {
+      refreshing = false
     }
   }
 
-  onMount(refresh)
+  onMount(() => {
+    refresh()
+    return onRepoChanged(refresh)
+  })
 
   function toggle(path: string) {
     const next = new Set(expanded)
@@ -43,7 +62,14 @@
 
 <div class="head">
   <span>EXPLORADOR</span>
-  <button title="Refrescar" onclick={refresh}>↻</button>
+  <button
+    class="refresh"
+    class:spin={refreshing}
+    onclick={refresh}
+    disabled={refreshing}
+    title="Refrescar cambios git y archivos"
+    aria-label="Refrescar explorador"
+  >{@html svg('reload', 14)}</button>
 </div>
 {#if error}<div class="error">{error}</div>{/if}
 <div class="section">CAMBIOS GIT ({changes.length})</div>
@@ -82,8 +108,13 @@
 </div>
 
 <style>
-  .head { display:flex; justify-content:space-between; padding:14px 14px 8px; color:var(--accent); font-weight:700; font-size:12px; letter-spacing:.08em; }
-  .head button { background:none; border:none; color:var(--muted); font-size:15px; }
+  .head { display:flex; align-items:center; justify-content:space-between; padding:14px 14px 8px; color:var(--accent); font-weight:700; font-size:12px; letter-spacing:.08em; }
+  .refresh { display:grid; place-items:center; width:26px; height:26px; padding:0; border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb, var(--panel) 50%, transparent); color:var(--muted); cursor:pointer; transition:color .15s ease, background .15s ease, border-color .15s ease, transform .1s ease; }
+  .refresh:hover:not(:disabled) { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); background:color-mix(in srgb, var(--accent) 14%, transparent); }
+  .refresh:active:not(:disabled) { transform:scale(.9); }
+  .refresh:disabled { opacity:.65; cursor:default; }
+  .refresh.spin :global(svg) { animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   .section { padding:12px 14px 6px; color:var(--muted); font-size:11px; letter-spacing:.08em; }
   .row { display:flex; align-items:center; gap:9px; padding:4px 12px; font-size:12px; }
   .row.child { padding-left:26px; }

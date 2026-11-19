@@ -183,8 +183,11 @@ func ClassifyDir(d string) (ProjectType, bool) {
 	return 0, false
 }
 
-// isWailsV3 reconoce Go + Wails v3 (dependencia wailsapp/wails en go.mod y
-// Taskfile.yml o build/config.yml).
+// isWailsV3 reconoce Go + Wails v3 (dependencia wailsapp/wails en go.mod más
+// alguna señal del layout: Taskfile.yml, build/config.yml, go-winres.json o un
+// frontend/ con package.json). El minimo imprescindible es la dependencia;
+// accepting varias señales evita que proyectos Wails v3 "hechos a mano" (sin
+// Taskfile) se clasifiquen como Go puro y reciban tareas equivocadas.
 func isWailsV3(d string) bool {
 	data, err := os.ReadFile(filepath.Join(d, "go.mod"))
 	if err != nil {
@@ -194,7 +197,10 @@ func isWailsV3(d string) bool {
 		return false
 	}
 	return fileExists(filepath.Join(d, "Taskfile.yml")) ||
-		fileExists(filepath.Join(d, "build", "config.yml"))
+		fileExists(filepath.Join(d, "Taskfile.yaml")) ||
+		fileExists(filepath.Join(d, "build", "config.yml")) ||
+		fileExists(filepath.Join(d, "go-winres.json")) ||
+		fileExists(filepath.Join(d, "frontend", "package.json"))
 }
 
 func isPythonProject(d string) bool {

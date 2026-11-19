@@ -26,7 +26,8 @@ func init() {
 	Register("debug-android", project.TypeFlutter, flutterDebugAndroid)
 }
 
-// flutterAppMeta lee name/version de pubspec.yaml (saneados).
+// flutterAppMeta devuelve el nombre visible (display_name o name) y la versión
+// de pubspec.yaml para nombrar los artefactos de release.
 func flutterAppMeta(ctx *project.ProjectContext) (string, string) {
 	name, version := readPubspecMeta(ctx)
 	if name == "" {
