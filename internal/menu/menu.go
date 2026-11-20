@@ -117,6 +117,17 @@ func (m MenuItem) Platform(pt project.ProjectType) string {
 	}
 }
 
+// NeedsWailsTasks indica si la card se ejecuta con `wails3 task ...` y por
+// tanto exige un Taskfile.yml en el proyecto. Solo aplica a Go+Wails: en Go
+// puro las mismas cards usan `go run` / `go build`.
+func (m MenuItem) NeedsWailsTasks() bool {
+	switch m {
+	case WindowsDev, WindowsBuild:
+		return true
+	}
+	return false
+}
+
 // IsAndroid indica si la card necesita el modulo Android del proyecto
 // (build/android en Wails, android/ en Flutter, la raiz en Kotlin). Se usa
 // para no ofrecer builds de Android a proyectos que no lo tienen generado.

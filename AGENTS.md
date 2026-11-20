@@ -680,6 +680,14 @@ dev.bat              # Vite (HMR de UI) + Compass Go con recarga de Go
   la presencia de `build/android/gradlew.bat` (Wails), `android/gradlew.bat`
   (Flutter) o `gradlew.bat` en la raíz (Kotlin). Un proyecto Wails sin
   `wails3 update build-assets` ya no ofrece builds de Android que abortarían.
+- **Cards de escritorio de Wails condicionadas al Taskfile**: `GetMenu` oculta
+  Windows (Win Dev) y Win Release cuando el proyecto es Go+Wails y no tiene
+  `Taskfile.yml`/`.yaml` (`ProjectContext.HasTaskfile` falso). Esas cards lanzan
+  `wails3 task dev|build|package`, que sin Taskfile aborta con *"No Taskfile
+  found"*. `MenuItem.NeedsWailsTasks()` marca qué cards dependen del CLI de
+  Wails (en Go puro las mismas usan `go run`/`go build` y no se ocultan). En
+  Compass Go, que se compila con `go build` + `dist.bat` y no trae Taskfile,
+  desaparecen; en un proyecto Wails de plantilla siguen funcionando.
 - **Terminal embebida**: `go-pty` (ConPTY) + `vt10x` (parser VT) en Go, y
   xterm.js en el frontend. La salida se reparte con `container.SpawnTap` entre
   el parser y el evento `pty:data` (nunca dos lectores sobre la misma ConPTY).

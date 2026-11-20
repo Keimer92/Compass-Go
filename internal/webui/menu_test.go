@@ -113,7 +113,7 @@ func TestVibeCardAndSubcards(t *testing.T) {
 // al pulsarlas la tarea aborta pidiendo `wails3 update build-assets`. Tampoco
 // Signing, que solo tiene sentido con un modulo Android.
 func TestWailsWithoutAndroidModuleHidesAndroidCards(t *testing.T) {
-	b := newWailsProject(t, false)
+	b := newWailsProject(t, false, true)
 
 	android := []string{"And. Dev", "APK Release", "AAB", "Install", "Debug Andr", "Signing"}
 	for _, it := range b.GetMenu() {
@@ -140,7 +140,7 @@ func TestWailsWithoutAndroidModuleHidesAndroidCards(t *testing.T) {
 
 // Con el modulo Android generado (build/android/gradlew.bat) vuelven a salir.
 func TestWailsWithAndroidModuleShowsAndroidCards(t *testing.T) {
-	b := newWailsProject(t, true)
+	b := newWailsProject(t, true, true)
 
 	got := map[string]bool{}
 	for _, it := range b.GetMenu() {
@@ -153,9 +153,32 @@ func TestWailsWithAndroidModuleShowsAndroidCards(t *testing.T) {
 	}
 }
 
+// Sin Taskfile.yml, `wails3 task dev|build|package` aborta con "No Taskfile
+// found": las cards de escritorio de Wails no deben ofrecerse. El resto
+// (Clean, Version, Git, Entorno, Vibe Coding) no depende del CLI de Wails.
+func TestWailsWithoutTaskfileHidesDesktopCards(t *testing.T) {
+	b := newWailsProject(t, false, false)
+
+	got := map[string]bool{}
+	for _, it := range b.GetMenu() {
+		got[it.Label] = true
+	}
+	for _, label := range []string{"Windows", "Win Release"} {
+		if got[label] {
+			t.Errorf("la card %q no deberia aparecer sin Taskfile.yml", label)
+		}
+	}
+	for _, label := range []string{"Clean", "Version", "Git", "Entorno", "Vibe Coding"} {
+		if !got[label] {
+			t.Errorf("falta la card %q, que no depende del CLI de Wails", label)
+		}
+	}
+}
+
 // newWailsProject crea un proyecto Go+Wails minimo (go.mod con la dependencia
-// y frontend/package.json) y, si withAndroid, un build/android con gradlew.bat.
-func newWailsProject(t *testing.T, withAndroid bool) *Bridge {
+// y frontend/package.json). withAndroid anade build/android/gradlew.bat y
+// withTaskfile un Taskfile.yml, que es lo que exige `wails3 task`.
+func newWailsProject(t *testing.T, withAndroid, withTaskfile bool) *Bridge {
 	t.Helper()
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	dir := t.TempDir()
@@ -168,6 +191,12 @@ func newWailsProject(t *testing.T, withAndroid bool) *Bridge {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "frontend", "package.json"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	if withTaskfile {
+		taskfile := "version: '3'\n\ntasks:\n  dev:\n    cmds:\n      - go run .\n"
+		if err := os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(taskfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if withAndroid {
 		android := filepath.Join(dir, "build", "android")

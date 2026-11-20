@@ -71,6 +71,10 @@ type ProjectContext struct {
 	HasNodeModules    bool
 	HasAndroidProject bool
 	HasWhatsAppEngine bool
+	// HasTaskfile indica si el proyecto trae Taskfile.yml/.yaml. Las tareas
+	// de escritorio de Wails se lanzan con `wails3 task ...`, que sin Taskfile
+	// aborta con "No Taskfile found".
+	HasTaskfile bool
 }
 
 // WindowTitle devuelve solo el nombre del directorio del proyecto (como titulo
@@ -117,6 +121,8 @@ func Detect() (*ProjectContext, error) {
 
 	hasNodeModules := dirExists(filepath.Join(root, "node_modules"))
 	hasAndroid := androidProjectPresent(pt, root)
+	hasTaskfile := fileExists(filepath.Join(root, "Taskfile.yml")) ||
+		fileExists(filepath.Join(root, "Taskfile.yaml"))
 	// Motor propio del proyecto: solo cuenta si trae la fuente (engine.js). La
 	// carpeta whatsapp_engine/ tambien la crea Compass al etajar el motor
 	// canónico (index.js + node.exe), y eso no es un motor local.
@@ -132,6 +138,7 @@ func Detect() (*ProjectContext, error) {
 		HasNodeModules:    hasNodeModules,
 		HasAndroidProject: hasAndroid,
 		HasWhatsAppEngine: hasWhatsApp,
+		HasTaskfile:       hasTaskfile,
 	}, nil
 }
 

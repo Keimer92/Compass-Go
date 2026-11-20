@@ -255,6 +255,11 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 		if item.IsAndroid(ctx.ProjectType) && !ctx.HasAndroidProject {
 			continue
 		}
+		// En Go+Wails, Win Dev / Win Release lanzan `wails3 task ...`: sin
+		// Taskfile.yml el CLI aborta con "No Taskfile found".
+		if item.NeedsWailsTasks() && ctx.ProjectType == project.TypeGoWails && !ctx.HasTaskfile {
+			continue
+		}
 		// Solo se muestran cards con una tarea real para este tipo de proyecto:
 		// asi no aparecen (p.ej.) HMR o Android en un proyecto Go puro.
 		if !tasks.Available(taskFor(item, ctx.ProjectType), ctx.ProjectType) {
