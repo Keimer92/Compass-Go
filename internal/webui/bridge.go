@@ -264,6 +264,16 @@ func (b *Bridge) ExePath() string {
 // prompt). -NoNewWindow comparte la consola, con lo que la salida sigue
 // llegando al terminal.
 func (b *Bridge) TaskScript(task string) string {
+	// Vibe Coding: la CLI se lanza directamente en la ConPTY, sin el binario de
+	// Compass de por medio. Son TUIs interactivas (opencode, cline...) y
+	// necesitan ser el proceso en primer plano para recibir teclado y Ctrl-C.
+	if key, ok := strings.CutPrefix(task, "vibe-run-"); ok {
+		cmd := tasks.VibeCommand(key)
+		if cmd == "" {
+			return "Write-Host 'Esa CLI no esta instalada. Usa \"Instalar faltantes\".' -ForegroundColor Yellow"
+		}
+		return "& " + cmd
+	}
 	dir := b.projectDir()
 	exe := b.ExePath()
 	// ArgumentList se une con espacios sin entrecomillar: la ruta (que puede

@@ -53,6 +53,9 @@ const (
 	BuildWhatsApp
 	ConfigureTerminal
 	Environment
+	// VibeCoding se anade al final a proposito: los indices de las cards ya
+	// existentes no se mueven (los usan los temas y los IDs de pestana).
+	VibeCoding
 )
 
 // Tab es cada pestana del menu.
@@ -119,6 +122,8 @@ func (m MenuItem) Icon() string {
 		return "\u2699"
 	case Environment:
 		return "\U0001F4BE"
+	case VibeCoding:
+		return "\U0001F916"
 	}
 	return ""
 }
@@ -206,6 +211,11 @@ func (m MenuItem) ColorKey() string {
 		return "terminal"
 	case Environment:
 		return "environment"
+	case VibeCoding:
+		// "vibe" no esta en theme.CardKeys (es un arreglo fijo de 18 posiciones
+		// que casa con los 20 temas y anadir una clave obligaria a tocar todos).
+		// El tema cae en su acento global y el icono lo aporta icons.ts.
+		return "vibe"
 	}
 	return "terminal"
 }
@@ -287,12 +297,21 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		return "Terminal"
 	case Environment:
 		return "Entorno"
+	case VibeCoding:
+		// Disponible en todos los tipos de proyecto: las CLIs de IA trabajan
+		// sobre cualquier carpeta.
+		return "Vibe Coding"
 	}
 	return ""
 }
 
 // Description devuelve la descripcion de la card segun el tipo de proyecto.
 func (m MenuItem) Description(pt project.ProjectType) string {
+	// Vibe Coding no depende del tipo de proyecto: el texto es el mismo en
+	// todos, asi que se resuelve antes del switch por plataforma.
+	if m == VibeCoding {
+		return "CLIs de IA en una pestaña"
+	}
 	switch pt {
 	case project.TypeFlutter:
 		switch m {
@@ -599,6 +618,8 @@ func newMenuState(pt project.ProjectType, th *theme.Theme) *MenuState {
 		Clean, DebugAndroid, Signing, VersionItem, Git, BuildWhatsApp,
 		ConfigureTerminal, Environment,
 	}
+	// VibeCoding no entra aqui: la TUI esta retirada y no sabe lanzarla. La
+	// card vive solo en el menu del GUI (webui.menuItems).
 
 	var dev [3][]MenuItem
 	var cfg []MenuItem

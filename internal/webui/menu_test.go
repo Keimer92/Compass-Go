@@ -1,6 +1,9 @@
 package webui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Un proyecto Go puro no tiene tareas de Android: esas cards no deben
 // aparecer porque al pulsarlas no se ejecutaria nada. HMR si aplica (Air).
@@ -62,5 +65,50 @@ func TestMenuSetsPlatformBadge(t *testing.T) {
 		if got[label] != platform {
 			t.Errorf("card %q: platform = %q, queria %q", label, got[label], platform)
 		}
+	}
+}
+
+// La card Vibe Coding esta en todos los proyectos y abre el modal de subcards
+// con una entrada por CLI mas las dos acciones de mantenimiento.
+func TestVibeCardAndSubcards(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+
+	id := ""
+	for _, it := range b.GetMenu() {
+		if it.Label == "Vibe Coding" {
+			id = it.ID
+		}
+	}
+	if id == "" {
+		t.Fatal("falta la card 'Vibe Coding'")
+	}
+
+	subs := b.Subcards(id)
+	if len(subs) < 3 {
+		t.Fatalf("subcards = %d, queria al menos 3", len(subs))
+	}
+	for _, s := range subs {
+		if s.Label == "" || s.Task == "" || s.Icon == "" {
+			t.Errorf("subcard incompleta: %+v", s)
+		}
+	}
+	if subs[len(subs)-2].Task != "vibe-setup" {
+		t.Errorf("penultima subcard = %q, queria vibe-setup", subs[len(subs)-2].Task)
+	}
+	if subs[len(subs)-1].Task != "opencode-configure" {
+		t.Errorf("ultima subcard = %q, queria opencode-configure", subs[len(subs)-1].Task)
+	}
+}
+
+// Una CLI no instalada no debe romper la pestana: el script avisa en vez de
+// intentar lanzar una ruta vacia.
+func TestVibeRunScriptFallsBackWhenMissing(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+
+	script := b.TaskScript("vibe-run-noexiste")
+	if !strings.Contains(script, "no esta instalada") {
+		t.Errorf("script = %q, queria el aviso de CLI no instalada", script)
 	}
 }

@@ -3,9 +3,13 @@ package tasks
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"compass/internal/project"
 	"compass/internal/shell"
 	"compass/internal/ui"
 )
@@ -23,7 +27,19 @@ const (
 )
 
 func init() {
-	// registrado como tareas globales en RunGlobalTask (no dependen del proyecto)
+	// La card "Vibe Coding" se muestra en todos los tipos de proyecto: siempre
+	// abre el modal de subcards (una por CLI), asi que esta tarea base solo
+	// actua de respaldo si alguien la invoca sin elegir herramienta.
+	fn := func(*project.ProjectContext) error {
+		fmt.Println("[INFO] Elige una herramienta en la card Vibe Coding.")
+		return nil
+	}
+	for _, pt := range []project.ProjectType{
+		project.TypeFlutter, project.TypeKotlin, project.TypePython,
+		project.TypeGo, project.TypeGoWails,
+	} {
+		Register("vibe", pt, fn)
+	}
 }
 
 func exeDir() string {
@@ -318,13 +334,26 @@ var vibeTools = []vibeTool{
 }
 
 func resolveToolCommand(t vibeTool) (string, string) {
+	return resolveToolCommandIn(t, nil)
+}
+
+// resolveToolCommandIn es resolveToolCommand con una tabla ya resuelta de
+// nombre -> ruta. Con tabla no se invoca PowerShell: la GUI resuelve las 11
+// CLIs de una vez recorriendo el PATH.
+func resolveToolCommandIn(t vibeTool, resolved map[string]string) (string, string) {
 	bin := t.cli
 	args := ""
 	if b, a, ok := strings.Cut(t.cli, " "); ok {
 		bin = b
 		args = a
 	}
-	if path := commandPath(bin); path != "" {
+	path := ""
+	if resolved != nil {
+		path = resolved[bin]
+	} else {
+		path = commandPath(bin)
+	}
+	if path != "" {
 		path = preferCmdShim(path)
 		if args != "" {
 			return fmt.Sprintf("%s %s", shell.PsQuote(path), args), path
@@ -426,6 +455,8 @@ func installVibeCoding() error {
 	icon := vibeIcon()
 	removeVibeOldKeys()
 	removeVibeCtxTree()
+	// Tras instalar CLIs el catalogo cacheado de la GUI queda obsoleto.
+	invalidateVibeCache()
 
 	type resolved struct {
 		tool vibeTool
@@ -550,6 +581,104 @@ func installKilo() error          { return installVibeCoding() }
 func uninstallKilo() error        { return uninstallVibeCoding() }
 func installAntigravity() error   { return installVibeCoding() }
 func uninstallAntigravity() error { return uninstallVibeCoding() }
+
+// ── Catalogo para la GUI ────────────────────────────────────────────────────
+
+// vibeCacheTTL es lo que se reutiliza el catalogo resuelto. Resolverlo cuesta
+// una llamada a PowerShell; sin cache el modal de la card tardaba ~0.7 s.
+const vibeCacheTTL = 10 * time.Second
+
+var (
+	vibeCacheMu sync.Mutex
+	vibeCache   []VibeToolInfo
+	vibeCacheAt time.Time
+)
+
+// commandPaths resuelve varios ejecutables (nombre -> ruta) recorriendo el PATH
+// con exec.LookPath, que es instantaneo. Lo que no aparezca ahi lo cubre la
+// lista de rutas de respaldo de cada herramienta (fallbackCandidates), no
+// PowerShell: resolverlo con una llamada a PS congelaba el modal ~1 s.
+func commandPaths(names []string) map[string]string {
+	out := make(map[string]string, len(names))
+	for _, n := range names {
+		if p, err := exec.LookPath(n); err == nil {
+			out[n] = p
+		}
+	}
+	return out
+}
+
+// invalidateVibeCache olvida el catalogo resuelto (tras instalar una CLI).
+func invalidateVibeCache() {
+	vibeCacheMu.Lock()
+	vibeCache = nil
+	vibeCacheAt = time.Time{}
+	vibeCacheMu.Unlock()
+}
+
+// VibeToolInfo describe una CLI de Vibe Coding y su estado de deteccion.
+type VibeToolInfo struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+	// Path es el ejecutable resuelto (vacio si no esta instalada).
+	Path  string `json:"path"`
+	Found bool   `json:"found"`
+
+	// cmd es la linea PowerShell lista para lanzar (con sus flags por
+	// defecto). No se serializa: el frontend no la necesita.
+	cmd string
+}
+
+// VibeTools devuelve el catalogo completo con el estado de cada CLI. Lo usa la
+// card "Vibe Coding" del GUI para pintar una subcard por herramienta; no toca
+// el registro de Windows. El resultado se cachea unos segundos porque resolver
+// las 11 rutas cuesta una llamada a PowerShell.
+func VibeTools() []VibeToolInfo {
+	vibeCacheMu.Lock()
+	if vibeCache != nil && time.Since(vibeCacheAt) < vibeCacheTTL {
+		cached := vibeCache
+		vibeCacheMu.Unlock()
+		return cached
+	}
+	vibeCacheMu.Unlock()
+
+	names := make([]string, 0, len(vibeTools))
+	for _, t := range vibeTools {
+		bin, _, _ := strings.Cut(t.cli, " ")
+		names = append(names, bin)
+	}
+	resolved := commandPaths(names)
+
+	out := make([]VibeToolInfo, 0, len(vibeTools))
+	for _, t := range vibeTools {
+		cmd, path := resolveToolCommandIn(t, resolved)
+		out = append(out, VibeToolInfo{
+			Key:   t.key,
+			Title: t.title,
+			Path:  path,
+			Found: cmd != "",
+			cmd:   cmd,
+		})
+	}
+
+	vibeCacheMu.Lock()
+	vibeCache = out
+	vibeCacheAt = time.Now()
+	vibeCacheMu.Unlock()
+	return out
+}
+
+// VibeCommand devuelve la linea PowerShell que lanza la CLI indicada (con sus
+// flags por defecto) o "" si no esta instalada. Se ejecuta dentro de la ConPTY
+// del proyecto, que ya arranca con el cwd en la carpeta correcta.
+func VibeCommand(key string) string {
+	for _, tool := range VibeTools() {
+		if tool.Key == key {
+			return tool.cmd
+		}
+	}
+	return ""
+}
 
 // ── Deteccion e instalacion de herramientas ─────────────────────────────────
 

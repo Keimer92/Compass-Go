@@ -15,6 +15,7 @@ var menuItems = []tui.MenuItem{
 	tui.InstallDebug, tui.FlutterProfile, tui.Tests,
 	tui.Clean, tui.DebugAndroid, tui.Signing, tui.VersionItem,
 	tui.Git, tui.BuildWhatsApp, tui.ConfigureTerminal, tui.Environment,
+	tui.VibeCoding,
 }
 
 var allMenuItems = menuItems
@@ -130,8 +131,35 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"whatsapp", "Compilar motor", "Genera/actualiza el bundle del motor", "build"},
 			{"whatsapp-portable", "Portable (un exe)", "Envuelve un .exe con el motor dentro", "apk"},
 		}
+	case tui.VibeCoding:
+		return vibeSubcards()
 	}
 	return nil
+}
+
+// vibeSubcards lista las CLIs de Vibe Coding detectadas en la maquina, una
+// subcard por herramienta, mas las acciones de mantenimiento. Las que no estan
+// instaladas se muestran igual (para que se vea que existen) pero su tarea
+// avisa en la pestana en vez de lanzar nada.
+func vibeSubcards() []Subcard {
+	tools := tasks.VibeTools()
+	out := make([]Subcard, 0, len(tools)+2)
+	for _, t := range tools {
+		desc := "No instalada · usa 'Instalar faltantes'"
+		if t.Found {
+			desc = t.Path
+		}
+		out = append(out, Subcard{
+			Task:        "vibe-run-" + t.Key,
+			Label:       t.Title,
+			Description: desc,
+			Icon:        "vibe",
+		})
+	}
+	return append(out,
+		Subcard{"vibe-setup", "Instalar faltantes", "Detecta e instala las CLIs que falten", "install"},
+		Subcard{"opencode-configure", "Configurar OpenCode", "Proveedor InferX y plugin de la TUI", "environment"},
+	)
 }
 
 // taskFor mapea una card a su tarea CLI segun el tipo de proyecto.
@@ -187,6 +215,8 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 		return "terminal"
 	case tui.Environment:
 		return "environment"
+	case tui.VibeCoding:
+		return "vibe"
 	}
 	return ""
 }
