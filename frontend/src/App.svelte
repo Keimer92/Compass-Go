@@ -6,7 +6,7 @@
     getWorkspace, selectProject, removeProject, getMenu, runTask,
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
-    subcards, onWorkspaceChanged, pickProject as pickProjectDialog,
+    subcards, onWorkspaceChanged, pickProject as pickProjectDialog, closeAllTerminals,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -47,6 +47,10 @@
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   let seq = 0
+  // Etiqueta por carga de pagina: si la UI se recarga (HMR en desarrollo), los
+  // ids de pestana vuelven a empezar en 1 y no deben casar con las sesiones
+  // ConPTY de la carga anterior.
+  const sessionTag = Math.random().toString(36).slice(2, 8)
   const terms = new Map<number, { term: Terminal; fit: FitAddon }>()
   const mounted = new Set<number>()
 
@@ -141,6 +145,10 @@
   const colors = ['#89b4fa', '#94e2d5', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7']
 
   onMount(() => {
+    // Cualquier ConPTY de una carga anterior (recarga por HMR o fallo del
+    // WebView) ya no tiene pestana que la lea: se cierra para no dejar
+    // procesos huerfanos ni mezclar su salida con la de las nuevas.
+    closeAllTerminals().catch(() => {})
     onPtyData((d) => {
       const tab = tabs.find((t) => t.ptyId === d.id)
       const entry = tab && terms.get(tab.key)
@@ -312,7 +320,7 @@
     const script = await taskScript(task)
     // El id se fija ANTES de abrir: la salida de la tarea puede llegar antes
     // de que la promesa resuelva y hay que poder casarla ya.
-    const id = `tab-${tab.key}`
+    const id = `tab-${sessionTag}-${tab.key}`
     tab.ptyId = id
     tab.exited = false
     const opened = await openTerminal(id, script, entry.term.rows, entry.term.cols)

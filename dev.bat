@@ -23,6 +23,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Si ya hay un Vite vivo de una ejecucion anterior se reutiliza: con
+REM strictPort un segundo `npm run dev` abortaria y su ventana se cerraria
+REM dejando un parpadeo sin explicacion.
+call :probe
+if not errorlevel 1 (
+    echo [INFO] Ya hay un servidor escuchando en 127.0.0.1:5173.
+    echo        Se reutiliza: no se abre otra ventana de Vite.
+    goto ready
+)
+
 if not exist "frontend\node_modules" (
     echo [INFO] Instalando dependencias del frontend...
     pushd frontend
@@ -35,15 +45,19 @@ REM carga de modulos se cortarian y la UI quedaria en blanco.
 echo [INFO] Arrancando Vite en una ventana aparte ^(puerto 5173^)...
 start "Compass Go - Vite" /d "%~dp0frontend" cmd /k npm run dev
 
-echo [INFO] Esperando a que Vite escuche en 5173...
+echo [INFO] Esperando a que Vite escuche en 127.0.0.1:5173...
 set "TRIES=0"
 :wait
-powershell -NoProfile -Command "try{$c=New-Object Net.Sockets.TcpClient;$c.Connect('127.0.0.1',5173);$c.Close();exit 0}catch{exit 1}"
+call :probe
 if not errorlevel 1 goto ready
 set /a TRIES+=1
-if %TRIES% GEQ 40 (
-    echo [ERROR] Vite no respondio en 20 s. Revisa la ventana "Compass Go - Vite".
-    echo        ^(puerto ocupado^? cierra el proceso que lo use^)
+<nul set /p "=."
+if %TRIES% GEQ 30 (
+    echo.
+    echo [ERROR] Vite no respondio en 30 s. Revisa la ventana "Compass Go - Vite".
+    echo        Si dice que el puerto esta ocupado, cierra ese proceso.
+    echo        Si sigue sin responder, revisa que vite.config.ts tenga
+    echo        server.host = '127.0.0.1' ^(por defecto escucha solo en IPv6^).
     pause
     exit /b 1
 )
@@ -51,6 +65,8 @@ timeout /t 1 /nobreak >nul
 goto wait
 
 :ready
+echo.
+echo [OK] Vite listo en http://127.0.0.1:5173
 echo [INFO] Compilando y abriendo Compass Go...
 echo        Los cambios en la UI se recargan solos; los de Go requieren
 echo        cerrar esta ventana y volver a ejecutar dev.bat.
@@ -60,3 +76,8 @@ go run ./cmd/compass-web --dev %*
 echo.
 echo [INFO] Compass Go cerrado. La ventana de Vite sigue abierta: cierrala a mano.
 pause
+exit /b 0
+
+:probe
+powershell -NoProfile -Command "try{$c=New-Object Net.Sockets.TcpClient;$c.Connect('127.0.0.1',5173);$c.Close();exit 0}catch{exit 1}"
+exit /b %errorlevel%

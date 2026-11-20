@@ -353,6 +353,11 @@ func (b *Bridge) ResizeTerminal(id string, cols, rows int) { b.term.Resize(id, c
 // CloseTerminal mata la sesion de la pestana.
 func (b *Bridge) CloseTerminal(id string) { b.term.Close(id) }
 
+// CloseAllTerminals cierra las ConPTY abiertas. El frontend lo llama al
+// arrancar: tras recargar la pagina sus pestanas ya no existen, asi que las
+// sesiones anteriores solo dejarian procesos huerfanos.
+func (b *Bridge) CloseAllTerminals() int { return b.term.CloseAll() }
+
 // FocusWindow trae al frente la ventana principal de Compass. El frontend lo
 // llama tras lanzar una tarea para recuperar el foco si otra ventana (p. ej.
 // la app en modo dev) se lo roba al abrirse.

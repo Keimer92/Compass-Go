@@ -109,3 +109,20 @@ func (t *TerminalService) Close(id string) {
 		s.sess.Close()
 	}
 }
+
+// CloseAll cierra todas las sesiones y devuelve cuantas habia.
+//
+// Se llama al montar la UI: si la pagina se recarga (HMR en desarrollo, o un
+// fallo del WebView), las pestanas del frontend se pierden y sus ConPTY
+// quedarian vivas sin nadie leyendo su salida. Con ids repetidos, ademas, la
+// salida de la sesion vieja se mezclaria con la nueva.
+func (t *TerminalService) CloseAll() int {
+	t.mu.Lock()
+	old := t.sessions
+	t.sessions = map[string]*termSession{}
+	t.mu.Unlock()
+	for _, s := range old {
+		s.sess.Close()
+	}
+	return len(old)
+}

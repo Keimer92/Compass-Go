@@ -39,8 +39,11 @@ func main() {
 	dev := flag.Bool("dev", false, "sirve el frontend desde Vite (HMR)")
 	flag.Parse()
 
+	// Se usa 127.0.0.1 y no localhost: en Windows `localhost` puede resolverse
+	// primero a ::1 y Vite escucha solo en IPv4 (server.host), con lo que el
+	// proxy de Wails no encontraria el servidor.
 	if *dev && os.Getenv("FRONTEND_DEVSERVER_URL") == "" {
-		os.Setenv("FRONTEND_DEVSERVER_URL", "http://localhost:5173")
+		os.Setenv("FRONTEND_DEVSERVER_URL", "http://127.0.0.1:5173")
 	}
 
 	t := task

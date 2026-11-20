@@ -39,6 +39,7 @@ export const writeTerminal = (id: string, data: string) => call<void>(M('WriteTe
 export const resizeTerminal = (id: string, cols: number, rows: number) =>
   call<void>(M('ResizeTerminal'), id, cols, rows)
 export const closeTerminal = (id: string) => call<void>(M('CloseTerminal'), id)
+export const closeAllTerminals = () => call<number>(M('CloseAllTerminals'))
 export const focusWindow = () => call<void>(M('FocusWindow'))
 
 export interface ThemeInfo {

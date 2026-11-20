@@ -65,6 +65,7 @@ Compass Go/
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload/ + CompassGo-Setup.exe); desechable
+├─ dev.bat                    # Vite (HMR) + go run --dev: ciclo de desarrollo de la UI
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
@@ -79,7 +80,8 @@ Módulo Go: `compass` (imports `compass/internal/...`).
 
 ## Scripts `.bat` (Windows) — uso
 
-Hay **tres scripts**, separados por velocidad de uso: `install.bat` compila y
+Hay **cuatro scripts**, separados por velocidad de uso: `dev.bat` compila y
+abre la app en modo desarrollo con HMR (Vite); `install.bat` compila y
 genera el instalador, y lo ejecuta en silencio para instalar todo en la
 máquina (el ciclo corto de desarrollo); `dist.bat` compila y empaqueta el
 instalador autónomo en `dist\` (solo para distribuir); `uninstall.bat`
@@ -623,7 +625,7 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 
 `dev.bat` levanta Vite en su propia ventana (puerto 5173, `strictPort`) y luego
 `go run ./cmd/compass-web --dev`. El flag `--dev` exporta
-`FRONTEND_DEVSERVER_URL=http://localhost:5173`; con ese valor Wails v3 sirve la
+`FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`; con ese valor Wails v3 sirve la
 UI desde Vite en lugar del bundle embebido (rama `!production` de
 `internal/assetserver`), de modo que los cambios de Svelte/CSS se aplican en
 caliente. Los cambios en Go requieren cerrar y volver a ejecutar `dev.bat`.
@@ -632,9 +634,13 @@ caliente. Los cambios en Go requieren cerrar y volver a ejecutar `dev.bat`.
 dev.bat              # Vite + Compass Go en modo desarrollo
 ```
 
-- `frontend/vite.config.ts` fija `server.hmr` a `ws://localhost:5173`: la
+- `frontend/vite.config.ts` fija `server.hmr` a `ws://127.0.0.1:5173`: la
   página se sirve bajo el esquema `wails://wails:5173`, así que el cliente HMR
   no puede deducir el host del servidor y hay que indicárselo.
+- **`server.host = '127.0.0.1'` es obligatorio**: por defecto Vite 6 escucha
+  solo en `::1` (IPv6), mientras que el proxy de Wails y el sondeo de `dev.bat`
+  van por IPv4. Sin esto el puerto parece cerrado, el batch se queda esperando
+  y la ventana quedaría en blanco.
 - En modo dev se omite `workspace.TryForward`, para que una instancia instalada
   abierta no se quede el foco ni absorba la carpeta.
 - `dist.bat` compila con `-tags production`, así que el binario distribuido
