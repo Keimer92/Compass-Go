@@ -343,18 +343,22 @@ func (b *Bridge) GenerateCommit(dir string) (string, error) {
 		return "", errors.New("no hay cambios para commitear")
 	}
 	cfg := settings.Load()
-	if strings.TrimSpace(cfg.OpenRouterAPIKey) == "" {
-		return "", errors.New("falta la API key de OpenRouter: añádela en Opciones (openrouter.ai/keys)")
-	}
-	model := strings.TrimSpace(cfg.OpenRouterModel)
-	if model == "" {
-		// Sin modelo elegido: usa el gratuito mas rapido disponible.
-		if opts := b.ListModels(); len(opts) > 0 {
-			model = opts[0].ID
+	provider := cfg.CommitProvider
+	model := ""
+	if provider != settings.ProviderCopilot {
+		if strings.TrimSpace(cfg.OpenRouterAPIKey) == "" {
+			return "", errors.New("falta la API key de OpenRouter: añádela en Opciones (openrouter.ai/keys)")
 		}
-	}
-	if model == "" {
-		return "", errors.New("falta el modelo de OpenRouter: elige uno en Opciones")
+		model = strings.TrimSpace(cfg.OpenRouterModel)
+		if model == "" {
+			// Sin modelo elegido: usa el gratuito mas rapido disponible.
+			if opts := b.ListModels(); len(opts) > 0 {
+				model = opts[0].ID
+			}
+		}
+		if model == "" {
+			return "", errors.New("falta el modelo de OpenRouter: elige uno en Opciones")
+		}
 	}
 	prompt := "You write precise Conventional Commit messages from the git evidence below.\n" +
 		"You cannot explore the repository: base EVERY line strictly on the diff, status and new-file excerpts.\n\n" +
@@ -399,7 +403,13 @@ func (b *Bridge) GenerateCommit(dir string) (string, error) {
 		b.commitMu.Unlock()
 	}()
 
-	out, err := openRouterChat(ctx, cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, model, prompt)
+	var out string
+	var err error
+	if provider == settings.ProviderCopilot {
+		out, err = copilotCommitMessage(ctx, prompt)
+	} else {
+		out, err = openRouterChat(ctx, cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, model, prompt)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", errCommitCancelled

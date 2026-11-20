@@ -37,6 +37,9 @@ type Settings struct {
 	// antes de que el boton "Auto" del panel Git commitee. 0 o negativo se
 	// normaliza al valor por defecto (5).
 	AutoCommitIdleMin int `json:"auto_commit_idle_min"`
+	// CommitProvider elige como se generan los mensajes de commit:
+	// "openrouter" (API con key) o "copilot" (GitHub Copilot CLI local).
+	CommitProvider string `json:"commit_provider"`
 }
 
 // Default devuelve los valores de fabrica.
@@ -50,8 +53,15 @@ func Default() Settings {
 		// usuario no ha seleccionado uno en Opciones.
 		OpenRouterModel:   "",
 		AutoCommitIdleMin: 5,
+		CommitProvider:    ProviderOpenRouter,
 	}
 }
+
+// Proveedores de mensajes de commit.
+const (
+	ProviderOpenRouter = "openrouter"
+	ProviderCopilot    = "copilot"
+)
 
 func configPath() string {
 	base := os.Getenv("LOCALAPPDATA")
@@ -92,6 +102,11 @@ func Load() Settings {
 	}
 	if s.AutoCommitIdleMin > 240 {
 		s.AutoCommitIdleMin = 240
+	}
+	// Un proveedor desconocido (o vacio en un fichero antiguo) cae en el
+	// historico: OpenRouter.
+	if s.CommitProvider != ProviderCopilot {
+		s.CommitProvider = ProviderOpenRouter
 	}
 	return s
 }

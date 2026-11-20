@@ -65,3 +65,65 @@ func TestLoadFallsBackOnCorruptFile(t *testing.T) {
 		t.Fatalf("un fichero corrupto deberia caer en los valores por defecto")
 	}
 }
+
+func TestCommitProviderDefaultsToOpenRouter(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	if got := Load().CommitProvider; got != ProviderOpenRouter {
+		t.Fatalf("proveedor por defecto = %q, queria %q", got, ProviderOpenRouter)
+	}
+}
+
+func TestCommitProviderUnknownFallsBack(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("LOCALAPPDATA", base)
+	dir := filepath.Join(base, "compass")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"commit_provider":"otro"}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load().CommitProvider; got != ProviderOpenRouter {
+		t.Fatalf("un proveedor desconocido debe caer en OpenRouter, got %q", got)
+	}
+}
+
+func TestCommitProviderCopilotRoundTrip(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("LOCALAPPDATA", base)
+
+	cfg := Default()
+	cfg.CommitProvider = ProviderCopilot
+	Save(cfg)
+
+	if got := Load().CommitProvider; got != ProviderCopilot {
+		t.Fatalf("CommitProvider = %q, queria %q", got, ProviderCopilot)
+	}
+}
+
+func TestAutoCommitIdleMinClamped(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("LOCALAPPDATA", base)
+	dir := filepath.Join(base, "compass")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 0 (fichero antiguo) y valores fuera de rango se normalizan.
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{`{"auto_commit_idle_min":0}`, 5},
+		{`{"auto_commit_idle_min":-3}`, 5},
+		{`{"auto_commit_idle_min":999}`, 240},
+		{`{"auto_commit_idle_min":12}`, 12},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(tc.in), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := Load().AutoCommitIdleMin; got != tc.want {
+			t.Fatalf("%s => %d, queria %d", tc.in, got, tc.want)
+		}
+	}
+}

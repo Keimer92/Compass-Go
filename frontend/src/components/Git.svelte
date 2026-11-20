@@ -267,7 +267,7 @@
   {/if}
 
   <div class="commit-box">
-    <div class="commit-head">Commit con OpenRouter</div>
+    <div class="commit-head">Commit con IA</div>
     <div class="commit-body">
         <textarea
           placeholder="Mensaje del commit..."

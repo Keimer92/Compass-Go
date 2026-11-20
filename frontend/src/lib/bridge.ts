@@ -67,6 +67,7 @@ export interface Settings {
   openrouter_model: string
   openrouter_api_key: string
   auto_commit_idle_min: number
+  commit_provider: 'openrouter' | 'copilot'
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
@@ -128,6 +129,7 @@ export interface AutoCommitState {
 }
 export const setAutoCommit = (enabled: boolean) => call<void>(M('SetAutoCommit'), enabled)
 export const autoCommitStatus = () => call<AutoCommitState>(M('AutoCommitStatus'))
+export const copilotAvailable = () => call<boolean>(M('CopilotAvailable'))
 export const onAutoCommit = (cb: (d: { dir: string; message: string }) => void) =>
   Events.On('git:auto', (e: any) => cb(e.data))
 

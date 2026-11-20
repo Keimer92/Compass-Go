@@ -4,6 +4,8 @@ cd /d "%~dp0"
 REM El titulo se pone MAS ABAJO, despues de dev-reset.ps1: asi el script puede
 REM cerrar la terminal del dev.bat anterior sin cerrarse a si mismo.
 
+set "VITE_LOG=%LOCALAPPDATA%\compass\vite-dev.log"
+
 echo.
 echo =============================================
 echo   Compass Go - modo desarrollo (HMR)
@@ -25,20 +27,24 @@ if errorlevel 1 (
 )
 
 REM Si ya habia una sesion de desarrollo, se cierra (Compass --dev + su
-REM terminal) para que arranque una limpia. Vite se deja vivo a proposito.
+REM terminal) para que arranque una limpia.
 echo [INFO] Cerrando sesion de desarrollo anterior si habia una...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-reset.ps1"
 title Compass Go - desarrollo
 
 REM Si ya hay un Vite vivo de una ejecucion anterior se reutiliza: con
-REM strictPort un segundo `npm run dev` abortaria y su ventana se cerraria
-REM dejando un parpadeo sin explicacion.
+REM strictPort un segundo `npm run dev` abortaria.
 call :probe
 if not errorlevel 1 (
     echo [INFO] Ya hay un servidor escuchando en 127.0.0.1:5173.
-    echo        Se reutiliza: no se abre otra ventana de Vite.
+    echo        Se reutiliza: no se arranca otro Vite.
     goto ready
 )
+REM Margen para que el Vite del dev.bat anterior (que murio con su consola)
+REM termine de soltar el puerto antes de arrancar otro.
+timeout /t 1 /nobreak >nul
+call :probe
+if not errorlevel 1 goto ready
 
 if not exist "frontend\node_modules" (
     echo [INFO] Instalando dependencias del frontend...
@@ -47,10 +53,11 @@ if not exist "frontend\node_modules" (
     popd
 )
 
-REM Vite se queda en su propia ventana: si se cerrara, el WebSocket HMR y la
-REM carga de modulos se cortarian y la UI quedaria en blanco.
-echo [INFO] Arrancando Vite en una ventana aparte ^(puerto 5173^)...
-start "Compass Go - Vite" /d "%~dp0frontend" cmd /k npm run dev
+REM Vite corre en SEGUNDO PLANO en esta misma consola (start /b): no se abre
+REM una segunda ventana y, al cerrar esta, Vite muere con ella.
+echo [INFO] Arrancando Vite en segundo plano ^(puerto 5173^)...
+echo        Su salida se escribe en %VITE_LOG%
+start "Compass Go - Vite" /b "%~dp0frontend\dev-vite.bat"
 
 echo [INFO] Esperando a que Vite escuche en 127.0.0.1:5173...
 set "TRIES=0"
@@ -61,7 +68,8 @@ set /a TRIES+=1
 <nul set /p "=."
 if %TRIES% GEQ 30 (
     echo.
-    echo [ERROR] Vite no respondio en 30 s. Revisa la ventana "Compass Go - Vite".
+    echo [ERROR] Vite no respondio en 30 s. Ultimas lineas del log:
+    powershell -NoProfile -Command "if (Test-Path -LiteralPath '%VITE_LOG%') { Get-Content -LiteralPath '%VITE_LOG%' -Tail 15 }" 2>nul
     echo        Si dice que el puerto esta ocupado, cierra ese proceso.
     echo        Si sigue sin responder, revisa que vite.config.ts tenga
     echo        server.host = '127.0.0.1' ^(por defecto escucha solo en IPv6^).
@@ -81,7 +89,8 @@ echo.
 go run ./cmd/compass-web --dev %*
 
 echo.
-echo [INFO] Compass Go cerrado. La ventana de Vite sigue abierta: cierrala a mano.
+echo [INFO] Compass Go cerrado. Vite sigue vivo en segundo plano: al cerrar
+echo        esta ventana se detiene tambien.
 pause
 exit /b 0
 

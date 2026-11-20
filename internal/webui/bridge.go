@@ -422,6 +422,11 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	if s.AutoCommitIdleMin > 0 {
 		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
 	}
+	if s.CommitProvider == settings.ProviderCopilot {
+		cur.CommitProvider = settings.ProviderCopilot
+	} else {
+		cur.CommitProvider = settings.ProviderOpenRouter
+	}
 	if v := strings.TrimSpace(s.OpenRouterEndpoint); v != "" {
 		cur.OpenRouterEndpoint = v
 	}

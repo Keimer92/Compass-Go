@@ -65,7 +65,8 @@ Compass Go/
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload/ + CompassGo-Setup.exe); desechable
-├─ dev.bat                    # Vite (HMR de UI) + go run --dev (solo frontend)
+├─ dev.bat                    # Vite en 2º plano (HMR de UI) + go run --dev
+├─ frontend/dev-vite.bat      # arranca Vite con salida a %LOCALAPPDATA%\compass\vite-dev.log
 ├─ dev-reset.ps1              # cierra la sesión de desarrollo anterior al relanzar dev.bat
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
@@ -331,6 +332,16 @@ proyecto concreto:
   umbral se relee en cada pasada, así que cambiarlo en Opciones aplica sin
   reiniciar el botón. API: `Bridge.SetAutoCommit(bool)` y
   `Bridge.AutoCommitStatus()`.
+- **Proveedor de mensajes de commit** (`settings.CommitProvider`):
+  `openrouter` (por defecto, API con key) o `copilot` (CLI local de GitHub
+  Copilot). El segundo vive en `internal/webui/copilot.go`: localiza el binario
+  (`%LOCALAPPDATA%\GitHubCopilotCLI\copilot.exe`, luego PATH; si es el shim
+  `.cmd` de npm lo lanza vía `cmd /c`) y ejecuta
+  `copilot -s --deny-tool=shell --deny-tool=write -p <prompt>` con timeout de
+  120 s. No usa API: consume la suscripción del usuario y tarda ~18 s por
+  mensaje. `Bridge.CopilotAvailable()` permite avisar en Opciones si falta el
+  CLI. El prompt (resumen de git acotado a ~9 KB de diff) viaja como argv, muy
+  por debajo del límite de Windows.
 - **Sin parpadeo "no es un repositorio"**: `Git.svelte` guarda el último
   `GitInfo` por proyecto en `frontend/src/lib/gitCache.ts` y arranca con ese
   valor, así al cambiar de pestaña pinta datos reales al instante (Go lanza
@@ -707,8 +718,12 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 
 ### Desarrollo con HMR (`dev.bat`)
 
-`dev.bat` levanta Vite en su propia ventana (puerto 5173, `strictPort`) y luego
-`go run ./cmd/compass-web --dev`. El flag `--dev` exporta
+`dev.bat` levanta Vite **en segundo plano dentro de la misma consola**
+(`start /b` sobre `frontend/dev-vite.bat`, puerto 5173, `strictPort`) y luego
+`go run ./cmd/compass-web --dev`. No se abre una segunda ventana: la salida de
+Vite se escribe en `%LOCALAPPDATA%\compass\vite-dev.log` para no mezclarse con
+la de `go run`, y al cerrar la consola Vite muere con ella (sin huérfanos). El
+flag `--dev` exporta
 `FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`; con ese valor Wails v3 sirve la
 UI desde Vite en lugar del bundle embebido (rama `!production` de
 `internal/assetserver`), de modo que los cambios de Svelte/CSS/TS se aplican en
@@ -724,8 +739,10 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   script mata el proceso `compass-web.exe`/`compass-go.exe` cuyo `--dev` está en
   su línea de comandos (la versión instalada no lleva `--dev` y no se toca) y
   cierra la terminal con título `Compass Go - desarrollo`, excluyéndose a sí
-  mismo. Vite (`Compass Go - Vite`) se deja vivo a propósito para no perder el
-  HMR. El título se pone en el batch **después** de llamar al reset, por eso el
+  mismo. Como Vite ahora comparte esa consola, muere con ella; `dev.bat` deja
+  1 s de margen y vuelve a sondear el puerto antes de arrancar otro (evita el
+  choque con el `strictPort` mientras el node anterior suelta el socket). El
+  título se pone en el batch **después** de llamar al reset, por eso el
   script puede distinguir la terminal vieja de la nueva.
 - `frontend/vite.config.ts` fija `server.hmr` a `ws://127.0.0.1:5173`: la
   página se sirve bajo el esquema `wails://wails:5173`, así que el cliente HMR

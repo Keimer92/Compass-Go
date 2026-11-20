@@ -7,7 +7,7 @@
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
-    listCleanupCandidates, purgeCleanupCandidates,
+    listCleanupCandidates, purgeCleanupCandidates, copilotAvailable,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -45,7 +45,9 @@
     openrouter_model: '',
     openrouter_api_key: '',
     auto_commit_idle_min: 5,
+    commit_provider: 'openrouter',
   })
+  let copilotOk = $state(false)
   let models = $state<ModelOption[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
@@ -136,6 +138,12 @@
       settings = await getSettings()
     } catch {
       /* se mantiene lo que ya habia */
+    }
+    // Para avisar en el modal si el CLI de Copilot esta instalado.
+    try {
+      copilotOk = await copilotAvailable()
+    } catch {
+      copilotOk = false
     }
     try {
       models = await listModels()
@@ -780,6 +788,21 @@
         <input class="opt-input num" type="number" min="1" max="240" step="1" bind:value={settings.auto_commit_idle_min} />
         <span>min sin cambios <small>(botón «Auto» del panel Git)</small></span>
       </label>
+      <label class="opt-row column">
+        <span>Proveedor de mensajes de commit</span>
+        <select class="opt-input" bind:value={settings.commit_provider}>
+          <option value="openrouter">OpenRouter (API key)</option>
+          <option value="copilot">GitHub Copilot CLI (local)</option>
+        </select>
+      </label>
+      {#if settings.commit_provider === 'copilot' && !copilotOk}
+        <p class="opt-warn">
+          No se encontró el CLI de Copilot. Instálalo con <code>npm i -g @github/copilot</code>
+          y ejecuta <code>copilot login</code>.
+        </p>
+      {:else if settings.commit_provider === 'copilot'}
+        <p class="opt-hint">Usa tu suscripción de Copilot (más lento: ~18 s por mensaje).</p>
+      {/if}
       <label class="opt-row column">
         <span>Endpoint de OpenRouter</span>
         <input class="opt-input" type="text" bind:value={settings.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />

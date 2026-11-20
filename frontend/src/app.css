@@ -93,6 +93,9 @@ body, .app, .sidebar, .cards-area, .card, .right, .terminal-panel, .modal {
 .opt-row.column { flex-direction: column; align-items: stretch; gap: 6px; }
 .opt-input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 12px; }
 .opt-input.num { width: 72px; flex-shrink: 0; }
+.opt-hint { margin: -4px 0 14px; font-size: 10px; color: var(--muted); line-height: 1.4; }
+.opt-warn { margin: -4px 0 14px; font-size: 10px; color: var(--yellow); line-height: 1.5; }
+.opt-warn code { font-family: 'Cascadia Mono', Consolas, monospace; font-size: 10px; color: var(--text); }
 .modal-actions { display: flex; justify-content: flex-end; }
 .btn-primary { padding: 7px 16px; border: none; border-radius: 16px; background: color-mix(in srgb, var(--accent) 35%, var(--bg)); color: var(--text); font-size: 12px; }
 .modal-actions button:disabled { opacity: .5; cursor: not-allowed; }
