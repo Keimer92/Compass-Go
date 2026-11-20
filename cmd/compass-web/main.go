@@ -33,7 +33,15 @@ func main() {
 	flag.StringVar(&path, "path", "", "ruta del proyecto")
 	flag.StringVar(&path, "p", "", "alias de --path")
 	pick := flag.Bool("pick", false, "elegir la carpeta con un navegador")
+	// --dev sirve la UI desde el servidor de Vite (HMR) en vez del bundle
+	// embebido. Lo usa dev.bat; en una compilacion con -tags production Wails
+	// ignora la variable y siempre sirve el bundle.
+	dev := flag.Bool("dev", false, "sirve el frontend desde Vite (HMR)")
 	flag.Parse()
+
+	if *dev && os.Getenv("FRONTEND_DEVSERVER_URL") == "" {
+		os.Setenv("FRONTEND_DEVSERVER_URL", "http://localhost:5173")
+	}
 
 	t := task
 	if t == "" {
@@ -87,8 +95,10 @@ func main() {
 	}
 
 	// Si ya hay una ventana abierta, le pasamos la carpeta y salimos: asi el
-	// menu contextual apila proyectos en la misma ventana.
-	if workspace.TryForward(dir) {
+	// menu contextual apila proyectos en la misma ventana. En desarrollo se
+	// omite: si la version instalada esta abierta, se quedaria el foco y no
+	// veriamos los cambios de esta compilacion.
+	if !*dev && workspace.TryForward(dir) {
 		return
 	}
 

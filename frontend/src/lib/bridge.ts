@@ -87,3 +87,16 @@ export const commit = (dir: string, message: string) => call<string>(M('Commit')
 
 export interface CommitEntry { hash: string; short: string; author: string; date: string; subject: string }
 export const gitLog = () => call<CommitEntry[]>(M('GitLog'))
+export const gitBranch = () => call<string>(M('GitBranch'))
+
+export interface CommitFile { path: string; status: string; added: number; removed: number; binary: boolean }
+export interface CommitDetail {
+  hash: string
+  short: string
+  author: string
+  date: string
+  subject: string
+  body: string
+  files: CommitFile[]
+}
+export const commitDetail = (hash: string) => call<CommitDetail>(M('CommitDetail'), hash)

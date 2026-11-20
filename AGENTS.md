@@ -619,6 +619,27 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 - Si el frontend no se recompila, el `.exe` embebe el bundle **anterior**:
   `dist.bat` siempre ejecuta `npm run build` antes de `go build`.
 
+### Desarrollo con HMR (`dev.bat`)
+
+`dev.bat` levanta Vite en su propia ventana (puerto 5173, `strictPort`) y luego
+`go run ./cmd/compass-web --dev`. El flag `--dev` exporta
+`FRONTEND_DEVSERVER_URL=http://localhost:5173`; con ese valor Wails v3 sirve la
+UI desde Vite en lugar del bundle embebido (rama `!production` de
+`internal/assetserver`), de modo que los cambios de Svelte/CSS se aplican en
+caliente. Los cambios en Go requieren cerrar y volver a ejecutar `dev.bat`.
+
+```bat
+dev.bat              # Vite + Compass Go en modo desarrollo
+```
+
+- `frontend/vite.config.ts` fija `server.hmr` a `ws://localhost:5173`: la
+  página se sirve bajo el esquema `wails://wails:5173`, así que el cliente HMR
+  no puede deducir el host del servidor y hay que indicárselo.
+- En modo dev se omite `workspace.TryForward`, para que una instancia instalada
+  abierta no se quede el foco ni absorba la carpeta.
+- `dist.bat` compila con `-tags production`, así que el binario distribuido
+  ignora `FRONTEND_DEVSERVER_URL` y siempre sirve el bundle embebido.
+
 ## Notas de arquitectura / diferencias con el Rust original
 
 - **UI**: Wails v3 + Svelte 5 en vez de `ratatui`/Gio. El puente vive en

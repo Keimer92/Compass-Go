@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -499,4 +500,153 @@ func (b *Bridge) GitLog() []CommitEntry {
 		})
 	}
 	return commits
+}
+
+// GitBranch devuelve la rama en la que esta el proyecto activo. Con HEAD
+// desacoplado devuelve "detached@<short>" para que el explorador no muestre un
+// "HEAD" ambiguo; sin repositorio (o sin proyecto) devuelve "".
+func (b *Bridge) GitBranch() string {
+	dir := b.projectDir()
+	if dir == "" {
+		return ""
+	}
+	out, err := runGit(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return ""
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return ""
+	}
+	if out == "HEAD" {
+		if short, err := runGit(dir, "rev-parse", "--short", "HEAD"); err == nil && short != "" {
+			return "detached@" + short
+		}
+		return "detached"
+	}
+	return out
+}
+
+// CommitFile es un archivo tocado por un commit, con su recuento de lineas.
+type CommitFile struct {
+	Path    string `json:"path"`
+	Status  string `json:"status"`
+	Added   int    `json:"added"`
+	Removed int    `json:"removed"`
+	Binary  bool   `json:"binary"`
+}
+
+// CommitDetail es el contenido de un commit: cabecera, cuerpo y archivos.
+type CommitDetail struct {
+	Hash    string       `json:"hash"`
+	Short   string       `json:"short"`
+	Author  string       `json:"author"`
+	Date    string       `json:"date"`
+	Subject string       `json:"subject"`
+	Body    string       `json:"body"`
+	Files   []CommitFile `json:"files"`
+}
+
+// hashRe valida el hash que llega del frontend: se pasa como argumento de git,
+// asi que no puede empezar por "-" ni traer nada que no sea hexadecimal.
+var hashRe = regexp.MustCompile(`^[0-9a-fA-F]{4,40}$`)
+
+// commitStatus traduce la letra de `--name-status` a la etiqueta del frontend.
+func commitStatus(code string) string {
+	if code == "" {
+		return "Modified"
+	}
+	switch code[0] {
+	case 'A':
+		return "Added"
+	case 'D':
+		return "Deleted"
+	case 'R':
+		return "Renamed"
+	case 'C':
+		return "Copied"
+	case 'T':
+		return "Type"
+	}
+	return "Modified"
+}
+
+// CommitDetail devuelve que se commiteo en hash: mensaje completo y la lista de
+// archivos con lineas añadidas/borradas. Se usan dos lecturas (name-status y
+// numstat) porque git no da ambas en un formato estable de una sola pasada.
+func (b *Bridge) CommitDetail(hash string) (CommitDetail, error) {
+	dir := b.projectDir()
+	if dir == "" {
+		return CommitDetail{}, errors.New("no hay proyecto activo")
+	}
+	hash = strings.TrimSpace(hash)
+	if !hashRe.MatchString(hash) {
+		return CommitDetail{}, errors.New("hash de commit invalido")
+	}
+
+	header, err := runGit(dir, "log", "-1", "--no-color", "--date=short",
+		"--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%b%x1e", hash)
+	if err != nil {
+		return CommitDetail{}, fmt.Errorf("git log: %s", header)
+	}
+	fields := strings.SplitN(strings.TrimRight(header, "\x1e\r\n"), "\x1f", 6)
+	if len(fields) < 5 {
+		return CommitDetail{}, errors.New("no se pudo leer el commit")
+	}
+	detail := CommitDetail{
+		Hash:    fields[0],
+		Short:   fields[1],
+		Author:  ansiRe.ReplaceAllString(fields[2], ""),
+		Date:    fields[3],
+		Subject: strings.TrimSpace(ansiRe.ReplaceAllString(fields[4], "")),
+		Files:   []CommitFile{},
+	}
+	if len(fields) == 6 {
+		detail.Body = strings.TrimSpace(ansiRe.ReplaceAllString(fields[5], ""))
+	}
+
+	// Estado por archivo (A/M/D/R...). En renombrados la ruta buena es la
+	// ultima columna.
+	statuses := map[string]string{}
+	if out, err := runGit(dir, "log", "-1", "--name-status", "--format=", hash); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			cols := strings.Split(strings.TrimRight(line, "\r"), "\t")
+			if len(cols) < 2 || strings.TrimSpace(cols[0]) == "" {
+				continue
+			}
+			path := strings.TrimSpace(cols[len(cols)-1])
+			if path != "" {
+				statuses[path] = commitStatus(strings.TrimSpace(cols[0]))
+			}
+		}
+	}
+
+	if out, err := runGit(dir, "log", "-1", "--numstat", "--format=", hash); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			cols := strings.SplitN(strings.TrimRight(line, "\r"), "\t", 3)
+			if len(cols) != 3 {
+				continue
+			}
+			path := strings.TrimSpace(cols[2])
+			if path == "" {
+				continue
+			}
+			f := CommitFile{Path: path, Status: statuses[path]}
+			if f.Status == "" {
+				if strings.Contains(path, " => ") {
+					f.Status = "Renamed"
+				} else {
+					f.Status = "Modified"
+				}
+			}
+			if cols[0] == "-" || cols[1] == "-" {
+				f.Binary = true
+			} else {
+				f.Added, _ = strconv.Atoi(cols[0])
+				f.Removed, _ = strconv.Atoi(cols[1])
+			}
+			detail.Files = append(detail.Files, f)
+		}
+	}
+	return detail, nil
 }

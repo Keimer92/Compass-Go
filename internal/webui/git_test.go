@@ -140,3 +140,78 @@ func TestSubcards(t *testing.T) {
 		}
 	}
 }
+
+func gitCommit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v %s", args, err, out)
+	}
+}
+
+func TestGitBranchReportsCurrentBranch(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+	// Un repo recien creado puede no tener rama hasta el primer commit.
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "init")
+	if got := b.GitBranch(); got == "" || got == "HEAD" || strings.HasPrefix(got, "detached") {
+		t.Fatalf("rama inesperada: %q", got)
+	}
+}
+
+func TestCommitDetailListsFilesAndCounts(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+	if err := os.WriteFile(filepath.Join(dir, "uno.txt"), []byte("uno\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "feat: primer archivo", "-m", "cuerpo del commit")
+	// Segundo commit que modifica el archivo y añade otro.
+	if err := os.WriteFile(filepath.Join(dir, "uno.txt"), []byte("uno\ndos\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dos.txt"), []byte("nuevo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "feat: segundo commit")
+
+	log := b.GitLog()
+	if len(log) < 2 {
+		t.Fatalf("esperaba al menos dos commits: %+v", log)
+	}
+	detail, err := b.CommitDetail(log[0].Hash)
+	if err != nil {
+		t.Fatalf("CommitDetail: %v", err)
+	}
+	if !strings.Contains(detail.Subject, "segundo commit") {
+		t.Fatalf("asunto inesperado: %q", detail.Subject)
+	}
+	if len(detail.Files) != 2 {
+		t.Fatalf("esperaba 2 archivos, hay %d: %+v", len(detail.Files), detail.Files)
+	}
+	byPath := map[string]CommitFile{}
+	for _, f := range detail.Files {
+		byPath[f.Path] = f
+	}
+	if f, ok := byPath["dos.txt"]; !ok || f.Status != "Added" || f.Added != 1 {
+		t.Fatalf("dos.txt inesperado: %+v", byPath)
+	}
+	if f, ok := byPath["uno.txt"]; !ok || f.Status != "Modified" || f.Added != 1 {
+		t.Fatalf("uno.txt inesperado: %+v", byPath)
+	}
+}
+
+func TestCommitDetailRejectsBadHash(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+	if _, err := b.CommitDetail("--upload-pack=evil"); err == nil {
+		t.Fatal("un hash que empieza por guion debe rechazarse")
+	}
+}

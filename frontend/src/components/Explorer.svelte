@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { gitStatus, listDir, fileDelete, fileRename, fileCopy, fileMove } from '../lib/bridge'
+  import { gitStatus, gitBranch, listDir, fileDelete, fileRename, fileCopy, fileMove } from '../lib/bridge'
   import type { Change, FileNode } from '../lib/bridge'
   import { onRepoChanged } from '../lib/repoChanged'
   import { svg } from '../lib/icons'
@@ -8,6 +8,7 @@
   type Row = { node: FileNode; depth: number }
 
   let changes = $state<Change[]>([])
+  let branch = $state('')
   let rootNodes = $state<FileNode[]>([])
   let children = $state<Record<string, FileNode[]>>({})
   let expanded = $state<Set<string>>(new Set())
@@ -63,6 +64,7 @@
         queued = false
         error = ''
         changes = await gitStatus()
+        branch = await gitBranch()
         rootNodes = await listDir('')
         // Se recargan solo las carpetas abiertas, y se olvidan las que ya no
         // existen (borradas o renombradas desde fuera).
@@ -289,6 +291,13 @@
 </div>
 {#if error}<div class="error">{error}</div>{/if}
 
+{#if branch}
+  <div class="branch" title="Rama actual de git">
+    <span class="branch-ico">{@html svg('branch', 13)}</span>
+    <span class="branch-name">{branch}</span>
+  </div>
+{/if}
+
 <div class="section">CAMBIOS GIT ({changes.length})</div>
 <div class="changes">
   {#each changes as c}
@@ -437,6 +446,9 @@
   .refresh.spin :global(svg) { animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .section { display:flex; align-items:center; gap:8px; padding:12px 14px 6px; color:var(--muted); font-size:10px; letter-spacing:.08em; }
+  .branch { display:flex; align-items:center; gap:7px; margin:2px 12px 0; padding:5px 9px; border-radius:9px; background:color-mix(in srgb, var(--brand) 14%, transparent); border:1px solid color-mix(in srgb, var(--brand) 28%, transparent); color:var(--text); font-size:11px; }
+  .branch-ico { display:grid; place-items:center; color:var(--brand); flex-shrink:0; }
+  .branch-name { font-family:'Cascadia Mono', Consolas, monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .working { color:var(--accent); }
   .row { display:flex; align-items:center; gap:7px; padding:4px 12px; font-size:12px; }
   .changes .row { padding:4px 14px; }

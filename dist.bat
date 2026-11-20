@@ -93,7 +93,9 @@ if errorlevel 1 ( popd & echo [ERROR] Fallo el build de Svelte. & exit /b 1 )
 popd
 echo [OK] Frontend compilado.
 
-go build -ldflags="-H=windowsgui" -o "dist\payload\compass-go.exe" ./cmd/compass-web
+REM -tags production: el binario distribuido ignora FRONTEND_DEVSERVER_URL, de
+REM modo que siempre sirve el bundle embebido (dev.bat usa la otra rama).
+go build -tags production -ldflags="-H=windowsgui" -o "dist\payload\compass-go.exe" ./cmd/compass-web
 if errorlevel 1 (
     echo.
     echo =============================================
