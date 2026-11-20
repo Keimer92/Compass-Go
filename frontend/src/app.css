@@ -54,9 +54,9 @@
 .right-tabs button.active { background: color-mix(in srgb, var(--accent) 30%, var(--bg)); color: var(--text); }
 .right-body { flex: 1; overflow-y: auto; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; }
-.modal { width: 380px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--shadow-3); }
+.modal { width: 380px; max-height: 88vh; display: flex; flex-direction: column; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--shadow-3); }
 .modal.wide { width: 620px; max-width: 92vw; }
-.modal-head { display: flex; justify-content: space-between; color: var(--brand); font-weight: 700; margin-bottom: 14px; }
+.modal-head { display: flex; justify-content: space-between; flex-shrink: 0; color: var(--brand); font-weight: 700; margin-bottom: 14px; }
 .modal-head button { background: none; border: none; color: var(--muted); font-size: 18px; }
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 60vh; overflow-y: auto; }
 .theme-swatch { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 60%, var(--bg)); color: var(--text); font-size: 11px; }
@@ -71,13 +71,16 @@ body, .app, .sidebar, .topbar, .cards-area, .card, .right, .terminal-panel, .mod
   transition: background-color .18s ease, color .18s ease, border-color .18s ease;
 }
 .topbar-actions { display: flex; gap: 8px; }
-.sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 70vh; overflow-y: auto; }
-.sub-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 60%, var(--bg)); color: var(--text); text-align: left; }
+/* minmax(0,1fr) y no 1fr: con 1fr el track crece hasta el ancho del contenido
+   (min-width:auto) y las rutas largas de las CLIs empujaban la 2a columna
+   fuera del modal. Con minmax(0,…) el track no puede pasar de su fraccion. */
+.sub-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; overflow-y: auto; min-height: 0; }
+.sub-card { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 60%, var(--bg)); color: var(--text); text-align: left; }
 .sub-card:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg)); }
 .sub-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); flex-shrink: 0; }
 .sub-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sub-label { font-size: 12px; font-weight: 600; }
-.sub-desc { font-size: 10px; color: var(--muted); }
+.sub-desc { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .opt-row { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 14px; }
 .opt-row.column { flex-direction: column; align-items: stretch; gap: 6px; }
 .opt-input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 12px; }

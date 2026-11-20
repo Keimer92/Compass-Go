@@ -331,11 +331,11 @@ func psQuote(s string) string {
 
 // OpenTerminal abre una ConPTY con el script dado. El id lo aporta el
 // frontend (el de su pestana) para no perder la salida temprana.
-func (b *Bridge) OpenTerminal(id, script string, rows, cols int) string {
+func (b *Bridge) OpenTerminal(id, label, script string, rows, cols int) string {
 	b.mu.Lock()
 	dir := b.dir
 	b.mu.Unlock()
-	return b.term.OpenSession(id, script, dir, rows, cols)
+	return b.term.OpenSession(id, label, dir, script, dir, rows, cols)
 }
 
 // WriteTerminal envia bytes (base64) a la ConPTY.
@@ -353,10 +353,11 @@ func (b *Bridge) ResizeTerminal(id string, cols, rows int) { b.term.Resize(id, c
 // CloseTerminal mata la sesion de la pestana.
 func (b *Bridge) CloseTerminal(id string) { b.term.Close(id) }
 
-// CloseAllTerminals cierra las ConPTY abiertas. El frontend lo llama al
-// arrancar: tras recargar la pagina sus pestanas ya no existen, asi que las
-// sesiones anteriores solo dejarian procesos huerfanos.
-func (b *Bridge) CloseAllTerminals() int { return b.term.CloseAll() }
+// ListTerminals devuelve las ConPTY vivas con su salida reciente. El frontend
+// lo llama al montar para reconstruir las pestanas que ya existian: en modo
+// desarrollo el WebView se recarga en cada cambio de la UI y los procesos
+// deben seguir vivos.
+func (b *Bridge) ListTerminals() []TerminalInfo { return b.term.List() }
 
 // FocusWindow trae al frente la ventana principal de Compass. El frontend lo
 // llama tras lanzar una tarea para recuperar el foco si otra ventana (p. ej.

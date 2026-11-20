@@ -120,7 +120,7 @@ func TestOpenTerminalUsesClientID(t *testing.T) {
 
 	b := NewBridge(proj)
 	script := fmt.Sprintf("& '%s' --task version --path '%s'; exit $LASTEXITCODE", exe, proj)
-	id := b.OpenTerminal("tab-7", script, 30, 100)
+	id := b.OpenTerminal("tab-7", "Version", script, 30, 100)
 	if id != "tab-7" {
 		t.Fatalf("OpenTerminal devolvio %q, esperaba el id del cliente", id)
 	}

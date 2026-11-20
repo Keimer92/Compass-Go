@@ -643,6 +643,12 @@ dev.bat              # Vite + Compass Go en modo desarrollo
   y la ventana quedaría en blanco.
 - En modo dev se omite `workspace.TryForward`, para que una instancia instalada
   abierta no se quede el foco ni absorba la carpeta.
+- **Las ConPTY sobreviven a la recarga de la página**: al guardar un `.svelte`
+  Vite recarga el WebView y el frontend pierde su estado, pero
+  `TerminalService` conserva las sesiones y los últimos 256 KB de salida de
+  cada una (`terminal.go`). Al montar, `restoreTerminals` llama a
+  `ListTerminals()` y reconstruye las pestañas con el mismo id, repintando el
+  búfer, así que un build en curso no se interrumpe al editar la UI.
 - `dist.bat` compila con `-tags production`, así que el binario distribuido
   ignora `FRONTEND_DEVSERVER_URL` y siempre sirve el bundle embebido.
 

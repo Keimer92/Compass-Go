@@ -6,7 +6,7 @@
     getWorkspace, selectProject, removeProject, getMenu, runTask,
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
-    subcards, onWorkspaceChanged, pickProject as pickProjectDialog, closeAllTerminals,
+    subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -14,7 +14,7 @@
   import Explorer from './components/Explorer.svelte'
   import Commit from './components/Commit.svelte'
   import History from './components/History.svelte'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -47,9 +47,9 @@
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   let seq = 0
-  // Etiqueta por carga de pagina: si la UI se recarga (HMR en desarrollo), los
-  // ids de pestana vuelven a empezar en 1 y no deben casar con las sesiones
-  // ConPTY de la carga anterior.
+  // Etiqueta por carga de pagina: las sesiones restauradas conservan su id
+  // antiguo, y las nuevas se crean con este prefijo para no colisionar con
+  // ellas aunque `seq` se reinicie.
   const sessionTag = Math.random().toString(36).slice(2, 8)
   const terms = new Map<number, { term: Terminal; fit: FitAddon }>()
   const mounted = new Set<number>()
@@ -145,10 +145,6 @@
   const colors = ['#89b4fa', '#94e2d5', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7']
 
   onMount(() => {
-    // Cualquier ConPTY de una carga anterior (recarga por HMR o fallo del
-    // WebView) ya no tiene pestana que la lea: se cierra para no dejar
-    // procesos huerfanos ni mezclar su salida con la de las nuevas.
-    closeAllTerminals().catch(() => {})
     onPtyData((d) => {
       const tab = tabs.find((t) => t.ptyId === d.id)
       const entry = tab && terms.get(tab.key)
@@ -184,8 +180,48 @@
       refresh()
       notifyRepoChanged()
     })
-    refresh()
+    // Las ConPTY sobreviven a la recarga: se reconstruyen sus pestanas con la
+    // salida reciente. Se hace despues de refresh() porque hay que conocer el
+    // proyecto activo para decidir cual queda seleccionada.
+    refresh().then(restoreTerminals).catch(() => {})
   })
+
+  // restoreTerminals reengancha la UI a las sesiones que ya estaban vivas.
+  //
+  // En modo desarrollo (dev.bat) Vite recarga el WebView al guardar un
+  // .svelte; antes se cerraban todas las ConPTY al montar y los builds en
+  // curso morian en cada guardado. Ahora el backend las conserva y aqui se
+  // repintan: mismo id, misma salida, mismo proceso.
+  async function restoreTerminals() {
+    let list: TerminalInfo[] = []
+    try {
+      list = await listTerminals()
+    } catch {
+      return
+    }
+    if (!list.length) return
+
+    for (const s of list) {
+      if (tabs.some((t) => t.ptyId === s.id)) continue
+      const key = ++seq
+      // ptyId se fija DESPUES de pintar el bufer: si se fijara antes, un
+      // chunk que llegue mientras se monta el xterm se escribiria antes que
+      // la salida historica y el orden quedaria invertido.
+      tabs.push({ key, label: s.label || 'Terminal', ptyId: null, exited: s.exited, project: s.project })
+      mountTerm(key)
+      await attachTerm(key)
+      const entry = terms.get(key)
+      if (entry && s.output) entry.term.write(b64ToBytes(s.output))
+      if (s.exited) {
+        if (entry) entry.term.writeln('\r\n\x1b[2m─ proceso terminado ─\x1b[0m')
+      } else {
+        tabs.find((t) => t.key === key)!.ptyId = s.id
+      }
+    }
+
+    const first = tabs.find((t) => t.project === projectPath)
+    if (first) await activate(first.key)
+  }
 
   async function loadTheme() {
     try {
@@ -323,7 +359,7 @@
     const id = `tab-${sessionTag}-${tab.key}`
     tab.ptyId = id
     tab.exited = false
-    const opened = await openTerminal(id, script, entry.term.rows, entry.term.cols)
+    const opened = await openTerminal(id, tab.label, script, entry.term.rows, entry.term.cols)
     if (!opened) {
       tab.ptyId = null
       tab.exited = true
@@ -545,7 +581,7 @@
       <div class="modal-head"><span>{subMenu.title}</span><button onclick={() => (subMenu = null)}>×</button></div>
       <div class="sub-grid">
         {#each subMenu.items as sub}
-          <button class="sub-card" onclick={() => pickSubcard(sub)}>
+          <button class="sub-card" onclick={() => pickSubcard(sub)} title={`${sub.label} — ${sub.description}`}>
             <span class="sub-icon">{@html svg(sub.icon, 18)}</span>
             <span class="sub-text">
               <span class="sub-label">{sub.label}</span>

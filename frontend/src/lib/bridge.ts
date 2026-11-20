@@ -33,13 +33,14 @@ export interface PtyData { id: string; data: string }
 export const onPtyData = (cb: (d: PtyData) => void) => Events.On('pty:data', (e: any) => cb(e.data))
 export const onPtyExit = (cb: (d: any) => void) => Events.On('pty:exit', (e: any) => cb(e.data))
 export const onWorkspaceChanged = (cb: () => void) => Events.On('workspace:changed', () => cb())
-export const openTerminal = (id: string, script: string, rows: number, cols: number) =>
-  call<string>(M('OpenTerminal'), id, script, rows, cols)
+export const openTerminal = (id: string, label: string, script: string, rows: number, cols: number) =>
+  call<string>(M('OpenTerminal'), id, label, script, rows, cols)
 export const writeTerminal = (id: string, data: string) => call<void>(M('WriteTerminal'), id, data)
 export const resizeTerminal = (id: string, cols: number, rows: number) =>
   call<void>(M('ResizeTerminal'), id, cols, rows)
 export const closeTerminal = (id: string) => call<void>(M('CloseTerminal'), id)
-export const closeAllTerminals = () => call<number>(M('CloseAllTerminals'))
+export interface TerminalInfo { id: string; label: string; project: string; exited: boolean; output: string }
+export const listTerminals = () => call<TerminalInfo[]>(M('ListTerminals'))
 export const focusWindow = () => call<void>(M('FocusWindow'))
 
 export interface ThemeInfo {
