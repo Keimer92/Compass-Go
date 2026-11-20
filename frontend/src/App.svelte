@@ -13,7 +13,7 @@
   import { svg } from './lib/icons'
   import Card from './components/Card.svelte'
   import Explorer from './components/Explorer.svelte'
-  import Commit from './components/Commit.svelte'
+  import Git from './components/Git.svelte'
   import History from './components/History.svelte'
   import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
 
@@ -29,10 +29,9 @@
   let menu = $state<MenuItemInfo[]>([])
   let tabs = $state<Tab[]>([])
   let activeKey = $state<number | null>(null)
-  let rightTab = $state<'explorer' | 'commit' | 'log'>('explorer')
+  let rightTab = $state<'explorer' | 'git' | 'log'>('explorer')
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
-  let menuTab = $state<'DEV' | 'CFG'>('DEV')
   let lastError = $state('')
   let themes = $state<ThemeInfo[]>([])
   let theme = $state<ThemeInfo | null>(null)
@@ -69,6 +68,10 @@
   // siguen vivas en `tabs` (y sus xterm montados) pero ocultas.
   let projectPath = $derived(workspace.projects[workspace.active]?.path ?? '')
   let visibleTabs = $derived(tabs.filter((t) => t.project === projectPath))
+  // Cards de Config (Terminal, Entorno) que antes vivian en la pestaña CFG y
+  // ahora se lanzan desde la sección "Herramientas" del modal de Opciones.
+  // Git también es CFG, pero ya vive en el panel derecho: se excluye aquí.
+  let cfgTools = $derived(menu.filter((m) => m.section === 'CFG' && m.icon !== 'git'))
 
   // applyTheme solo pinta (CSS vars + terminales); no toca el tema guardado.
   // Asi se puede llamar en hover para previsualizar sin persistir nada.
@@ -136,6 +139,14 @@
   async function saveSettings() {
     await setSettings({ ...settings })
     optionsOpen = false
+  }
+
+  // Lanza una card de Config desde el modal de Opciones: se cierra Opciones
+  // primero para que no se solapen los dos modales, y se reutiliza openTask
+  // (que ya decide entre modal de subcards y pestaña ConPTY).
+  async function launchCfgTool(item: MenuItemInfo) {
+    optionsOpen = false
+    await openTask(item)
   }
 
   const cardAccent = (item: MenuItemInfo) => shownTheme()?.cards?.[item.color] ?? shownTheme()?.accent ?? '#cba6f7'
@@ -553,10 +564,7 @@
   <main class="main">
     {#if lastError}<div class="debug-line">{lastError}</div>{/if}
     <header class="topbar">
-      <div class="tabs">
-        <button class:active={menuTab === 'DEV'} onclick={() => (menuTab = 'DEV')}>Inicio</button>
-        <button class:active={menuTab === 'CFG'} onclick={() => (menuTab = 'CFG')}>Config</button>
-      </div>
+      <span class="topbar-title">Compass Go</span>
       <div class="topbar-actions">
         <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>◈ {theme?.name ?? 'Tema'} ▾</button>
         <button class="theme-btn" onclick={openOptions}>⚙ Opciones</button>
@@ -566,7 +574,7 @@
     <section class="content">
       <div class="cards-area">
         <div class="cards">
-          {#each menu.filter((m) => (menuTab === 'CFG' ? m.section === 'CFG' : m.section !== 'CFG')) as item}
+          {#each menu.filter((m) => m.section !== 'CFG') as item}
             <Card {item} accent={cardAccent(item)} onOpen={() => openTask(item)} />
           {/each}
         </div>
@@ -614,7 +622,7 @@
       <aside class="right">
         <div class="right-tabs">
           <button class:active={rightTab === 'explorer'} onclick={() => (rightTab = 'explorer')}>Explorador</button>
-          <button class:active={rightTab === 'commit'} onclick={() => (rightTab = 'commit')}>Commit</button>
+          <button class:active={rightTab === 'git'} onclick={() => (rightTab = 'git')}>Git</button>
           <button class:active={rightTab === 'log'} onclick={() => (rightTab = 'log')}>Historial</button>
         </div>
         <div class="right-body">
@@ -622,9 +630,11 @@
             {#key workspace.active}
               <Explorer />
             {/key}
-          {:else if rightTab === 'commit'}
-            <Commit projectPath={projectPath} />
-          {:else}
+          {:else if rightTab === 'git'}
+            {#key workspace.active}
+              <Git projectPath={projectPath} />
+            {/key}
+          {:else if rightTab === 'log'}
             {#key workspace.active}
               <History />
             {/key}
@@ -723,6 +733,22 @@
   <div class="modal-backdrop" onclick={() => (optionsOpen = false)} role="presentation">
     <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Opciones">
       <div class="modal-head"><span>Opciones</span><button onclick={() => (optionsOpen = false)}>×</button></div>
+      {#if cfgTools.length}
+        <div class="opt-section">Herramientas</div>
+        <div class="opt-tools">
+          {#each cfgTools as tool}
+            <button class="opt-tool" onclick={() => launchCfgTool(tool)} title={tool.description}>
+              <span class="opt-tool-ico">{@html svg(tool.icon, 17)}</span>
+              <span class="opt-tool-text">
+                <span class="opt-tool-label">{tool.label}</span>
+                <span class="opt-tool-desc">{tool.description}</span>
+              </span>
+              <span class="opt-tool-arrow">›</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+      <div class="opt-section">General</div>
       <label class="opt-row">
         <input type="checkbox" bind:checked={settings.open_output_dir} />
         <span>Abrir la carpeta de salida al terminar un build</span>

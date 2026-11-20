@@ -97,6 +97,25 @@ export interface CommitEntry { hash: string; short: string; author: string; date
 export const gitLog = () => call<CommitEntry[]>(M('GitLog'))
 export const gitBranch = () => call<string>(M('GitBranch'))
 
+export interface GitInfo {
+  isRepo: boolean
+  hasCommits: boolean
+  branch: string
+  upstream: string
+  remoteUrl: string
+  webUrl: string
+  isGitHub: boolean
+  ahead: number
+  behind: number
+  changes: number
+}
+export const gitInfo = () => call<GitInfo>(M('GitInfo'))
+export const gitPush = () => call<string>(M('GitPush'))
+export const gitPull = () => call<string>(M('GitPull'))
+export const gitSetRemote = (url: string) => call<string>(M('GitSetRemote'), url)
+export const gitInitRepo = () => call<string>(M('GitInitRepo'))
+export const openExternal = (url: string) => call<void>(M('OpenExternal'), url)
+
 export interface CommitFile { path: string; status: string; added: number; removed: number; binary: boolean }
 export interface CommitDetail {
   hash: string

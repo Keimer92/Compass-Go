@@ -1,7 +1,8 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Compass Go - desarrollo
+REM El titulo se pone MAS ABAJO, despues de dev-reset.ps1: asi el script puede
+REM cerrar la terminal del dev.bat anterior sin cerrarse a si mismo.
 
 echo.
 echo =============================================
@@ -22,6 +23,12 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+REM Si ya habia una sesion de desarrollo, se cierra (Compass --dev + su
+REM terminal) para que arranque una limpia. Vite se deja vivo a proposito.
+echo [INFO] Cerrando sesion de desarrollo anterior si habia una...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-reset.ps1"
+title Compass Go - desarrollo
 
 REM Si ya hay un Vite vivo de una ejecucion anterior se reutiliza: con
 REM strictPort un segundo `npm run dev` abortaria y su ventana se cerraria
@@ -68,11 +75,10 @@ goto wait
 echo.
 echo [OK] Vite listo en http://127.0.0.1:5173
 echo [INFO] Compilando y abriendo Compass Go...
-echo        UI (Svelte/CSS/TS): HMR, se recarga sola.
-echo        Go (backend): se recompila y reinicia al guardar.
-echo        Al reiniciar por un cambio de Go se pierden las pestanas ConPTY.
+echo        Los cambios en la UI se recargan solos; los de Go requieren
+echo        cerrar esta ventana y volver a ejecutar dev.bat.
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-watch.ps1" %*
+go run ./cmd/compass-web --dev %*
 
 echo.
 echo [INFO] Compass Go cerrado. La ventana de Vite sigue abierta: cierrala a mano.

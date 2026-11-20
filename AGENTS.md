@@ -41,7 +41,7 @@ Compass Go/
 ├─ frontend/                  # proyecto Svelte 5 + Vite + TS (fuente de la UI)
 │  └─ src/
 │     ├─ App.svelte           # layout: sidebar, topbar, cards, pestañas ConPTY, paneles
-│     ├─ components/          # Card, Explorer (git status + árbol), Commit
+│     ├─ components/          # Card, Explorer (git status + árbol), Git (panel VSCode), History
 │     └─ lib/bridge.ts        # Call.ByName + suscripción a eventos pty:*/workspace:changed
 ├─ internal/
 │  ├─ webui/                  # puente Go↔JS: Bridge, terminal, menú, temas, git
@@ -65,8 +65,8 @@ Compass Go/
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload/ + CompassGo-Setup.exe); desechable
-├─ dev.bat                    # Vite (HMR de UI) + recarga de Go vía dev-watch.ps1
-├─ dev-watch.ps1              # vigila los .go y recompila/reinicia Compass
+├─ dev.bat                    # Vite (HMR de UI) + go run --dev (solo frontend)
+├─ dev-reset.ps1              # cierra la sesión de desarrollo anterior al relanzar dev.bat
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
@@ -288,6 +288,35 @@ proyecto concreto:
   de forma coherente a Backup, Restaurar/Validar y Abrir respaldos. Los scripts
   `.ps1` siguen materializándose en `%LOCALAPPDATA%\compass\env-backup` (área
   de trabajo, no destino). No se migran backups antiguos automáticamente.
+
+## Panel Git lateral (tipo VSCode)
+
+- **Git vive en el panel derecho, no en una card**: las acciones de Git se
+  movieron del modal de subcards al panel derecho. La pestaña "Git" reemplaza
+  a la antigua pestaña "Commit": el generador de commit con IA queda como una
+  sección plegable (`<details>`) dentro del componente
+  `frontend/src/components/Git.svelte`, para que todas las acciones git estén
+  juntas. Las pestañas del panel derecho son ahora **Explorador / Git /
+  Historial**. Ya no hay pestañas DEV/CFG en la topbar: las cards usan todo el
+  ancho y el modal "Opciones" incluye una sección "Herramientas" con botones
+  que lanzan las antiguas cards de Config (Terminal, Entorno).
+- **API del puente** (`internal/webui/git.go`): `Bridge.GitInfo()` devuelve un
+  DTO con `isRepo`, `hasCommits`, `branch`, `upstream`, `remoteUrl`, `webUrl`,
+  `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede
+  leer queda vacío. `Bridge.GitPush()` hace `git push` con upstream o
+  `git push -u origin HEAD` la primera vez; `Bridge.GitPull()` hace
+  `git pull --rebase` (el frontend compone "Sincronizar" = pull + push);
+  `Bridge.GitSetRemote(url)` agrega/actualiza `origin`; `Bridge.GitInitRepo()`
+  inicializa, fija rama `main` y hace el primer commit; `Bridge.OpenExternal(url)`
+  abre el enlace del repo en el navegador del sistema. `GitPush`/`GitPull` usan
+  `runGitTimeout` (90 s) para no congelar la promesa Wails si git espera
+  credenciales. `@{u}` es revisión fija de git, no texto del usuario.
+- **Seguridad**: `GitSetRemote` valida la URL (no empieza por guion, sin CRLF,
+  formato https/git@/ssh) antes de pasarla a git; `OpenExternal` solo acepta
+  http/https. Los helpers `gitHost`, `gitWebURL`, `gitLooksLikeURL` y
+  `gitHostIsGitHub` viven en `internal/webui/git.go` (duplicados a propósito de
+  los de consola en `internal/tasks/git.go`, que no están expuestos a la GUI).
+  El panel se refresca con `onRepoChanged`/`notifyRepoChanged` (`repoChanged.ts`).
 
 ## Core kits (motores canónicos)
 
@@ -651,25 +680,25 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 ### Desarrollo con HMR (`dev.bat`)
 
 `dev.bat` levanta Vite en su propia ventana (puerto 5173, `strictPort`) y luego
-llama a `dev-watch.ps1`, que compila `build\dev\compass-go.exe` y lo arranca con
-`--dev`. El flag `--dev` exporta `FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`;
-con ese valor Wails v3 sirve la UI desde Vite en lugar del bundle embebido (rama
-`!production` de `internal/assetserver`), de modo que los cambios de
-Svelte/CSS/TS se aplican en caliente.
+`go run ./cmd/compass-web --dev`. El flag `--dev` exporta
+`FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`; con ese valor Wails v3 sirve la
+UI desde Vite en lugar del bundle embebido (rama `!production` de
+`internal/assetserver`), de modo que los cambios de Svelte/CSS/TS se aplican en
+caliente. **Solo hay HMR del frontend**: los cambios de Go requieren cerrar y
+volver a ejecutar `dev.bat`.
 
 ```bat
-dev.bat              # Vite (HMR de UI) + Compass Go con recarga de Go
+dev.bat              # Vite (HMR de UI) + go run --dev
 ```
 
-- **Recarga de Go** (`dev-watch.ps1`): vigila cada 600 ms los `*.go`, `go.mod` y
-  `go.sum` (excluyendo `frontend/`, `build/`, `dist/`, `corekit/`,
-  `node_modules/` y `.git/`). Al detectar un cambio mata la instancia, ejecuta
-  `go build -o build\dev\compass-go.exe ./cmd/compass-web` y la relanza. Si la
-  compilación falla, muestra el error y espera al siguiente cambio en vez de
-  morir. Al cerrar Compass a mano el script termina y `dev.bat` sale.
-- **No es hot reload**: Go está compilado, así que el proceso se reinicia. Eso
-  implica que **las ConPTY abiertas mueren** en cada cambio de Go (a diferencia
-  de una recarga de página, que sí las conserva).
+- **Reinicio limpio** (`dev-reset.ps1`): antes de arrancar, `dev.bat` cierra la
+  sesión de desarrollo anterior para que no se acumulen ventanas/Compass. El
+  script mata el proceso `compass-web.exe`/`compass-go.exe` cuyo `--dev` está en
+  su línea de comandos (la versión instalada no lleva `--dev` y no se toca) y
+  cierra la terminal con título `Compass Go - desarrollo`, excluyéndose a sí
+  mismo. Vite (`Compass Go - Vite`) se deja vivo a propósito para no perder el
+  HMR. El título se pone en el batch **después** de llamar al reset, por eso el
+  script puede distinguir la terminal vieja de la nueva.
 - `frontend/vite.config.ts` fija `server.hmr` a `ws://127.0.0.1:5173`: la
   página se sirve bajo el esquema `wails://wails:5173`, así que el cliente HMR
   no puede deducir el host del servidor y hay que indicárselo.
@@ -677,6 +706,17 @@ dev.bat              # Vite (HMR de UI) + Compass Go con recarga de Go
   solo en `::1` (IPv6), mientras que el proxy de Wails y el sondeo de `dev.bat`
   van por IPv4. Sin esto el puerto parece cerrado, el batch se queda esperando
   y la ventana quedaría en blanco.
+- **Los `.bat` deben estar en CRLF en disco** (`core.autocrlf=true`). Si se
+  editan con herramientas que escriben solo LF, `cmd.exe` no encuentra los
+  labels (`call :probe` / `goto :wait`) y sale `The system cannot find the batch
+  label specified - probe`. Para convertir: leer el archivo, reemplazar
+  `\r?\n` por `\r\n` y reescribir.
+- **`assets/icon/CompassGo.ico` es obligatorio**: `assets/embed.go` lo embebe
+  con `//go:embed icon/CompassGo.ico` y `go-winres.json` / `dist.bat` apuntan al
+  mismo nombre (sin espacios). Renombrarlo (p. ej. a `Compass Go.ico`) rompe
+  `go run`/`go build` con `pattern icon/CompassGo.ico: no matching files found`
+  y `dev.bat` nunca abre la ventana. Si se regenera el icono, se conserva esse
+  nombre exacto.
 - En modo dev se omite `workspace.TryForward`, para que una instancia instalada
   abierta no se quede el foco ni absorba la carpeta.
 - **Las ConPTY sobreviven a la recarga de la página**: al guardar un `.svelte`

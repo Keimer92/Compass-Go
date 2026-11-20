@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"compass/internal/settings"
@@ -26,6 +28,20 @@ type Change struct {
 	Code   string `json:"code"`
 	Path   string `json:"path"`
 	Status string `json:"status"`
+}
+
+// GitInfo es el estado completo del repositorio que pinta el panel Git lateral.
+type GitInfo struct {
+	IsRepo     bool   `json:"isRepo"`
+	HasCommits bool   `json:"hasCommits"`
+	Branch     string `json:"branch"`    // "detached@<short>" si HEAD suelto
+	Upstream   string `json:"upstream"`  // "origin/main"; "" si no hay
+	RemoteURL  string `json:"remoteUrl"` // URL cruda de origin
+	WebURL     string `json:"webUrl"`    // https://github.com/user/repo
+	IsGitHub   bool   `json:"isGitHub"`
+	Ahead      int    `json:"ahead"`
+	Behind     int    `json:"behind"`
+	Changes    int    `json:"changes"` // len(GitStatus())
 }
 
 // FileNode es un nodo del arbol de archivos del explorador.
@@ -49,6 +65,21 @@ func runGit(root string, args ...string) (string, error) {
 	windialog.NoWindow(cmd)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
+// runGitTimeout es runGit con plazo. Se usa solo para push/pull: un prompt de
+// credenciales o SSH colgado no debe congelar para siempre la promesa Wails.
+func runGitTimeout(root string, d time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	windialog.NoWindow(cmd)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return strings.TrimSpace(string(out)), fmt.Errorf("git %s: tiempo de espera agotado", args[0])
+	}
 	return strings.TrimSpace(string(out)), err
 }
 
@@ -510,6 +541,12 @@ func (b *Bridge) GitBranch() string {
 	if dir == "" {
 		return ""
 	}
+	return branchName(dir)
+}
+
+// branchName devuelve la rama de dir, con "detached@<short>" para HEAD suelto
+// y "" si no hay repositorio. Lo comparten GitBranch y GitInfo.
+func branchName(dir string) string {
 	out, err := runGit(dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return ""
@@ -649,4 +686,274 @@ func (b *Bridge) CommitDetail(hash string) (CommitDetail, error) {
 		}
 	}
 	return detail, nil
+}
+
+// ── Panel Git lateral: estado y acciones ────────────────────────────────────
+
+// GitInfo devuelve el estado completo del repo del proyecto activo para pintar
+// el panel Git. Nunca falla: los campos que no se pueden leer quedan vacios.
+func (b *Bridge) GitInfo() GitInfo {
+	info := GitInfo{}
+	dir := b.projectDir()
+	if dir == "" {
+		return info
+	}
+	if out, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err == nil && strings.TrimSpace(out) == "true" {
+		info.IsRepo = true
+	}
+	if !info.IsRepo {
+		return info
+	}
+	if _, err := runGit(dir, "rev-parse", "--verify", "HEAD"); err == nil {
+		info.HasCommits = true
+	}
+	info.Branch = branchName(dir)
+	if remote, err := runGit(dir, "remote", "get-url", "origin"); err == nil {
+		info.RemoteURL = remote
+	}
+	info.WebURL = gitWebURL(info.RemoteURL)
+	info.IsGitHub = gitHostIsGitHub(gitHost(info.RemoteURL))
+	// @{u} es una revision fija de git, no texto del usuario.
+	if out, err := runGit(dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); err == nil {
+		info.Upstream = strings.TrimSpace(out)
+	}
+	if info.Upstream != "" {
+		if out, err := runGit(dir, "rev-list", "--left-right", "--count", "HEAD...@{u}"); err == nil {
+			info.Ahead, info.Behind = parseAheadBehind(out)
+		}
+	}
+	info.Changes = len(b.GitStatus())
+	return info
+}
+
+// GitPush sube la rama actual. Con upstream, hace `git push` (como VSCode); sin
+// el, fija el upstream con `git push -u origin HEAD`. No hace nada sin remoto.
+func (b *Bridge) GitPush() (string, error) {
+	dir := b.projectDir()
+	if dir == "" {
+		return "", errors.New("no hay proyecto activo")
+	}
+	info := b.GitInfo()
+	if !info.IsRepo {
+		return "", errors.New("no es un repositorio git")
+	}
+	if !info.HasCommits {
+		return "", errors.New("el repo no tiene commits")
+	}
+	if info.RemoteURL == "" {
+		return "", errors.New("sin remoto 'origin': configúralo antes de hacer push")
+	}
+	if strings.HasPrefix(info.Branch, "detached") {
+		return "", errors.New("HEAD desacoplado: no se puede hacer push")
+	}
+
+	var out string
+	var err error
+	if info.Upstream == "" {
+		out, err = runGitTimeout(dir, 90*time.Second, "push", "-u", "origin", "HEAD")
+	} else {
+		out, err = runGitTimeout(dir, 90*time.Second, "push")
+	}
+	if err != nil {
+		return "", fmt.Errorf("git push: %s", out)
+	}
+	return out, nil
+}
+
+// GitPull trae cambios del upstream con rebase. Lo compone el frontend con
+// GitPush para la accion "Sincronizar".
+func (b *Bridge) GitPull() (string, error) {
+	dir := b.projectDir()
+	if dir == "" {
+		return "", errors.New("no hay proyecto activo")
+	}
+	info := b.GitInfo()
+	if !info.IsRepo {
+		return "", errors.New("no es un repositorio git")
+	}
+	if info.Upstream == "" {
+		return "", errors.New("la rama no tiene upstream: no se puede sincronizar")
+	}
+	out, err := runGitTimeout(dir, 90*time.Second, "pull", "--rebase")
+	if err != nil {
+		return "", fmt.Errorf("git pull: %s", out)
+	}
+	return out, nil
+}
+
+// GitSetRemote agrega o actualiza el remoto 'origin'. Valida la URL antes de
+// pasarla a git: sin opciones que empiecen por '-' ni saltos de linea.
+func (b *Bridge) GitSetRemote(remoteURL string) (string, error) {
+	dir := b.projectDir()
+	if dir == "" {
+		return "", errors.New("no hay proyecto activo")
+	}
+	if out, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
+		return "", errors.New("no es un repositorio git: inicialízalo primero")
+	}
+	remoteURL = strings.TrimSpace(remoteURL)
+	if remoteURL == "" {
+		return "", errors.New("la URL del remoto está vacía")
+	}
+	if strings.HasPrefix(remoteURL, "-") {
+		return "", errors.New("URL no válida: no puede empezar por guion")
+	}
+	if strings.ContainsAny(remoteURL, "\r\n") {
+		return "", errors.New("URL no válida: contiene saltos de línea")
+	}
+	if !gitLooksLikeURL(remoteURL) {
+		return "", errors.New("usa https://... o git@github.com:usuario/repo.git")
+	}
+
+	existing := ""
+	if remote, err := runGit(dir, "remote", "get-url", "origin"); err == nil {
+		existing = remote
+	}
+	args := []string{"remote", "add", "origin", remoteURL}
+	verb := "agregado"
+	if strings.TrimSpace(existing) != "" {
+		args = []string{"remote", "set-url", "origin", remoteURL}
+		verb = "actualizado"
+	}
+	out, err := runGit(dir, args...)
+	if err != nil {
+		return "", fmt.Errorf("git remote: %s", out)
+	}
+	return "Remoto 'origin' " + verb + ": " + remoteURL, nil
+}
+
+// GitInitRepo inicializa el repo, crea la rama main y hace el primer commit.
+// Idempotente: si ya hay commits no toca nada.
+func (b *Bridge) GitInitRepo() (string, error) {
+	dir := b.projectDir()
+	if dir == "" {
+		return "", errors.New("no hay proyecto activo")
+	}
+	isRepo := false
+	if out, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err == nil && strings.TrimSpace(out) == "true" {
+		isRepo = true
+	}
+	hasCommits := false
+	if isRepo {
+		if _, err := runGit(dir, "rev-parse", "--verify", "HEAD"); err == nil {
+			hasCommits = true
+		}
+	}
+	if isRepo && hasCommits {
+		return "El repositorio ya tiene commits; no se hizo ningún cambio.", nil
+	}
+	if !isRepo {
+		if out, err := runGit(dir, "init"); err != nil {
+			return "", fmt.Errorf("git init: %s", out)
+		}
+	}
+	// Fijar la rama main. Sin commits, HEAD es una rama "unborn" y la forma
+	// fiable de nombrarla es symbolic-ref; con commits, branch -M renombra.
+	if !hasCommits {
+		_, _ = runGit(dir, "symbolic-ref", "HEAD", "refs/heads/main")
+	} else if b := branchName(dir); b != "main" && b != "" && !strings.HasPrefix(b, "detached") {
+		_, _ = runGit(dir, "branch", "-M", "main")
+	}
+	if out, err := runGit(dir, "add", "-A"); err != nil {
+		return "", fmt.Errorf("git add: %s", out)
+	}
+	out, err := runGit(dir, "commit", "-m", "First Commit")
+	if err != nil {
+		low := strings.ToLower(out)
+		if strings.Contains(low, "nothing to commit") || strings.Contains(low, "no changes") {
+			return "No había cambios que commitear.", nil
+		}
+		if strings.Contains(low, "who you are") || strings.Contains(low, "user.email") || strings.Contains(low, "user.name") {
+			return "", errors.New("configura tu identidad de git: git config --global user.name \"Tu Nombre\" y user.email \"tu@email.com\"")
+		}
+		return "", fmt.Errorf("git commit: %s", out)
+	}
+	return out, nil
+}
+
+// OpenExternal abre un enlace en el navegador del sistema. Solo http/https.
+func (b *Bridge) OpenExternal(rawURL string) error {
+	u := strings.TrimSpace(rawURL)
+	if u == "" || strings.ContainsAny(u, " \t\r\n") {
+		return errors.New("URL no válida")
+	}
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		return errors.New("solo se pueden abrir URLs http/https")
+	}
+	if _, err := url.Parse(u); err != nil {
+		return err
+	}
+	if app == nil {
+		return nil
+	}
+	return app.Browser.OpenURL(u)
+}
+
+// ── helpers de URL de remoto ────────────────────────────────────────────────
+
+func gitLooksLikeURL(s string) bool {
+	u := strings.TrimSpace(s)
+	ok := strings.HasPrefix(u, "https://") ||
+		strings.HasPrefix(u, "http://") ||
+		strings.HasPrefix(u, "git@") ||
+		strings.HasPrefix(u, "ssh://")
+	return ok && (strings.Contains(u, "/") || strings.Contains(u, ":"))
+}
+
+// gitHost extrae el host de un remoto git (git@host:path o scheme://host/path).
+func gitHost(remote string) string {
+	r := strings.TrimSpace(remote)
+	if r == "" {
+		return ""
+	}
+	if rest := strings.TrimPrefix(r, "git@"); rest != r {
+		if host, _, ok := strings.Cut(rest, ":"); ok {
+			return strings.ToLower(host)
+		}
+	}
+	if u, err := url.Parse(r); err == nil && u.Hostname() != "" {
+		return strings.ToLower(u.Hostname())
+	}
+	return ""
+}
+
+// gitWebURL convierte un remoto git en su URL web (sin el sufijo .git).
+func gitWebURL(remote string) string {
+	r := strings.TrimSpace(remote)
+	if r == "" {
+		return ""
+	}
+	if rest := strings.TrimPrefix(r, "git@"); rest != r {
+		if host, path, ok := strings.Cut(rest, ":"); ok {
+			return fmt.Sprintf("https://%s/%s", host, strings.TrimSuffix(path, ".git"))
+		}
+	}
+	if strings.HasPrefix(r, "http://") || strings.HasPrefix(r, "https://") {
+		return strings.TrimSuffix(r, ".git")
+	}
+	if strings.HasPrefix(r, "ssh://") {
+		if u, err := url.Parse(r); err == nil && u.Hostname() != "" {
+			return fmt.Sprintf("https://%s%s", u.Hostname(), strings.TrimSuffix(u.Path, ".git"))
+		}
+	}
+	return ""
+}
+
+func gitHostIsGitHub(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	return h == "github.com" || h == "www.github.com"
+}
+
+// parseAheadBehind lee "1\t2" de rev-list --left-right --count (left=HEAD).
+func parseAheadBehind(out string) (int, int) {
+	fields := strings.Fields(out)
+	if len(fields) < 2 {
+		return 0, 0
+	}
+	ahead, errA := strconv.Atoi(fields[0])
+	behind, errB := strconv.Atoi(fields[1])
+	if errA != nil || errB != nil {
+		return 0, 0
+	}
+	return ahead, behind
 }

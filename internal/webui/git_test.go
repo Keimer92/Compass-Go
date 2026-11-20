@@ -215,3 +215,157 @@ func TestCommitDetailRejectsBadHash(t *testing.T) {
 		t.Fatal("un hash que empieza por guion debe rechazarse")
 	}
 }
+
+func TestGitInfoNoRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git no esta en el PATH")
+	}
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := t.TempDir()
+	t.Chdir(dir)
+	b := NewBridge(dir)
+	info := b.GitInfo()
+	if info.IsRepo || info.HasCommits || info.Changes != 0 {
+		t.Fatalf("info inesperada sin repo: %+v", info)
+	}
+}
+
+func TestGitInfoWithCommitNoRemote(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	info := b.GitInfo()
+	if !info.IsRepo || !info.HasCommits {
+		t.Fatalf("deberia ser repo con commits: %+v", info)
+	}
+	if info.Branch == "" {
+		t.Fatalf("rama vacia: %+v", info)
+	}
+	if info.RemoteURL != "" || info.WebURL != "" || info.Upstream != "" || info.IsGitHub {
+		t.Fatalf("sin remoto deberia estar todo vacio: %+v", info)
+	}
+	if info.Ahead != 0 || info.Behind != 0 {
+		t.Fatalf("sin upstream ahead/behind deberian ser 0: %+v", info)
+	}
+}
+
+func TestGitInfoGitHubRemote(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+
+	for _, tc := range []struct {
+		remote   string
+		web      string
+		isGitHub bool
+	}{
+		{"git@github.com:user/repo.git", "https://github.com/user/repo", true},
+		{"https://github.com/u/r.git", "https://github.com/u/r", true},
+		{"https://gitlab.com/u/r.git", "https://gitlab.com/u/r", false},
+	} {
+		// remove puede fallar si aun no existe origin (1a iteracion): se tolera.
+		rm := exec.Command("git", "remote", "remove", "origin")
+		rm.Dir = dir
+		_ = rm.Run()
+		gitCommit(t, dir, "remote", "add", "origin", tc.remote)
+		info := b.GitInfo()
+		if info.WebURL != tc.web {
+			t.Errorf("remote %q: WebURL=%q, esperaba %q", tc.remote, info.WebURL, tc.web)
+		}
+		if info.IsGitHub != tc.isGitHub {
+			t.Errorf("remote %q: IsGitHub=%v, esperaba %v", tc.remote, info.IsGitHub, tc.isGitHub)
+		}
+	}
+}
+
+func TestParseAheadBehind(t *testing.T) {
+	ahead, behind := parseAheadBehind("1\t2")
+	if ahead != 1 || behind != 2 {
+		t.Fatalf("parseo ahead/behind: %d/%d", ahead, behind)
+	}
+	ahead, behind = parseAheadBehind("basura")
+	if ahead != 0 || behind != 0 {
+		t.Fatalf("entrada invalida deberia dar 0/0: %d/%d", ahead, behind)
+	}
+}
+
+func TestGitPushNoRemote(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	_, err := b.GitPush()
+	if err == nil || !strings.Contains(err.Error(), "remoto") {
+		t.Fatalf("sin remoto deberia fallar menciona 'remoto': %v", err)
+	}
+}
+
+func TestGitSetRemoteRejectsBadURL(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+
+	for _, bad := range []string{"", "--upload-pack=evil", "https://x\nmal", "ftp://ejemplo.com/repo.git"} {
+		if _, err := b.GitSetRemote(bad); err == nil {
+			t.Errorf("URL invalida %q deberia rechazarse", bad)
+		}
+	}
+
+	const good = "https://github.com/user/repo.git"
+	if _, err := b.GitSetRemote(good); err != nil {
+		t.Fatalf("URL valida rechazada: %v", err)
+	}
+	if got, _ := runGit(dir, "remote", "get-url", "origin"); got != good {
+		t.Fatalf("remoto no persistio: %q", got)
+	}
+	const good2 = "https://github.com/user/otro.git"
+	if _, err := b.GitSetRemote(good2); err != nil {
+		t.Fatalf("actualizacion de URL fallo: %v", err)
+	}
+	if got, _ := runGit(dir, "remote", "get-url", "origin"); got != good2 {
+		t.Fatalf("remoto no se actualizo: %q", got)
+	}
+}
+
+func TestGitInitRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git no esta en el PATH")
+	}
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module demo\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := NewBridge(dir)
+	if _, err := b.GitInitRepo(); err != nil {
+		t.Fatalf("GitInitRepo fallo: %v", err)
+	}
+	info := b.GitInfo()
+	if !info.IsRepo || !info.HasCommits {
+		t.Fatalf("deberia tener repo con commits: %+v", info)
+	}
+	if info.Branch != "main" {
+		t.Fatalf("rama deberia ser main, es %q", info.Branch)
+	}
+	// Segunda llamada: idempotente, sin error.
+	if _, err := b.GitInitRepo(); err != nil {
+		t.Fatalf("GitInitRepo 2a llamada fallo: %v", err)
+	}
+}
+
+func TestOpenExternalRejectsNonHTTP(t *testing.T) {
+	b := &Bridge{}
+	for _, bad := range []string{"file:///C:/x", "javascript:alert(1)", "", "https://x y"} {
+		if err := b.OpenExternal(bad); err == nil {
+			t.Errorf("OpenExternal deberia rechazar %q", bad)
+		}
+	}
+}
