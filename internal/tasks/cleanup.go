@@ -86,10 +86,12 @@ func dirSize(path string) uint64 {
 	return total
 }
 
-func purge(label, path string) uint64 {
+// purgeWithError borra un destino y devuelve los bytes liberados. Es la
+// implementacion canonica del borrado: purge (CLI) y PurgeCleanupTargets (GUI)
+// la comparten para no duplicar logica.
+func purgeWithError(label, path string) (uint64, error) {
 	if !dirExists(path) {
-		fmt.Printf("  [--] No hay %s\n", label)
-		return 0
+		return 0, fmt.Errorf("no hay %s", label)
 	}
 	size := dirSize(path)
 	var err error
@@ -99,11 +101,23 @@ func purge(label, path string) uint64 {
 		err = os.Remove(path)
 	}
 	if err != nil {
-		fmt.Printf("  [WARN] No se pudo borrar %s (%v)\n", label, err)
+		return 0, fmt.Errorf("no se pudo borrar %s: %w", label, err)
+	}
+	return size, nil
+}
+
+func purge(label, path string) uint64 {
+	freed, err := purgeWithError(label, path)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "no se pudo borrar") {
+			fmt.Printf("  [WARN] %v\n", err)
+		} else {
+			fmt.Printf("  [--] %v\n", err)
+		}
 		return 0
 	}
-	fmt.Printf("  [OK] %s (%s)\n", label, formatSize(size))
-	return size
+	fmt.Printf("  [OK] %s (%s)\n", label, formatSize(freed))
+	return freed
 }
 
 func findDirsNamed(root, name string) []string {
@@ -242,6 +256,30 @@ type candidate struct {
 	deps  bool
 }
 
+// CleanupTarget es un destino de limpieza existente, listo para la GUI.
+type CleanupTarget struct {
+	Label string `json:"label"`
+	Path  string `json:"path"`
+	Size  string `json:"size"`
+	Deps  bool   `json:"deps"`
+}
+
+// CleanupPurgeItem es el resultado de borrar un destino concreto.
+type CleanupPurgeItem struct {
+	Label string `json:"label"`
+	Path  string `json:"path"`
+	Freed uint64 `json:"freed"`
+	Error string `json:"error"`
+}
+
+// CleanupPurgeResult es el resumen de una limpieza selectiva desde la GUI.
+type CleanupPurgeResult struct {
+	Freed      uint64             `json:"freed"`
+	FreedLabel string             `json:"freed_label"`
+	Items      []CleanupPurgeItem `json:"items"`
+	Errors     []string           `json:"errors"`
+}
+
 func selectableTargets(ctx *project.ProjectContext) []candidate {
 	root := ctx.ScriptDir
 	c := func(label, path string, deps bool) candidate {
@@ -307,6 +345,93 @@ func selectableTargets(ctx *project.ProjectContext) []candidate {
 	default:
 		return nil
 	}
+}
+
+// ListCleanupTargets devuelve los destinos de limpieza que existen ahora
+// mismo en el proyecto, con su tamano formateado. Lo consume la GUI para
+// pintar el modal "Elegir que borrar".
+func ListCleanupTargets(ctx *project.ProjectContext) []CleanupTarget {
+	out := make([]CleanupTarget, 0)
+	if ctx == nil {
+		return out
+	}
+	for _, c := range selectableTargets(ctx) {
+		if !dirExists(c.path) {
+			continue
+		}
+		out = append(out, CleanupTarget{
+			Label: c.label,
+			Path:  c.path,
+			Size:  formatSize(dirSize(c.path)),
+			Deps:  c.deps,
+		})
+	}
+	return out
+}
+
+// ResolveCleanupTargets es la frontera de seguridad entre la GUI y el
+// borrado: solo acepta paths que esten en la lista dinamica del proyecto
+// activo (y que existan). Normaliza con filepath.Clean y comparacion
+// insensible a mayusculas, porque Windows no distingue caso en las rutas.
+// Si cualquier path no es valido, no se devuelve nada: es todo-o-nada.
+func ResolveCleanupTargets(ctx *project.ProjectContext, paths []string) ([]CleanupTarget, error) {
+	targets := ListCleanupTargets(ctx)
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("no hay destinos de limpieza disponibles")
+	}
+	allowed := make(map[string]CleanupTarget, len(targets))
+	for _, t := range targets {
+		allowed[strings.ToLower(filepath.Clean(t.Path))] = t
+	}
+
+	resolved := make([]CleanupTarget, 0, len(paths))
+	seen := make(map[string]bool, len(paths))
+	for _, raw := range paths {
+		if strings.TrimSpace(raw) == "" {
+			return nil, fmt.Errorf("path vacio")
+		}
+		if !filepath.IsAbs(raw) {
+			return nil, fmt.Errorf("path relativo no permitido: %s", raw)
+		}
+		key := strings.ToLower(filepath.Clean(raw))
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		t, ok := allowed[key]
+		if !ok {
+			return nil, fmt.Errorf("path no permitido: %s", raw)
+		}
+		resolved = append(resolved, t)
+	}
+	return resolved, nil
+}
+
+// PurgeCleanupTargets valida y borra los destinos pedidos por la GUI,
+// reutilizando purgeWithError (la misma implementacion que el CLI).
+func PurgeCleanupTargets(ctx *project.ProjectContext, paths []string) (CleanupPurgeResult, error) {
+	resolved, err := ResolveCleanupTargets(ctx, paths)
+	if err != nil {
+		return CleanupPurgeResult{}, err
+	}
+
+	result := CleanupPurgeResult{
+		Items:  make([]CleanupPurgeItem, 0, len(resolved)),
+		Errors: make([]string, 0),
+	}
+	for _, t := range resolved {
+		freed, err := purgeWithError(t.Label, t.Path)
+		item := CleanupPurgeItem{Label: t.Label, Path: t.Path, Freed: freed}
+		if err != nil {
+			item.Error = err.Error()
+			result.Errors = append(result.Errors, err.Error())
+		} else {
+			result.Freed += freed
+		}
+		result.Items = append(result.Items, item)
+	}
+	result.FreedLabel = formatSize(result.Freed)
+	return result, nil
 }
 
 // ── Acciones ──────────────────────────────────────────────────────────────────

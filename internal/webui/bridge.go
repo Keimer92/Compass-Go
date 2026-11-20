@@ -425,6 +425,28 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	settings.Save(cur)
 }
 
+// ListCleanupCandidates devuelve los destinos que existen ahora mismo en el
+// proyecto activo, para el modal "Elegir que borrar" de la GUI.
+func (b *Bridge) ListCleanupCandidates() []tasks.CleanupTarget {
+	b.mu.Lock()
+	ctx := b.ctx
+	b.mu.Unlock()
+	return tasks.ListCleanupTargets(ctx)
+}
+
+// PurgeCleanupCandidates valida los paths contra la lista dinamica del
+// proyecto activo antes de borrar. Si cualquier path no es un destino
+// permitido, devuelve error y no borra nada.
+func (b *Bridge) PurgeCleanupCandidates(paths []string) (tasks.CleanupPurgeResult, error) {
+	b.mu.Lock()
+	ctx := b.ctx
+	b.mu.Unlock()
+	if ctx == nil {
+		return tasks.CleanupPurgeResult{}, fmt.Errorf("no hay proyecto activo")
+	}
+	return tasks.PurgeCleanupTargets(ctx, paths)
+}
+
 // RunTask es el punto de entrada --task del propio binario.
 func RunTask(task, dir string) {
 	_ = RunTaskDirect(task, dir)

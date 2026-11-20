@@ -82,6 +82,12 @@ export const listDir = (dir: string) => call<FileNode[]>(M('ListDir'), dir)
 export const fileDelete = (path: string) => call<void>(M('FileDelete'), path)
 export const fileRename = (path: string, name: string) => call<string>(M('FileRename'), path, name)
 export const fileCopy = (paths: string[], dest: string) => call<void>(M('FileCopy'), paths, dest)
+
+export interface CleanupTarget { label: string; path: string; size: string; deps: boolean }
+export interface CleanupPurgeItem { label: string; path: string; freed: number; error: string }
+export interface CleanupPurgeResult { freed: number; freed_label: string; items: CleanupPurgeItem[]; errors: string[] }
+export const listCleanupCandidates = () => call<CleanupTarget[]>(M('ListCleanupCandidates'))
+export const purgeCleanupCandidates = (paths: string[]) => call<CleanupPurgeResult>(M('PurgeCleanupCandidates'), paths)
 export const fileMove = (paths: string[], dest: string) => call<void>(M('FileMove'), paths, dest)
 export const generateCommit = (dir: string) => call<string>(M('GenerateCommit'), dir)
 export const cancelCommit = (dir: string) => call<void>(M('CancelCommit'), dir)

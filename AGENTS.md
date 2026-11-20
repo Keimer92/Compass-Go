@@ -263,6 +263,32 @@ proyecto concreto:
   escritorio de Wails. Desactivada, el artefacto se lista pero el Explorer no
   se abre.
 
+## Subcards con modal GUI y ruta de backups
+
+- **Limpieza selectiva en modal (sin terminal)**: la subcard "Elegir qué borrar"
+  de la card Clean (`clean-do-choose`) **no** abre una pestaña ConPTY: abre un
+  modal en `frontend/src/App.svelte`. El puente expone
+  `Bridge.ListCleanupCandidates()` y `Bridge.PurgeCleanupCandidates(paths)`,
+  respaldados por `ListCleanupTargets` / `PurgeCleanupTargets`
+  (`internal/tasks/cleanup.go`). La GUI lista los directorios existentes con
+  tamaño y marca `deps`, marca los que quiere borrar y confirma; el resultado
+  (espacio liberado/errores) se muestra dentro del modal y la lista se refresca.
+  **Seguridad**: `ResolveCleanupTargets` valida cada path recibido contra la
+  lista dinámica `selectableTargets(ctx)` del proyecto activo (normaliza con
+  `filepath.Clean` y compara sin distinción de mayúsculas, propio de Windows);
+  un path ajeno/relativo/con `..` rechaza toda la operación (todo-o-nada) y
+  nunca se borra un string que venga del frontend. El borrado real comparte
+  `purgeWithError` con el CLI. La versión por consola (`chooseAndPurge`) sigue
+  disponible vía `--task clean-do-choose`.
+- **Destino de backups en Documents**: `defaultBackupRoot`
+  (`internal/tasks/environment.go`) apunta por defecto a
+  `%USERPROFILE%\Documents\Compass Go\Entorno de Desarrollo` (helper
+  `documentsDir()` en `internal/tasks/helpers.go`, con fallback a `$HOME` y, si
+  faltan ambos, al antiguo `%LOCALAPPDATA%\compass\env-backup\Backup`). Afecta
+  de forma coherente a Backup, Restaurar/Validar y Abrir respaldos. Los scripts
+  `.ps1` siguen materializándose en `%LOCALAPPDATA%\compass\env-backup` (área
+  de trabajo, no destino). No se migran backups antiguos automáticamente.
+
 ## Core kits (motores canónicos)
 
 Compass lleva dentro ciertos **core kits** —motores o runtimes compartidos— en

@@ -159,7 +159,15 @@ func EnvManage(ctx *project.ProjectContext) error {
 	return entries[idx].run(work)
 }
 
+// defaultBackupRoot es el destino por defecto de los respaldos. Vive en
+// Documents\Compass Go\Entorno de Desarrollo para que el usuario lo encuentre
+// y pueda copiarlo. `work` (%LOCALAPPDATA%\compass\env-backup) sigue siendo el
+// area de trabajo de los scripts .ps1 embebidos, NO el destino de los backups;
+// solo se usa como fallback si no se puede determinar Documents.
 func defaultBackupRoot(work string) string {
+	if docs := documentsDir(); docs != "" {
+		return filepath.Join(docs, "Compass Go", "Entorno de Desarrollo")
+	}
 	return filepath.Join(work, "Backup")
 }
 

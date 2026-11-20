@@ -7,6 +7,7 @@
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
+    listCleanupCandidates, purgeCleanupCandidates,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -14,7 +15,7 @@
   import Explorer from './components/Explorer.svelte'
   import Commit from './components/Commit.svelte'
   import History from './components/History.svelte'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -45,6 +46,14 @@
   })
   let models = $state<ModelOption[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
+
+  // Modal "Elegir que borrar" de la card Clean. cleanupSelected usa el path
+  // absoluto devuelto por Go como clave; Go vuelve a validarlo antes de borrar.
+  let cleanupOpen = $state(false)
+  let cleanupItems = $state<CleanupTarget[]>([])
+  let cleanupSelected = $state<Record<string, boolean>>({})
+  let cleanupBusy = $state(false)
+  let cleanupResult = $state<CleanupPurgeResult | null>(null)
 
   let seq = 0
   // Etiqueta por carga de pagina: las sesiones restauradas conservan su id
@@ -407,7 +416,58 @@
 
   async function pickSubcard(sub: Subcard) {
     subMenu = null
+    // "Elegir que borrar" se resuelve en un modal GUI, no en una ConPTY.
+    if (sub.task === 'clean-do-choose') {
+      await openCleanupModal()
+      return
+    }
     await runNamedTask(sub.label, sub.task)
+  }
+
+  async function openCleanupModal() {
+    cleanupResult = null
+    cleanupBusy = true
+    try {
+      cleanupItems = await listCleanupCandidates()
+      // Nada marcado por defecto: el usuario elige explicitamente que borrar.
+      cleanupSelected = {}
+      lastError = ''
+      cleanupOpen = true
+    } catch (e) {
+      lastError = 'ERROR al listar destinos: ' + (e as Error).message
+    } finally {
+      cleanupBusy = false
+    }
+  }
+
+  function toggleCleanup(path: string) {
+    cleanupSelected = { ...cleanupSelected, [path]: !cleanupSelected[path] }
+  }
+
+  function selectedCount() {
+    return cleanupItems.filter((i) => cleanupSelected[i.path]).length
+  }
+
+  async function confirmCleanup() {
+    if (cleanupBusy) return
+    const paths = cleanupItems.filter((i) => cleanupSelected[i.path]).map((i) => i.path)
+    if (!paths.length) return
+    cleanupBusy = true
+    try {
+      cleanupResult = await purgeCleanupCandidates(paths)
+      lastError = ''
+      // Refrescar: los directorios borrados desaparecen de la lista.
+      cleanupItems = await listCleanupCandidates()
+      const live = new Set(cleanupItems.map((i) => i.path))
+      cleanupSelected = Object.fromEntries(
+        Object.entries(cleanupSelected).filter(([p]) => live.has(p)),
+      )
+      notifyRepoChanged()
+    } catch (e) {
+      lastError = 'ERROR al borrar: ' + (e as Error).message
+    } finally {
+      cleanupBusy = false
+    }
   }
 
   async function runNamedTask(label: string, task: string) {
@@ -589,6 +649,47 @@
             </span>
           </button>
         {/each}
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if cleanupOpen}
+  <div class="modal-backdrop" onclick={() => (cleanupOpen = false)} role="presentation">
+    <div class="modal wide" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Elegir qué borrar">
+      <div class="modal-head"><span>Elegir qué borrar</span><button onclick={() => (cleanupOpen = false)}>×</button></div>
+      {#if cleanupBusy && !cleanupItems.length}
+        <p class="cleanup-empty">Calculando tamaños…</p>
+      {:else if !cleanupItems.length}
+        <p class="cleanup-empty">No hay nada que borrar: no existe ningún directorio de build.</p>
+      {:else}
+        <p class="cleanup-hint">Marca lo que quieras eliminar. Los elementos <b>deps</b> tardan en reinstalarse.</p>
+        <div class="cleanup-list">
+          {#each cleanupItems as item (item.path)}
+            <label class="cleanup-row">
+              <input type="checkbox" checked={!!cleanupSelected[item.path]} onchange={() => toggleCleanup(item.path)} />
+              <span class="cleanup-label">{item.label}</span>
+              <span class="cleanup-size">{item.size}</span>
+              {#if item.deps}<span class="cleanup-badge">deps</span>{/if}
+            </label>
+          {/each}
+        </div>
+      {/if}
+      {#if cleanupResult}
+        <div class="cleanup-result">
+          <div>Liberado: <b>{cleanupResult.freed_label}</b></div>
+          {#if cleanupResult.errors.length}
+            <ul class="cleanup-errors">
+              {#each cleanupResult.errors as err}<li>{err}</li>{/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
+      <div class="modal-actions">
+        <button onclick={() => (cleanupOpen = false)}>Cerrar</button>
+        <button class="btn-primary" disabled={cleanupBusy || selectedCount() === 0} onclick={confirmCleanup}>
+          {cleanupBusy ? 'Borrando…' : `Borrar (${selectedCount()})`}
+        </button>
       </div>
     </div>
   </div>

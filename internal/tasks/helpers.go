@@ -168,6 +168,17 @@ func homeDir() string {
 	return ""
 }
 
+// documentsDir devuelve la carpeta Documentos del usuario
+// (%USERPROFILE%\Documents en Windows, $HOME/Documents en Unix), o "" si no se
+// puede determinar el directorio personal.
+func documentsDir() string {
+	home := homeDir()
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, "Documents")
+}
+
 // findGradlew devuelve la ruta del wrapper de Gradle (gradlew.bat) en dir, o "".
 func findGradlew(dir string) string {
 	cand := filepath.Join(dir, "gradlew.bat")

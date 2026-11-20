@@ -86,3 +86,14 @@ body, .app, .sidebar, .topbar, .cards-area, .card, .right, .terminal-panel, .mod
 .opt-input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 12px; }
 .modal-actions { display: flex; justify-content: flex-end; }
 .btn-primary { padding: 7px 16px; border: none; border-radius: 16px; background: color-mix(in srgb, var(--accent) 35%, var(--bg)); color: var(--text); font-size: 12px; }
+.modal-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.cleanup-hint { font-size: 11px; color: var(--muted); margin: -6px 0 12px; }
+.cleanup-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 18px 0; }
+.cleanup-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; margin-bottom: 14px; }
+.cleanup-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: color-mix(in srgb, var(--panel) 60%, var(--bg)); font-size: 12px; cursor: pointer; }
+.cleanup-row:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.cleanup-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cleanup-size { color: var(--muted); font-variant-numeric: tabular-nums; }
+.cleanup-badge { font-size: 9px; text-transform: uppercase; padding: 2px 6px; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cleanup-result { font-size: 12px; margin-bottom: 14px; padding: 10px 12px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.cleanup-errors { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 11px; }
