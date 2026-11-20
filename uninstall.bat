@@ -116,7 +116,14 @@ if exist "%BINDIR%" rmdir "%BINDIR%" >nul 2>nul
 echo [OK] Archivos borrados.
 echo.
 
-ie4uinit.exe -show >nul 2>nul
+REM El icono de los accesos ya borrados puede quedar en cache: se refresca y se
+REM olvida el stamp para que la proxima instalacion reconstruya la cache.
+if exist "%LOCALAPPDATA%\compass\icon-stamp.txt" del /f /q "%LOCALAPPDATA%\compass\icon-stamp.txt" >nul 2>nul
+if exist "%~dp0packaging\refresh_icons.ps1" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0packaging\refresh_icons.ps1"
+) else (
+    ie4uinit.exe -show >nul 2>nul
+)
 
 echo =============================================
 echo   [OK] Desinstalacion completada

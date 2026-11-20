@@ -172,8 +172,15 @@ if "%WITH_VIBE%"=="1" (
 )
 echo.
 
-REM El icono de las entradas nuevas solo aparece al refrescar la cache.
-ie4uinit.exe -show >nul 2>nul
+REM Cache de iconos: si CompassGo.ico cambio respecto a la instalacion anterior,
+REM se reconstruye (reinicia Explorer un momento); si no, refresco suave.
+REM Sin esto, el acceso del escritorio / menu Inicio / barra de tareas puede
+REM seguir pintando el icono viejo aunque el .exe ya lleve el nuevo.
+if exist "%~dp0packaging\refresh_icons.ps1" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0packaging\refresh_icons.ps1" -IconPath "%BINDIR%\CompassGo.ico" -StampPath "%LOCALAPPDATA%\compass\icon-stamp.txt"
+) else (
+    ie4uinit.exe -show >nul 2>nul
+)
 
 REM dist.bat ya borra dist\payload al empaquetar; este barrido es solo una
 REM red de seguridad (p.ej. si dist.bat fallo antes de limpiar).

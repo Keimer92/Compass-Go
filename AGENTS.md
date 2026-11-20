@@ -120,6 +120,14 @@ install.bat --with-node  # vuelve a empaquetar node.exe (sidecar)
 - En modo silencioso no se ejecuta la app al terminar y el anclaje a la barra
   de tareas suele quedar bloqueado por Windows; ancla a mano desde el menú
   Inicio.
+- **Caché de iconos**: al final ejecuta `packaging\refresh_icons.ps1` con
+  `-IconPath %BINDIR%\CompassGo.ico` y `-StampPath
+  %LOCALAPPDATA%\compass\icon-stamp.txt`. Si el SHA-256 del `.ico` cambió
+  respecto a la última instalación, reconstruye la caché (reinicia Explorer y
+  borra `iconcache_*.db`/`thumbcache_*.db`); si no, solo hace un refresco suave
+  (`SHChangeNotify` + `ie4uinit -show`). Evita que el acceso del escritorio,
+  del menú Inicio o el anclado a la barra de tareas siga pintando el icono
+  viejo después de cambiar la imagen.
 - El menú contextual queda en `HKCU\...\shell\zz_CompassGo` y
   `zz_VibeGitignore` (entrada "Add gitignore"); Vibe Coding en
   `zz_VibeCoding`.
@@ -196,7 +204,9 @@ uninstall.bat
 
 - **No** desinstala las CLIs de Vibe Coding que hayas instalado (opencode,
   cline, …); solo limpia las entradas de registro de Compass.
-- Refresca la caché de iconos del Explorador (`ie4uinit.exe -show`).
+- Refresca la caché de iconos del Explorador con
+  `packaging\refresh_icons.ps1` (borra el stamp del icono para que la próxima
+  instalación reconstruya la caché completa).
 
 > Nota: `install.bat` / `dist.bat` / `uninstall.bat` son para **desarrollo /
 > uso en tu propia máquina**. Para **distribuir** a terceros usa el instalador
