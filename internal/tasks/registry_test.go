@@ -21,7 +21,6 @@ func TestMenuTasksAreRegisteredForEveryType(t *testing.T) {
 		"signing":         all,
 		"version":         all,
 		"git":             all,
-		"whatsapp":        all,
 		"terminal":        all,
 		"environment":     all,
 

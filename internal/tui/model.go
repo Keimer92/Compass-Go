@@ -50,7 +50,6 @@ const (
 	VersionItem
 	// CFG
 	Git
-	BuildWhatsApp
 	ConfigureTerminal
 	Environment
 	// VibeCoding se anade al final a proposito: los indices de las cards ya
@@ -116,8 +115,6 @@ func (m MenuItem) Icon() string {
 		return "\U0001F516"
 	case Git:
 		return "\U0001F527"
-	case BuildWhatsApp:
-		return "\U0001F4AC"
 	case ConfigureTerminal:
 		return "\u2699"
 	case Environment:
@@ -133,6 +130,10 @@ func (m MenuItem) Section() string {
 	switch m {
 	case WindowsDev, AndroidDev, AndroidHmr, WindowsBuild, AndroidBuildArm64,
 		AndroidBuildArmv7, AndroidBuildAll, InstallDebug, FlutterProfile, Tests:
+		return "DEV"
+	// Vibe Coding es una herramienta de desarrollo, no de configuracion: va en
+	// la pestana principal para que se vea sin tener que entrar en Config.
+	case VibeCoding:
 		return "DEV"
 	case Clean, DebugAndroid, Signing, VersionItem:
 		return "MNT"
@@ -205,8 +206,6 @@ func (m MenuItem) ColorKey() string {
 		return "version"
 	case Git:
 		return "git"
-	case BuildWhatsApp:
-		return "whatsapp"
 	case ConfigureTerminal:
 		return "terminal"
 	case Environment:
@@ -291,8 +290,6 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 		return "Version"
 	case Git:
 		return "Git"
-	case BuildWhatsApp:
-		return "WhatsApp"
 	case ConfigureTerminal:
 		return "Terminal"
 	case Environment:
@@ -333,8 +330,6 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 			return "Firmas y huellas"
 		case Git:
 			return "Init · remoto · estado"
-		case BuildWhatsApp:
-			return "Compila WhatsApp"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:
@@ -364,8 +359,6 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 			return "Firmas y huellas"
 		case Git:
 			return "Init · remoto · estado"
-		case BuildWhatsApp:
-			return "Compila WhatsApp"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:
@@ -395,8 +388,6 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 			return "Firmas y huellas"
 		case Git:
 			return "Init · remoto · estado"
-		case BuildWhatsApp:
-			return "Compila WhatsApp"
 		case VersionItem:
 			return "main.go + config.yml + metadatos"
 		case ConfigureTerminal:
@@ -615,7 +606,7 @@ func newMenuState(pt project.ProjectType, th *theme.Theme) *MenuState {
 	base := []MenuItem{
 		WindowsDev, AndroidDev, AndroidHmr, WindowsBuild, AndroidBuildArm64,
 		AndroidBuildArmv7, AndroidBuildAll, InstallDebug, FlutterProfile, Tests,
-		Clean, DebugAndroid, Signing, VersionItem, Git, BuildWhatsApp,
+		Clean, DebugAndroid, Signing, VersionItem, Git,
 		ConfigureTerminal, Environment,
 	}
 	// VibeCoding no entra aqui: la TUI esta retirada y no sabe lanzarla. La
@@ -718,13 +709,13 @@ func keepForType(item MenuItem, pt project.ProjectType) bool {
 	case project.TypePython:
 		switch item {
 		case AndroidDev, AndroidBuildArm64, AndroidBuildArmv7, AndroidBuildAll,
-			InstallDebug, FlutterProfile, DebugAndroid, Signing, BuildWhatsApp:
+			InstallDebug, FlutterProfile, DebugAndroid, Signing:
 			return false
 		}
 	case project.TypeGo:
 		switch item {
 		case AndroidDev, AndroidBuildArm64, AndroidBuildArmv7, AndroidBuildAll,
-			InstallDebug, FlutterProfile, DebugAndroid, Signing, VersionItem, BuildWhatsApp:
+			InstallDebug, FlutterProfile, DebugAndroid, Signing, VersionItem:
 			return false
 		}
 	}

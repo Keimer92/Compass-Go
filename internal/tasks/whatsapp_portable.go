@@ -15,7 +15,6 @@ import (
 
 	"compass/internal/project"
 	"compass/internal/shell"
-	"compass/internal/ui"
 )
 
 // Plantilla del stub portable. Se copia a un modulo Go temporal y se compila
@@ -23,12 +22,6 @@ import (
 //
 //go:embed assets/whatsapp-launcher.go.txt
 var whatsappLauncherTemplate string
-
-func init() {
-	for _, pt := range allTypes() {
-		Register("whatsapp-portable", pt, WhatsappPortableManage)
-	}
-}
 
 // whatsappPayloadPaths localiza el bundle (y, si existe, node.exe) que deben
 // viajar dentro del portable. Prefiere lo que el release ya etapo en
@@ -239,39 +232,6 @@ func buildWhatsappPortable(ctx *project.ProjectContext, appExe, appName, version
 	return outPath, nil
 }
 
-// findPortableCandidate busca un exe ya compilado en las carpetas de salida
-// tipicas del proyecto. Devuelve el mas reciente, o "" si no hay ninguno.
-func findPortableCandidate(ctx *project.ProjectContext) string {
-	var candidates []string
-	dirs := []string{
-		filepath.Join(ctx.ScriptDir, "bin"),
-		filepath.Join(ctx.ScriptDir, "build", "bin"),
-		ctx.ScriptDir,
-	}
-	for _, dir := range dirs {
-		matches, _ := filepath.Glob(filepath.Join(dir, "*.exe"))
-		for _, m := range matches {
-			base := strings.ToLower(filepath.Base(m))
-			if strings.Contains(base, "uninstall") || strings.Contains(base, "setup") {
-				continue
-			}
-			candidates = append(candidates, m)
-		}
-	}
-	var best string
-	var bestMod int64
-	for _, c := range candidates {
-		info, err := os.Stat(c)
-		if err != nil {
-			continue
-		}
-		if m := info.ModTime().Unix(); m > bestMod {
-			best, bestMod = c, m
-		}
-	}
-	return best
-}
-
 const (
 	waNsiBegin = "; COMPASS_WHATSAPP_PAYLOAD_BEGIN"
 	waNsiEnd   = "; COMPASS_WHATSAPP_PAYLOAD_END"
@@ -356,55 +316,3 @@ func injectWhatsappIntoWailsNsi(ctx *project.ProjectContext) (func(), error) {
 	return restore, nil
 }
 
-// WhatsappPortableManage es la tarea reutilizable: toma cualquier exe ya
-// compilado y lo envuelve como portable de un unico archivo con el kit dentro.
-func WhatsappPortableManage(ctx *project.ProjectContext) error {
-	ui.BoxBanner("PORTABLE WHATSAPP · UN ÚNICO EXE")
-
-	if !projectUsesWhatsappEngine(ctx) {
-		fmt.Println("[INFO] Este proyecto no usa el motor de WhatsApp; no hay nada que envolver.")
-		ui.Pause()
-		return nil
-	}
-	_, bundleDir := whatsappPayloadPaths(ctx)
-	if !whatsappPayloadValid(bundleDir) {
-		fmt.Printf("[WARN] Falta el payload del motor (bundle). Ejecuta primero la tarea 'whatsapp'.\n")
-		ui.Pause()
-		return nil
-	}
-
-	def := findPortableCandidate(ctx)
-	prompt := "Ruta del .exe a envolver"
-	if def != "" {
-		prompt += " (Enter para usar " + def + ")"
-	}
-	answer := strings.Trim(strings.TrimSpace(ui.AskText(prompt+": ", def)), `"`)
-	if answer == "" {
-		fmt.Println("[WARN] No se indico ningun exe.")
-		ui.Pause()
-		return nil
-	}
-	if !filepath.IsAbs(answer) {
-		answer = filepath.Join(ctx.ScriptDir, answer)
-	}
-	if !fileExists(answer) {
-		fmt.Printf("[ERROR] No se encontro el exe: %s\n", answer)
-		ui.Pause()
-		return nil
-	}
-
-	name := strings.TrimSuffix(filepath.Base(answer), filepath.Ext(answer))
-	out, err := buildWhatsappPortable(ctx, answer, name, "", "", "")
-	if err != nil {
-		fmt.Printf("[ERROR] %v\n", err)
-		ui.Pause()
-		return nil
-	}
-	if out == "" {
-		ui.Pause()
-		return nil
-	}
-	shell.ShowArtifact(out)
-	ui.Pause()
-	return nil
-}

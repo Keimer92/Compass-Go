@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"compass/assets"
 	"compass/internal/prompts"
 	"compass/internal/tasks"
 	"compass/internal/webui"
@@ -99,6 +100,9 @@ func runApp(dir string) {
 	app := application.New(application.Options{
 		Name:        "Compass Go",
 		Description: "Compass Go - GUI web",
+		// La barra de titulo usa el icono del exe; como go-winres lo embebe con
+		// un ID que Wails no busca, se le pasa explicitamente.
+		Icon: assets.CompassICO,
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(frontendFS),
 		},

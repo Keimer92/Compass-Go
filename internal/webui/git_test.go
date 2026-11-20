@@ -94,7 +94,7 @@ func TestGitSummaryIncludesDiffsAndNewFiles(t *testing.T) {
 	}
 }
 
-func TestFileTreeSkipsHeavyDirs(t *testing.T) {
+func TestListDirSkipsHeavyDirs(t *testing.T) {
 	dir := initRepo(t)
 	b := NewBridge(dir)
 	if err := os.MkdirAll(filepath.Join(dir, "node_modules", "pkg"), 0o755); err != nil {
@@ -106,7 +106,7 @@ func TestFileTreeSkipsHeavyDirs(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("package main"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	nodes := b.FileTree()
+	nodes := b.ListDir("")
 	for _, n := range nodes {
 		if n.Name == "node_modules" {
 			t.Fatal("node_modules no deberia aparecer en el arbol")
@@ -114,12 +114,17 @@ func TestFileTreeSkipsHeavyDirs(t *testing.T) {
 	}
 	found := false
 	for _, n := range nodes {
-		if n.Name == "src" && len(n.Children) == 1 && n.Children[0].Name == "main.go" {
+		if n.Name == "src" && n.IsDir {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("arbol inesperado: %+v", nodes)
+	}
+	// El arbol es perezoso: los hijos se piden al desplegar la carpeta.
+	children := b.ListDir(filepath.Join(dir, "src"))
+	if len(children) != 1 || children[0].Name != "main.go" {
+		t.Fatalf("hijos inesperados de src: %+v", children)
 	}
 }
 

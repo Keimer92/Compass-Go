@@ -39,7 +39,7 @@
     <div class="progress" aria-label="Generando commit"><div class="bar"></div></div>
     <span class="elapsed">{(state.elapsedMs / 1000).toFixed(1)} s</span>
   </div>
-  <button class="pill cancel" onclick={cancelFor}>Cancelar</button>
+  <button class="pill cancel" onclick={() => cancelFor(projectPath)}>Cancelar</button>
 {:else if draft.lastMs > 0}
   <div class="elapsed done">Última generación: {(draft.lastMs / 1000).toFixed(1)} s</div>
 {/if}

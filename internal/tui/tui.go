@@ -428,8 +428,6 @@ func menuItemToTask(item MenuItem, pt project.ProjectType) string {
 		return "version"
 	case Git:
 		return "git"
-	case BuildWhatsApp:
-		return "whatsapp"
 	case ConfigureTerminal:
 		return "terminal"
 	case Environment:

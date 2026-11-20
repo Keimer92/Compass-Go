@@ -75,13 +75,19 @@ func TestVibeCardAndSubcards(t *testing.T) {
 	b := NewBridge(dir)
 
 	id := ""
+	section := ""
 	for _, it := range b.GetMenu() {
 		if it.Label == "Vibe Coding" {
 			id = it.ID
+			section = it.Section
 		}
 	}
 	if id == "" {
 		t.Fatal("falta la card 'Vibe Coding'")
+	}
+	// Debe verse en la pestana principal: si cae en CFG solo aparece en Config.
+	if section == "CFG" {
+		t.Error("la card 'Vibe Coding' no deberia quedar solo en la pestana Config")
 	}
 
 	subs := b.Subcards(id)

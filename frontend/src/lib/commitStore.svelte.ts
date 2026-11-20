@@ -102,7 +102,7 @@ export async function generateFor(path: string) {
   }, 100)
 
   try {
-    const message = await generateCommit()
+    const message = await generateCommit(path)
     const previous = drafts[path] ?? { message: '', lastMs: 0 }
     drafts[path] = { message, lastMs: performance.now() - start }
     persist()
@@ -118,9 +118,9 @@ export async function generateFor(path: string) {
   }
 }
 
-export async function cancelFor() {
+export async function cancelFor(path: string) {
   try {
-    await cancelCommit()
+    await cancelCommit(path)
   } catch {
     // Si ya había terminado, no hay nada que cancelar.
   }
@@ -135,7 +135,7 @@ export async function commitFor(path: string) {
   state.error = ''
   state.ok = ''
   try {
-    await commit(message)
+    await commit(path, message)
     state.ok = 'Commit realizado correctamente'
     drafts[path] = { message: '', lastMs: draft.lastMs }
     persist()

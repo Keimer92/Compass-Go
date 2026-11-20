@@ -6,7 +6,7 @@
     getWorkspace, selectProject, removeProject, getMenu, runTask,
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
-    subcards, onWorkspaceChanged,
+    subcards, onWorkspaceChanged, pickProject as pickProjectDialog,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -193,6 +193,20 @@
   async function refresh() {
     workspace = await getWorkspace()
     menu = await getMenu()
+  }
+
+  // Boton "+" de la barra lateral: selector nativo de carpetas. El backend
+  // emite workspace:changed, que ya refresca workspace y menu.
+  async function addProject() {
+    try {
+      workspace = await pickProjectDialog()
+      menu = await getMenu()
+      const first = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
+      if (first) await activate(first.key)
+      else activeKey = null
+    } catch (e) {
+      lastError = 'ERROR al abrir el proyecto: ' + (e as Error).message
+    }
   }
 
   async function pickProject(i: number) {
@@ -402,12 +416,23 @@
 
 <div class="app">
   <aside class="sidebar">
-    <div class="brand">COMPASS <span>GO</span></div>
+    <div class="brand">
+      <span class="logo" aria-hidden="true">{@html svg('compass', 19)}</span>
+      <span class="wordmark">Compass <b>Go</b></span>
+    </div>
     {#if workspace.projects.length}
       <div class="project-name">{workspace.projects[workspace.active]?.name}</div>
       <div class="project-type">{workspace.projects[workspace.active]?.type}</div>
     {/if}
-    <div class="section-title">PROYECTOS</div>
+    <div class="section-title">
+      <span>PROYECTOS</span>
+      <button
+        class="add-project"
+        onclick={addProject}
+        title="Añadir proyecto"
+        aria-label="Añadir proyecto"
+      >{@html svg('plus', 13)}</button>
+    </div>
     <div class="projects">
       {#each workspace.projects as p, i}
         <div class:active={i === workspace.active} class="project">

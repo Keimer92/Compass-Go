@@ -14,7 +14,7 @@ var menuItems = []tui.MenuItem{
 	tui.AndroidBuildArm64, tui.AndroidBuildArmv7, tui.AndroidBuildAll,
 	tui.InstallDebug, tui.FlutterProfile, tui.Tests,
 	tui.Clean, tui.DebugAndroid, tui.Signing, tui.VersionItem,
-	tui.Git, tui.BuildWhatsApp, tui.ConfigureTerminal, tui.Environment,
+	tui.Git, tui.ConfigureTerminal, tui.Environment,
 	tui.VibeCoding,
 }
 
@@ -126,11 +126,6 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"env-do-validate", "Validar backup", "Diff sin modificar nada", "debug"},
 			{"env-do-open", "Abrir respaldos", "Carpeta de respaldos de Compass", "git"},
 		}
-	case tui.BuildWhatsApp:
-		return []Subcard{
-			{"whatsapp", "Compilar motor", "Genera/actualiza el bundle del motor", "build"},
-			{"whatsapp-portable", "Portable (un exe)", "Envuelve un .exe con el motor dentro", "apk"},
-		}
 	case tui.VibeCoding:
 		return vibeSubcards()
 	}
@@ -209,8 +204,6 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 		return "version"
 	case tui.Git:
 		return "git"
-	case tui.BuildWhatsApp:
-		return "whatsapp"
 	case tui.ConfigureTerminal:
 		return "terminal"
 	case tui.Environment:

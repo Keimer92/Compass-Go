@@ -53,24 +53,28 @@
 
 <style>
   .card {
-    display: flex; align-items: center; gap: 14px;
-    background: color-mix(in srgb, var(--border) 40%, var(--bg));
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    border-radius: 12px; padding: 14px;
+    display: flex; align-items: center; gap: 13px;
+    background: color-mix(in srgb, var(--border) 32%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 14px; padding: 13px 14px;
     text-align: left; color: var(--text);
-    transition: background .12s ease, box-shadow .12s ease;
+    box-shadow: var(--shadow-1);
+    transition: background .16s ease, box-shadow .16s ease, transform .16s ease, border-color .16s ease;
   }
   .card:hover {
-    background: color-mix(in srgb, var(--accent) 18%, var(--bg));
-    box-shadow: 0 8px 20px rgba(0,0,0,.35);
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    box-shadow: var(--shadow-2);
+    transform: translateY(-1px);
   }
+  .card:active { transform: translateY(0) scale(.995); }
   .icon {
     position: relative;
     display: grid; place-items: center;
-    width: 38px; height: 38px; border-radius: 10px;
-    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    width: 36px; height: 36px; border-radius: 11px;
+    background: color-mix(in srgb, var(--accent) 26%, transparent);
     color: var(--accent); flex-shrink: 0;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
   }
   /* Distintivo de plataforma: se superpone al icono de la card. */
   .platform {
@@ -86,7 +90,7 @@
   .platform.go { color: #00add8; }
   .platform.general { color: var(--muted); }
   .text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .label { font-size: 14px; font-weight: 600; }
+  .label { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
   .desc {
     font-size: 11px; color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

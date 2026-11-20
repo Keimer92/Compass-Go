@@ -20,6 +20,7 @@ const M = (name: string) => `compass/internal/webui.Bridge.${name}`
 export const getWorkspace = () => call<WorkspaceInfo>(M('GetWorkspace'))
 export const selectProject = (i: number) => call<WorkspaceInfo>(M('SelectProject'), i)
 export const removeProject = (i: number) => call<WorkspaceInfo>(M('RemoveProject'), i)
+export const pickProject = () => call<WorkspaceInfo>(M('PickProject'))
 export const getMenu = () => call<MenuItemInfo[]>(M('GetMenu'))
 export const runTask = (id: string) => call<string>(M('RunTask'), id)
 export interface Subcard { task: string; label: string; description: string; icon: string }
@@ -72,13 +73,17 @@ export interface ModelOption { id: string; name: string; context: number }
 export const listModels = () => call<ModelOption[]>(M('ListModels'))
 
 export interface Change { code: string; path: string; status: string }
-export interface FileNode { name: string; path: string; isDir: boolean; children?: FileNode[] }
+export interface FileNode { name: string; path: string; rel: string; isDir: boolean; children?: FileNode[] }
 
 export const gitStatus = () => call<Change[]>(M('GitStatus'))
-export const fileTree = () => call<FileNode[]>(M('FileTree'))
-export const generateCommit = () => call<string>(M('GenerateCommit'))
-export const cancelCommit = () => call<void>(M('CancelCommit'))
-export const commit = (message: string) => call<string>(M('Commit'), message)
+export const listDir = (dir: string) => call<FileNode[]>(M('ListDir'), dir)
+export const fileDelete = (path: string) => call<void>(M('FileDelete'), path)
+export const fileRename = (path: string, name: string) => call<string>(M('FileRename'), path, name)
+export const fileCopy = (paths: string[], dest: string) => call<void>(M('FileCopy'), paths, dest)
+export const fileMove = (paths: string[], dest: string) => call<void>(M('FileMove'), paths, dest)
+export const generateCommit = (dir: string) => call<string>(M('GenerateCommit'), dir)
+export const cancelCommit = (dir: string) => call<void>(M('CancelCommit'), dir)
+export const commit = (dir: string, message: string) => call<string>(M('Commit'), dir, message)
 
 export interface CommitEntry { hash: string; short: string; author: string; date: string; subject: string }
 export const gitLog = () => call<CommitEntry[]>(M('GitLog'))

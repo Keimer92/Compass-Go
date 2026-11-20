@@ -11,6 +11,7 @@ REM ---------------------------------------------------------------
 REM  Flags:  install.bat --force     rehace tambien la cascada Vibe Coding
 REM          install.bat --vibe      vuelve a configurar Vibe Coding
 REM          install.bat --with-node incluye node.exe (sidecar) en el payload
+REM          install.bat --detached  (interno) ya se relanzo fuera de Compass
 REM
 REM  Por defecto NO se empaqueta node.exe: los proyectos usan el Node 20+
 REM  instalado en el sistema (PATH). Usa --with-node para volver al sidecar.
@@ -22,6 +23,7 @@ REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
 set "NO_NODE=1"
+set "CG_DETACHED=0"
 :parse
 if "%~1"=="" goto parsed
 if /i "%~1"=="--force"     set "FORCE=1"
@@ -29,9 +31,26 @@ if /i "%~1"=="-f"          set "FORCE=1"
 if /i "%~1"=="--vibe"      set "WITH_VIBE=1"
 if /i "%~1"=="--no-node"   set "NO_NODE=1"
 if /i "%~1"=="--with-node" set "NO_NODE=0"
+if /i "%~1"=="--detached"  set "CG_DETACHED=1"
 shift
 goto parse
 :parsed
+
+REM ---------------------------------------------------------------
+REM  Guardia: si esto corre dentro de una pestana de Compass Go (las
+REM  ConPTY exportan COMPASS_EMBEDDED=1), el taskkill de mas abajo cerraria
+REM  la app y, con ella, esta consola y todos sus hijos: la instalacion
+REM  abortaria a medias y el agente que la lanzo perderia su tarea.
+REM  En ese caso se relanza en una consola aparte y se sale de inmediato.
+REM ---------------------------------------------------------------
+if "%COMPASS_EMBEDDED%"=="1" if not "%CG_DETACHED%"=="1" (
+    echo [INFO] Detectada una pestana de Compass Go.
+    echo        La instalacion cierra Compass, asi que continuara en una
+    echo        consola aparte para no cortar esta tarea.
+    echo.
+    start "Compass Go - Instalacion" cmd /c call "%~f0" --detached %*
+    exit /b 0
+)
 
 set "BINDIR=%LOCALAPPDATA%\Programs\Keimer"
 set "SETUP=dist\CompassGo-Setup.exe"

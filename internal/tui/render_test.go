@@ -57,12 +57,12 @@ func TestRenderMenuShowsCoreElements(t *testing.T) {
 		}
 	}
 
-	// La pestana CFG debe mostrar sus cards (Git, WhatsApp, Terminal, Entorno).
+	// La pestana CFG debe mostrar sus cards (Git, Terminal, Entorno).
 	st.setTab(TabCfg)
 	renderMenu(sim, st, ctx, Rect{0, 0, 100, 30})
 	sim.Show()
 	txt = screenText(sim)
-	for _, want := range []string{"Git", "WhatsApp", "Terminal", "Entorno"} {
+	for _, want := range []string{"Git", "Terminal", "Entorno"} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("falta %q en la pestana CFG:\n%s", want, txt)
 		}

@@ -327,7 +327,11 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   bloque `install(DIRECTORY "${CMAKE_SOURCE_DIR}/../whatsapp_engine" ...)` al
   final (`ensureFlutterWhatsappCmakeRule`, idempotente y respetando CRLF/LF).
   Así el motor viaja al release sin que el proyecto tenga que mantener la regla.
-- **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
+- **Sin tarea manual**: el motor se compila y etaja solo en cada release de
+  Windows (`prepareWhatsappEngine` → `ensureWhatsappNpm` + `stageWhatsappEngine`,
+  que reconstruye el bundle si `engine.js` es más nuevo). La antigua card
+  "WhatsApp" y las tareas `whatsapp` / `whatsapp-portable` se retiraron: el
+  portable lo genera el propio release para los proyectos que usan el motor.
 - `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador
   (sin los artefactos de build del motor: `node_modules`, `out`, `examples`, y
   sin `node.exe` salvo con `--with-node`).
@@ -395,13 +399,12 @@ Compass etapará el motor solo. No hace falta marcador manual.
    node bundle.mjs --asset      # Go/Wails          → whatsapp-engine-bundle/
    node bundle.mjs --single     # Flutter           → out/single/index.js
    ```
-3. **Etapar al proyecto** con la tarea de Compass:
-   ```bat
-   compass-go.exe -p "RUTA_DEL_PROYECTO" -t whatsapp
-   ```
-   Copia `whatsapp-engine-bundle/` a `resources/whatsapp-engine-bundle/` del
-   proyecto (Go/Wails), o a la ruta de recursos según el tipo. No copia
-   `node.exe`: el runtime usa Node 20+ del PATH.
+3. **Etapar al proyecto**: ya no hay tarea manual. El staging ocurre solo al
+   compilar un release de Windows desde Compass
+   (`prepareWhatsappEngine` → `stageWhatsappEngine`), que copia
+   `whatsapp-engine-bundle/` a `resources/whatsapp-engine-bundle/` del proyecto
+   (Go/Wails) o a la ruta de recursos según el tipo. No copia `node.exe`: el
+   runtime usa Node 20+ del PATH.
 4. **Dev en vivo** (sin re-etapar en cada cambio): asegúrate de que
    `COMPASS_WHATSAPP_ENGINE` apunte a la instalación (`install.bat` lo deja
    listo). El modo `windows-dev` hereda el entorno y el proyecto ve el engine.
@@ -572,11 +575,9 @@ func SendText(stdin io.Writer, number, text string) error {
 > - `resources/whatsapp-engine-bundle/` de GymPro es la copia etapada por
 >   Compass; **no se edita a mano**.
 
-Para (re)etapar el motor en GymPro tras cambiar `engine.js`:
-
-```bat
-compass-go.exe -p "D:\Mis Proyectos\Go + Wails v3\GymPro" -t whatsapp
-```
+Para (re)etapar el motor en GymPro tras cambiar `engine.js` basta con lanzar un
+release de Windows desde Compass: `stageWhatsappEngine` detecta que `engine.js`
+es más nuevo y regenera el bundle antes de copiarlo al `resources/` del proyecto.
 
 ### Errores que un agente NO debe cometer
 - ❌ Hardcodear `D:\...` en código o en la env var. Usa rutas relativas /

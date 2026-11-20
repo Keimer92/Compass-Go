@@ -28,10 +28,27 @@ type Bridge struct {
 	mu   sync.Mutex
 	term *TerminalService
 
-	// commitMu protege commitCancel: la generacion de commit en curso, para
-	// poder abortarla desde el boton Cancelar.
-	commitMu     sync.Mutex
-	commitCancel context.CancelFunc
+	// commitMu protege commitCancels: una generacion de commit en curso POR
+	// PROYECTO, para poder abortarla desde el boton Cancelar sin tocar las de
+	// los demas proyectos (generar en A y luego en B no cancela A).
+	commitMu      sync.Mutex
+	commitCancels map[string]*commitRun
+	commitSeq     uint64
+}
+
+// commitRun es una generacion de mensaje de commit en curso. El id permite
+// saber si la entrada del mapa sigue siendo esta y no una posterior.
+type commitRun struct {
+	id     uint64
+	cancel context.CancelFunc
+}
+
+// commitKey normaliza la ruta del proyecto para usarla como clave.
+func commitKey(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		return strings.ToLower(abs)
+	}
+	return strings.ToLower(dir)
 }
 
 // NewBridge crea el servicio para la carpeta inicial.
@@ -40,7 +57,12 @@ type Bridge struct {
 // aunque el workspace guardado tenga otras. Si no lo es, se cae al proyecto
 // activo persistido para que el menu no salga vacio.
 func NewBridge(dir string) *Bridge {
-	b := &Bridge{dir: dir, ws: workspace.Load(), term: NewTerminalService()}
+	b := &Bridge{
+		dir:           dir,
+		ws:            workspace.Load(),
+		term:          NewTerminalService(),
+		commitCancels: map[string]*commitRun{},
+	}
 	b.ws.AddAny(dir)
 	b.detect(b.dir)
 	if b.ctx == nil {
@@ -109,6 +131,24 @@ func (b *Bridge) AddProject(dir string) {
 	// Si el proyecto llega desde el menu contextual (otra instancia), trae
 	// esta ventana al frente.
 	b.FocusWindow()
+}
+
+// PickProject abre el selector nativo de carpetas y apila el proyecto elegido.
+// Lo usa el boton "+" de la barra lateral.
+func (b *Bridge) PickProject() map[string]any {
+	if app == nil {
+		return b.GetWorkspace()
+	}
+	dir, err := app.Dialog.OpenFile().
+		SetTitle("Abrir proyecto en Compass Go").
+		CanChooseFiles(false).
+		CanChooseDirectories(true).
+		PromptForSingleSelection()
+	if err != nil || strings.TrimSpace(dir) == "" {
+		return b.GetWorkspace()
+	}
+	b.AddProject(dir)
+	return b.GetWorkspace()
 }
 
 // ProjectInfo es la informacion de un proyecto para el frontend.

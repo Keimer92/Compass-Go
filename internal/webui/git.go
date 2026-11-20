@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -30,10 +29,12 @@ type Change struct {
 
 // FileNode es un nodo del arbol de archivos del explorador.
 type FileNode struct {
-	Name     string      `json:"name"`
-	Path     string      `json:"path"`
-	IsDir    bool        `json:"isDir"`
-	Children []*FileNode `json:"children,omitempty"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// Rel es la ruta relativa a la raiz del proyecto, en formato "/" para
+	// casarla con las rutas que devuelve `git status`.
+	Rel   string `json:"rel"`
+	IsDir bool   `json:"isDir"`
 }
 
 var skipDirs = map[string]bool{
@@ -98,48 +99,6 @@ func (b *Bridge) GitStatus() []Change {
 			path = path[i+4:]
 		}
 		out = append(out, Change{Code: code, Path: path, Status: statusLabel(code)})
-	}
-	return out
-}
-
-// FileTree devuelve el arbol del proyecto (dos niveles) para el explorador.
-func (b *Bridge) FileTree() []*FileNode {
-	dir := b.projectDir()
-	if dir == "" {
-		return []*FileNode{}
-	}
-	return buildTree(dir, 0, 2)
-}
-
-func buildTree(dir string, depth, maxDepth int) []*FileNode {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].IsDir() != entries[j].IsDir() {
-			return entries[i].IsDir()
-		}
-		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
-	})
-	out := []*FileNode{}
-	for _, ent := range entries {
-		name := ent.Name()
-		if ent.IsDir() && skipDirs[name] {
-			continue
-		}
-		if strings.HasPrefix(name, ".") && name != ".gitignore" {
-			continue
-		}
-		node := &FileNode{
-			Name:  name,
-			Path:  filepath.Join(dir, name),
-			IsDir: ent.IsDir(),
-		}
-		if node.IsDir && depth+1 < maxDepth {
-			node.Children = buildTree(node.Path, depth+1, maxDepth)
-		}
-		out = append(out, node)
 	}
 	return out
 }
@@ -336,8 +295,14 @@ func clipLines(s string, max int) string {
 
 // GenerateCommit pide a OpenRouter un mensaje de commit para los cambios
 // actuales. La key, el modelo y el endpoint se leen de las opciones globales.
-func (b *Bridge) GenerateCommit() (string, error) {
-	dir := b.projectDir()
+//
+// dir identifica el proyecto: cada generacion vive en su propio contexto
+// cancelable, de modo que dos proyectos pueden generar a la vez y Cancelar solo
+// afecta al proyecto indicado. Con dir vacio se usa el proyecto activo.
+func (b *Bridge) GenerateCommit(dir string) (string, error) {
+	if strings.TrimSpace(dir) == "" {
+		dir = b.projectDir()
+	}
 	if dir == "" {
 		return "", errors.New("no hay proyecto activo")
 	}
@@ -376,18 +341,29 @@ func (b *Bridge) GenerateCommit() (string, error) {
 		"Git evidence:\n" + summary
 
 	// La peticion vive en un contexto cancelable para que el boton Cancelar
-	// corte la espera al instante en vez de dejar el modal bloqueado.
+	// corte la espera al instante en vez de dejar el modal bloqueado. El
+	// contexto es por proyecto: relanzar en A no cancela la generacion de B.
 	ctx, cancel := context.WithCancel(context.Background())
+	key := commitKey(dir)
 	b.commitMu.Lock()
-	if b.commitCancel != nil {
-		b.commitCancel() // una generacion anterior que quedo colgada
+	if b.commitCancels == nil {
+		b.commitCancels = map[string]*commitRun{}
 	}
-	b.commitCancel = cancel
+	if prev := b.commitCancels[key]; prev != nil {
+		prev.cancel() // una generacion anterior del MISMO proyecto que quedo colgada
+	}
+	b.commitSeq++
+	run := &commitRun{id: b.commitSeq, cancel: cancel}
+	b.commitCancels[key] = run
 	b.commitMu.Unlock()
 	defer func() {
 		cancel()
 		b.commitMu.Lock()
-		b.commitCancel = nil
+		// Solo se borra la entrada si sigue siendo esta generacion: si el
+		// usuario relanzo, la nueva entrada no se debe tocar.
+		if cur := b.commitCancels[key]; cur != nil && cur.id == run.id {
+			delete(b.commitCancels, key)
+		}
 		b.commitMu.Unlock()
 	}()
 
@@ -405,14 +381,19 @@ func (b *Bridge) GenerateCommit() (string, error) {
 	return msg, nil
 }
 
-// CancelCommit aborta la generacion de commit en curso, si la hay. La llamada
-// a GenerateCommit termina con errCommitCancelled.
-func (b *Bridge) CancelCommit() {
+// CancelCommit aborta la generacion de commit en curso del proyecto indicado,
+// si la hay. La llamada a GenerateCommit de ESE proyecto termina con
+// errCommitCancelled; las generaciones de otros proyectos siguen intactas.
+// Con dir vacio se usa el proyecto activo.
+func (b *Bridge) CancelCommit(dir string) {
+	if strings.TrimSpace(dir) == "" {
+		dir = b.projectDir()
+	}
 	b.commitMu.Lock()
-	cancel := b.commitCancel
+	run := b.commitCancels[commitKey(dir)]
 	b.commitMu.Unlock()
-	if cancel != nil {
-		cancel()
+	if run != nil {
+		run.cancel()
 	}
 }
 
@@ -450,13 +431,16 @@ func cleanCommitMessage(raw string) string {
 	return strings.Join(out, "\n")
 }
 
-// Commit stagea todo y hace el commit con el mensaje dado.
-func (b *Bridge) Commit(message string) (string, error) {
+// Commit stagea todo y hace el commit con el mensaje dado en el proyecto
+// indicado (con dir vacio, el activo).
+func (b *Bridge) Commit(dir, message string) (string, error) {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return "", errors.New("el mensaje del commit está vacío")
 	}
-	dir := b.projectDir()
+	if strings.TrimSpace(dir) == "" {
+		dir = b.projectDir()
+	}
 	if dir == "" {
 		return "", errors.New("no hay proyecto activo")
 	}
