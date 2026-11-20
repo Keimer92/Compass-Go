@@ -48,6 +48,9 @@ if "%COMPASS_EMBEDDED%"=="1" if not "%CG_DETACHED%"=="1" (
     echo        La instalacion cierra Compass, asi que continuara en una
     echo        consola aparte para no cortar esta tarea.
     echo.
+    REM La consola nueva es normal: se limpia la marca para que no herede
+    REM los ajustes de una pestana incrustada (titulo, cierre de pestana...).
+    set "COMPASS_EMBEDDED="
     start "Compass Go - Instalacion" cmd /c call "%~f0" --detached %*
     exit /b 0
 )
@@ -102,6 +105,8 @@ echo [INFO] Compilando y generando el instalador (dist.bat %DIST_FLAGS%)...
 call "%~dp0dist.bat" %DIST_FLAGS%
 if errorlevel 1 (
     echo [ERROR] dist.bat fallo; no se ha instalado nada.
+    REM En la consola desacoplada la ventana se cerraria sin dejar leer el error.
+    if "%CG_DETACHED%"=="1" pause
     exit /b 1
 )
 if not exist "%SETUP%" (
@@ -194,4 +199,6 @@ echo.
 echo Abre Compass Go desde el menu Inicio (o ejecuta compass-go).
 echo Si quieres anclarlo: menu Inicio ^> clic derecho ^> Anclar a la barra de tareas.
 echo.
+REM En la consola desacoplada se deja el resumen a la vista antes de cerrar.
+if "%CG_DETACHED%"=="1" pause
 exit /b 0

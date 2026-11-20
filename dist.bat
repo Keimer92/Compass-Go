@@ -129,18 +129,36 @@ REM en tiempo de ejecucion solo hacen falta node.exe + whatsapp-engine-bundle,
 REM que ya viene compilado y es autocontenido. Con --no-node se omite ademas
 REM node.exe y el proyecto usa el Node 20+ del sistema. Esto reduce el payload
 REM de ~2418 archivos a ~30 y la instalacion de ~15 s a unos pocos segundos.
+REM El repo ya NO guarda node.exe: --with-node lo copia del Node del PATH.
 REM Se borra la copia previa porque /MIR + /XD no purga las carpetas excluidas.
+set "RC_ERR="
 if exist "corekit" (
     if "%NO_NODE%"=="1" (
         echo [INFO] Copiando core kits sin node.exe ^(--no-node^)...
         if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
         robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /XF node.exe /NFL /NDL /NJH /NJS /NP >nul
+        if errorlevel 8 set "RC_ERR=1"
     ) else (
         echo [INFO] Copiando core kits a dist\payload sin artefactos de build...
         if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
         robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
+        if errorlevel 8 set "RC_ERR=1"
+        REM El repo ya no guarda un node.exe: para el sidecar se toma el Node
+        REM 20+ del sistema (el primero del PATH). Si no hay Node, se avisa y el
+        REM instalador queda sin sidecar (los proyectos usarian el del PATH).
+        if not exist "dist\payload\corekit\whatsapp\node.exe" (
+            for /f "delims=" %%I in ('where node 2^>nul') do (
+                if not exist "dist\payload\corekit\whatsapp\node.exe" (
+                    copy /y "%%I" "dist\payload\corekit\whatsapp\node.exe" >nul 2>nul
+                )
+            )
+        )
+        if not exist "dist\payload\corekit\whatsapp\node.exe" (
+            echo [WARN] No se encontro Node en el PATH: el payload va sin node.exe.
+            echo        Instala Node 20+ o compila sin --with-node.
+        )
     )
-    if errorlevel 8 (
+    if defined RC_ERR (
         echo [WARN] robocopy devolvio un error al copiar corekit; revisa dist\payload\corekit.
     ) else (
         if "%NO_NODE%"=="1" (

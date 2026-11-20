@@ -70,7 +70,7 @@ Compass Go/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
 ├─ corekit/                  # core kits canónicos que viajan dentro de Compass (p.ej. whatsapp)
-│  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs (node.exe opcional, no se distribuye)
+│  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs (sin node.exe)
 ├─ PLAN_SVELTE.md             # estado y plan de la migración a la GUI web
 └─ PLAN.md                    # plan de migración original
 ```
@@ -103,6 +103,12 @@ install.bat --with-node  # vuelve a empaquetar node.exe (sidecar)
 
 - Cierra `compass-go.exe` en ejecución antes de sobrescribir (Windows no
   deja sobreescribir un `.exe` en uso).
+- **Si se lanza desde una pestaña de Compass** (las ConPTY exportan
+  `COMPASS_EMBEDDED=1`), `install.bat` no continúa ahí: se relanza a sí mismo
+  en una consola aparte (`--detached`, limpia la marca) y sale. De lo
+  contrario el `taskkill` de arriba cerraría la app, la consola y el agente
+  que la lanzó, abortando la instalación a medias. Esa consola aparte hace
+  `pause` al terminar (o al fallar) para que el resumen quede a la vista.
 - Borra el `dist\CompassGo-Setup.exe` anterior antes de compilar: si el
   empaquetado falla, no se instala un Setup viejo.
 - **Requiere NSIS** (si falta, `install.bat` aborta y sugiere
@@ -134,7 +140,9 @@ ronda los 5 s. El instalador además borra esos artefactos y cualquier `node.exe
 de instalaciones anteriores antes de extraer.
 
 Con `--with-node` se vuelve a incluir el sidecar `node.exe` (~70 MB, payload
-~83 MB). Es la opción para distribuir a terceros que no tengan Node instalado.
+~83 MB), copiado del Node 20+ que haya en el PATH (el repo ya no guarda uno).
+Es la opción para distribuir a terceros que no tengan Node instalado; si no hay
+Node en el PATH, `dist.bat` avisa y deja el payload sin sidecar.
 En ambos modos los proyectos consumidores resuelven Node en cascada —sidecar si
 existe → `node` del PATH— y exigen **Node >= 20** (lo impone Baileys).
 
@@ -259,10 +267,10 @@ Compass lleva dentro ciertos **core kits** —motores o runtimes compartidos— 
 primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
 
 - `corekit/whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
-  `node_modules/`, el bundle generado `whatsapp-engine-bundle/` y, en el repo
-  de desarrollo, un `node.exe` que **ya no se empaqueta ni se etaja**. El
-  runtime usa el **Node 20+ del sistema** (PATH); `--with-node` recupera el
-  sidecar para distribuir a máquinas sin Node.
+  `node_modules/` y el bundle generado `whatsapp-engine-bundle/`. **No guarda
+  ningún `node.exe`**: el runtime usa el **Node 20+ del sistema** (PATH) y
+  `dist.bat --with-node` copia ese Node del PATH al payload cuando se necesita
+  el sidecar para distribuir a máquinas sin Node.
 - **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
   2. `<dir del exe>/corekit/whatsapp` (instalación / binario compilado);
@@ -353,8 +361,8 @@ protocolo stdin/stdout está en `corekit/whatsapp/AGENTS.md`.
 
 ### Modelo mental
 - El motor **canónico** vive en `corekit/whatsapp/` dentro de Compass Go: única
-  fuente de verdad (`engine.js`, `bundle.mjs`, `node_modules/`). El `node.exe`
-  del repo ya no se distribuye: el runtime usa Node 20+ del sistema.
+  fuente de verdad (`engine.js`, `bundle.mjs`, `node_modules/`). El repo no
+  guarda `node.exe`: el runtime usa Node 20+ del sistema.
 - Cada proyecto consumidor recibe **su propia copia** del bundle generado
   (`whatsapp-engine-bundle/`) en su carpeta de recursos. **Nunca** se edita a
   mano el bundle dentro del proyecto: se regenera desde el canónico.
