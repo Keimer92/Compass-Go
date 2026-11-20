@@ -56,26 +56,18 @@ func exeDir() string {
 // resolveIcon devuelve una ruta a un .ico que EXISTE de verdad. Un icono de
 // registro que apunta a un fichero inexistente (p.ej. tras mover la instalacion)
 // se traduce en "sin icono" en el Explorador, asi que nunca devolvemos una ruta
-// rota: probamos el icono propio, luego Default.ico junto al exe y, por ultimo,
-// el propio .exe (que lleva el icono de Compass embebido).
+// rota: probamos el icono propio y, si falta, el propio .exe (que lleva el
+// icono de Compass embebido).
 func resolveIcon(name string) string {
 	dir := exeDir()
-	candidates := []string{
-		filepath.Join(dir, name),
-		filepath.Join(dir, "Default.ico"),
-	}
-	if home := homeDir(); home != "" {
-		candidates = append(candidates, filepath.Join(home, ".cargo", "bin", "Default.ico"))
-	}
-	for _, c := range candidates {
-		if fileExists(c) {
-			return c
-		}
+	icon := filepath.Join(dir, name)
+	if fileExists(icon) {
+		return icon
 	}
 	if exe, err := os.Executable(); err == nil && fileExists(exe) {
 		return exe
 	}
-	return filepath.Join(dir, name)
+	return icon
 }
 
 // Iconos del menu contextual: la entrada Compass Go, la cascada Vibe Coding y

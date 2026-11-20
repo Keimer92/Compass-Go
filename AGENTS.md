@@ -59,7 +59,7 @@ Compass Go/
 │  ├─ window/                 # trae al frente la ventana de otra instancia abierta
 │  ├─ console/                # Ctrl-C handler y bloqueo de cierre (Windows)
 │  ├─ prompts/  ui/           # prompts y helpers de UI
-├─ assets/icon/               # Compass Go.png, Vibe Coding.png, Git.png (+ .ico generados), Default.ico
+├─ assets/icon/               # CompassGo.ico, VibeCoding.ico, Git.ico (mismos nombres, contenido reemplazable)
 ├─ packaging/                 # plantilla del instalador NSIS + generador de cabecera
 │  ├─ installer.nsi           #   asistente MUI2 (icono, componentes, ejecutar al final)
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)

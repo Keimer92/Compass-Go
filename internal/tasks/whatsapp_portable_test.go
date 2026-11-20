@@ -160,7 +160,7 @@ func TestWriteStubIconResource(t *testing.T) {
 		t.Skip("go-winres no instalado")
 	}
 	// Icono real del repositorio (ruta relativa al directorio del paquete).
-	ico, err := filepath.Abs(filepath.Join("..", "..", "assets", "icon", "Default.ico"))
+	ico, err := filepath.Abs(filepath.Join("..", "..", "assets", "icon", "CompassGo.ico"))
 	if err != nil || !fileExists(ico) {
 		t.Skipf("icono de prueba no disponible: %v", err)
 	}

@@ -108,17 +108,8 @@ if errorlevel 1 (
 echo [OK] dist\payload\compass-go.exe generado.
 
 REM Iconos junto al ejecutable (el instalador los empaqueta tal cual).
-for %%I in (CompassGo.ico VibeCoding.ico Git.ico Default.ico) do (
+for %%I in (CompassGo.ico VibeCoding.ico Git.ico) do (
     if exist "assets\icon\%%I" copy /Y "assets\icon\%%I" "dist\payload\%%I" >nul 2>nul
-)
-if not exist "dist\payload\CompassGo.ico" if exist "dist\payload\Default.ico" (
-    copy /Y "dist\payload\Default.ico" "dist\payload\CompassGo.ico" >nul 2>nul
-)
-if not exist "dist\payload\VibeCoding.ico" if exist "dist\payload\Default.ico" (
-    copy /Y "dist\payload\Default.ico" "dist\payload\VibeCoding.ico" >nul 2>nul
-)
-if not exist "dist\payload\Git.ico" if exist "dist\payload\Default.ico" (
-    copy /Y "dist\payload\Default.ico" "dist\payload\Git.ico" >nul 2>nul
 )
 echo [OK] Iconos copiados.
 echo.
@@ -187,7 +178,6 @@ echo [INFO] Preparando recursos del instalador...
 REM Cabecera grafica del asistente (150x57 BMP) a partir del icono de la app.
 if exist "dist\installer_header.bmp" del /f /q "dist\installer_header.bmp" >nul 2>nul
 set "HEADER_ICON=assets\icon\CompassGo.ico"
-if not exist "%HEADER_ICON%" set "HEADER_ICON=assets\icon\Icon.ico"
 if exist "packaging\make_header.ps1" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "packaging\make_header.ps1" -Icon "%HEADER_ICON%" -Out "dist\installer_header.bmp" >nul 2>nul
 )
@@ -203,8 +193,6 @@ REM Icono de marca para el asistente y el propio .exe del instalador.
 set "ICON_FLAG="
 if exist "dist\payload\CompassGo.ico" (
     set "ICON_FLAG=/DAPPICON=payload\CompassGo.ico"
-) else if exist "dist\payload\Default.ico" (
-    set "ICON_FLAG=/DAPPICON=payload\Default.ico"
 )
 
 set "FAST_FLAG="

@@ -105,6 +105,13 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
   ; Migracion: eliminar la copia antigua de .cargo\bin.
   Delete "$PROFILE\.cargo\bin\compass-go.exe"
 
+  ; Migracion: iconos retirados (Default.ico, Icon.ico, opencode.ico). Ya no
+  ; viajan en el payload; se borran de instalaciones anteriores para no dejar
+  ; restos con el icono viejo.
+  Delete "$INSTDIR\Default.ico"
+  Delete "$INSTDIR\Icon.ico"
+  Delete "$INSTDIR\opencode.ico"
+
   ; PATH del usuario (conserva el tipo REG_EXPAND_SZ y el resto de entradas).
   ReadRegStr $0 HKCU "Environment" "Path"
   ${StrStr} $1 $0 "$INSTDIR"

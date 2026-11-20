@@ -104,9 +104,6 @@ if exist "%BINDIR%\compass-go.exe" del /f /q "%BINDIR%\compass-go.exe" >nul 2>nu
 if exist "%BINDIR%\CompassGo.ico"  del /f /q "%BINDIR%\CompassGo.ico" >nul 2>nul
 if exist "%BINDIR%\VibeCoding.ico" del /f /q "%BINDIR%\VibeCoding.ico" >nul 2>nul
 if exist "%BINDIR%\Git.ico"        del /f /q "%BINDIR%\Git.ico" >nul 2>nul
-if exist "%BINDIR%\Icon.ico"       del /f /q "%BINDIR%\Icon.ico" >nul 2>nul
-if exist "%BINDIR%\Default.ico"    del /f /q "%BINDIR%\Default.ico" >nul 2>nul
-if exist "%BINDIR%\opencode.ico"   del /f /q "%BINDIR%\opencode.ico" >nul 2>nul
 if exist "%BINDIR%\Uninstall.exe"  del /f /q "%BINDIR%\Uninstall.exe" >nul 2>nul
 if exist "%BINDIR%\corekit"        rmdir /s /q "%BINDIR%\corekit" >nul 2>nul
 REM Solo el .exe: los .ico de .cargo\bin los comparten otros tools.
