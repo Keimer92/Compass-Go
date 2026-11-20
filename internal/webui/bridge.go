@@ -249,6 +249,12 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 		if label == "" {
 			continue
 		}
+		// Las cards de Android solo tienen sentido si el proyecto trae el
+		// modulo Android generado (build/android, android/ o gradlew). Sin el,
+		// las tareas abortan pidiendo `wails3 update build-assets`.
+		if item.IsAndroid(ctx.ProjectType) && !ctx.HasAndroidProject {
+			continue
+		}
 		// Solo se muestran cards con una tarea real para este tipo de proyecto:
 		// asi no aparecen (p.ej.) HMR o Android en un proyecto Go puro.
 		if !tasks.Available(taskFor(item, ctx.ProjectType), ctx.ProjectType) {

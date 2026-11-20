@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
+	"compass/internal/menu"
+	"compass/internal/prompts"
 	"compass/internal/project"
 	"compass/internal/shell"
-	"compass/internal/theme"
-	"compass/internal/tui"
 	"compass/internal/ui"
 )
 
@@ -72,7 +72,7 @@ func EnvAction(action string) error {
 
 type envAction struct {
 	key  string
-	card tui.SubItem
+	card menu.SubItem
 	run  func(string) error
 }
 
@@ -106,23 +106,23 @@ func envMaterialize(dir string) error {
 
 func envEntries() []envAction {
 	return []envAction{
-		{"backup", tui.SubItem{
+		{"backup", menu.SubItem{
 			Icon: "\U0001f4be", Label: "Backup completo",
 			Description: "Variables, inventario y archivos", ColorKey: "environment",
 		}, func(work string) error { return runBackup(work, false) }},
-		{"inventory", tui.SubItem{
+		{"inventory", menu.SubItem{
 			Icon: "\U0001f4cb", Label: "Solo inventario",
 			Description: "Herramientas y versiones, sin copiar", ColorKey: "version",
 		}, func(work string) error { return runBackup(work, true) }},
-		{"restore", tui.SubItem{
+		{"restore", menu.SubItem{
 			Icon: "\u267b", Label: "Restaurar entorno",
 			Description: "Variables, rutas y rollback", ColorKey: "clean",
 		}, func(work string) error { return runRestore(work, false) }},
-		{"validate", tui.SubItem{
+		{"validate", menu.SubItem{
 			Icon: "\U0001f50d", Label: "Validar backup",
 			Description: "Diff sin modificar nada", ColorKey: "debug",
 		}, func(work string) error { return runRestore(work, true) }},
-		{"open", tui.SubItem{
+		{"open", menu.SubItem{
 			Icon: "\U0001f4c2", Label: "Abrir respaldos",
 			Description: "Carpeta de respaldos de Compass", ColorKey: "git",
 		}, runOpenBackups},
@@ -148,32 +148,15 @@ func EnvManage(ctx *project.ProjectContext) error {
 	}
 
 	entries := envEntries()
-	cards := make([]tui.SubEntry[string], len(entries))
+	labels := make([]string, len(entries))
 	for i, e := range entries {
-		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
+		labels[i] = e.card.Label + " · " + e.card.Description
 	}
-	menu := tui.NewSubmenu("ENTORNO · RESPALDO", "CFG", cards)
-	th := theme.Load()
-
-	for {
-		choice, ok, err := menu.Run(ctx, th)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
-		for _, e := range entries {
-			if e.key == choice {
-				if e.run != nil {
-					if err := e.run(work); err != nil {
-						return err
-					}
-				}
-				break
-			}
-		}
+	idx, err := prompts.Select("Entorno · respaldo", labels)
+	if err != nil || idx < 0 || idx >= len(entries) {
+		return err
 	}
+	return entries[idx].run(work)
 }
 
 func defaultBackupRoot(work string) string {

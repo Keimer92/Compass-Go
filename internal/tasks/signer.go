@@ -16,8 +16,7 @@ import (
 	"compass/internal/project"
 	"compass/internal/prompts"
 	"compass/internal/shell"
-	"compass/internal/theme"
-	"compass/internal/tui"
+	"compass/internal/menu"
 	"compass/internal/ui"
 )
 
@@ -515,59 +514,58 @@ func guessSecret(name string, info SigningInfo, keystoreB64 string, hasB64 bool)
 
 type signingItem struct {
 	key  string
-	card tui.SubItem
+	card menu.SubItem
 	run  func(*project.ProjectContext) error
 }
 
 // signingEntries son las 11 entradas del submenú, en orden de pantalla.
 func signingEntries() []signingItem {
 	return []signingItem{
-		{"status", tui.SubItem{
+		{"status", menu.SubItem{
 			Icon: "\U0001f4ca", Label: "Estado de la firma",
 			Description: "Autodeteccion de keystore y Gradle", ColorKey: "debug",
 		}, showSigningStatus},
-		{"create", tui.SubItem{
+		{"create", menu.SubItem{
 			Icon: "\U0001f511", Label: "Crear keystore",
 			Description: "Generar un keystore nuevo", ColorKey: "sign",
 		}, createKeystore},
-		{"import", tui.SubItem{
+		{"import", menu.SubItem{
 			Icon: "\U0001f4e4", Label: "Importar keystore",
 			Description: "Importar keystore existente", ColorKey: "install",
 		}, importKeystore},
-		{"manual", tui.SubItem{
+		{"manual", menu.SubItem{
 			Icon: "\u270f", Label: "Configuracion manual",
 			Description: "Escribir keystore.properties a mano", ColorKey: "terminal",
 		}, manualConfigure},
-		{"fingerprints", tui.SubItem{
+		{"fingerprints", menu.SubItem{
 			Icon: "\U0001f532", Label: "Huellas (SHA-1/SHA-256)",
 			Description: "Huellas SHA-1, SHA-256 y MD5", ColorKey: "apk",
 		}, showFingerprints},
-		{"secrets", tui.SubItem{
+		{"secrets", menu.SubItem{
 			Icon: "\U0001f510", Label: "Secretos de GitHub Actions",
 			Description: "Valores para secretos de CI", ColorKey: "version",
 		}, showSecrets},
-		{"backup", tui.SubItem{
+		{"backup", menu.SubItem{
 			Icon: "\U0001f4be", Label: "Respaldar keystore",
 			Description: "Copia de keystore + properties", ColorKey: "build",
 		}, backupKeystore},
-		{"restore", tui.SubItem{
+		{"restore", menu.SubItem{
 			Icon: "\U0001f5d1", Label: "Restaurar respaldo",
 			Description: "Restaurar desde un respaldo", ColorKey: "reload",
 		}, restoreKeystore},
-		{"list", tui.SubItem{
+		{"list", menu.SubItem{
 			Icon: "\U0001f4cb", Label: "Listar respaldos",
 			Description: "Ver respaldos disponibles", ColorKey: "clean",
 		}, listBackups},
-		{"verify", tui.SubItem{
+		{"verify", menu.SubItem{
 			Icon: "\u2705", Label: "Verificar APK",
 			Description: "apksigner vs keystore configurado", ColorKey: "test",
 		}, verifyApk},
 	}
 }
 
-// SigningManage es el punto de entrada de las tareas sign/signing/sha1/keystore.
-//
-// Tras ejecutar una acción se vuelve al submenú.
+// SigningManage es el punto de entrada de las tareas sign/signing/sha1/keystore
+// cuando se invocan por CLI. La GUI usa las subcards (signing-do-<key>).
 func SigningManage(ctx *project.ProjectContext) error {
 	if ctx.ProjectType == project.TypePython ||
 		ctx.ProjectType == project.TypeGo {
@@ -578,33 +576,15 @@ func SigningManage(ctx *project.ProjectContext) error {
 	}
 
 	entries := signingEntries()
-	cards := make([]tui.SubEntry[string], len(entries))
+	labels := make([]string, len(entries))
 	for i, e := range entries {
-		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
+		labels[i] = e.card.Label + " · " + e.card.Description
 	}
-	menu := tui.NewSubmenu("FIRMAS · KEYSTORE", "MNT", cards)
-	th := theme.Load()
-
-	for {
-		choice, ok, err := menu.Run(ctx, th)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
-		for _, e := range entries {
-			if e.key != choice {
-				continue
-			}
-			if e.run != nil {
-				if err := e.run(ctx); err != nil {
-					return err
-				}
-			}
-			break
-		}
+	idx, err := prompts.Select("Firmas · keystore", labels)
+	if err != nil || idx < 0 || idx >= len(entries) {
+		return err
 	}
+	return entries[idx].run(ctx)
 }
 
 // ── Utilidades de layout ────────────────────────────────────────────────────

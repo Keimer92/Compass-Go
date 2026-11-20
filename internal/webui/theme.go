@@ -4,8 +4,6 @@ import (
 	"fmt"
 
 	"compass/internal/theme"
-
-	"github.com/gdamore/tcell/v2"
 )
 
 // ThemeInfo es un tema listo para pintar en el navegador (colores CSS).
@@ -22,7 +20,7 @@ type ThemeInfo struct {
 	Cards   map[string]string `json:"cards"`
 }
 
-func cssColor(c tcell.Color) string {
+func cssColor(c theme.Color) string {
 	v := c.Hex()
 	if v < 0 {
 		return ""

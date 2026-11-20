@@ -1,6 +1,8 @@
 package webui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -105,6 +107,82 @@ func TestVibeCardAndSubcards(t *testing.T) {
 	if subs[len(subs)-1].Task != "opencode-configure" {
 		t.Errorf("ultima subcard = %q, queria opencode-configure", subs[len(subs)-1].Task)
 	}
+}
+
+// Un proyecto Go+Wails sin build/android no debe ofrecer las cards de Android:
+// al pulsarlas la tarea aborta pidiendo `wails3 update build-assets`. Tampoco
+// Signing, que solo tiene sentido con un modulo Android.
+func TestWailsWithoutAndroidModuleHidesAndroidCards(t *testing.T) {
+	b := newWailsProject(t, false)
+
+	android := []string{"And. Dev", "APK Release", "AAB", "Install", "Debug Andr", "Signing"}
+	for _, it := range b.GetMenu() {
+		for _, label := range android {
+			if it.Label == label {
+				t.Errorf("la card %q no deberia aparecer sin build/android", label)
+			}
+		}
+	}
+	// Las de escritorio siguen estando.
+	var sawWindows, sawClean bool
+	for _, it := range b.GetMenu() {
+		switch it.Label {
+		case "Windows":
+			sawWindows = true
+		case "Clean":
+			sawClean = true
+		}
+	}
+	if !sawWindows || !sawClean {
+		t.Errorf("faltan cards de escritorio (windows=%v clean=%v)", sawWindows, sawClean)
+	}
+}
+
+// Con el modulo Android generado (build/android/gradlew.bat) vuelven a salir.
+func TestWailsWithAndroidModuleShowsAndroidCards(t *testing.T) {
+	b := newWailsProject(t, true)
+
+	got := map[string]bool{}
+	for _, it := range b.GetMenu() {
+		got[it.Label] = true
+	}
+	for _, label := range []string{"And. Dev", "APK Release", "AAB", "Install", "Debug Andr", "Signing"} {
+		if !got[label] {
+			t.Errorf("falta la card %q con build/android presente", label)
+		}
+	}
+}
+
+// newWailsProject crea un proyecto Go+Wails minimo (go.mod con la dependencia
+// y frontend/package.json) y, si withAndroid, un build/android con gradlew.bat.
+func newWailsProject(t *testing.T, withAndroid bool) *Bridge {
+	t.Helper()
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := t.TempDir()
+	gomod := "module demo\n\ngo 1.22\n\nrequire github.com/wailsapp/wails/v3 v3.0.0\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "frontend"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "frontend", "package.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if withAndroid {
+		android := filepath.Join(dir, "build", "android")
+		if err := os.MkdirAll(android, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(android, "gradlew.bat"), []byte("@echo off\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// NewBridge hace chdir: se registra aqui para que el cleanup devuelva el
+	// cwd original antes de que TempDir intente borrar la carpeta (Windows no
+	// deja eliminar el directorio de trabajo actual).
+	t.Chdir(dir)
+	return NewBridge(dir)
 }
 
 // Una CLI no instalada no debe romper la pestana: el script avisa en vez de

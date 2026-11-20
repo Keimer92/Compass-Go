@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"compass/internal/menu"
+	"compass/internal/prompts"
 	"compass/internal/project"
 	"compass/internal/settings"
 	"compass/internal/shell"
 	"compass/internal/sound"
-	"compass/internal/theme"
-	"compass/internal/tui"
 	"compass/internal/ui"
 )
 
@@ -137,7 +137,7 @@ func desktopArchOf(key string) (desktopArch, bool) {
 
 type releaseEntry struct {
 	key  string
-	card tui.SubItem
+	card menu.SubItem
 }
 
 // windowsEntries son las cards del release de escritorio.
@@ -149,34 +149,34 @@ func windowsEntries(ctx *project.ProjectContext) []releaseEntry {
 	// menu de arquitecturas: se ofrecen los artefactos.
 	if ctx.ProjectType == project.TypeFlutter {
 		return []releaseEntry{
-			{archKeyX64, tui.SubItem{
+			{archKeyX64, menu.SubItem{
 				Icon: iconDesktop, Label: "Windows " + HostArchLabel(),
 				Description: "Build del release · equipo actual", ColorKey: "run",
 			}},
-			{archKeyPortable, tui.SubItem{
+			{archKeyPortable, menu.SubItem{
 				Icon: iconUniversal, Label: "Portable (un exe)",
 				Description: "Todo dentro · extrae al ejecutar", ColorKey: "install",
 			}},
-			{archKeyInstaller, tui.SubItem{
+			{archKeyInstaller, menu.SubItem{
 				Icon: iconInstall, Label: "Instalador",
 				Description: "Setup.exe con todo dentro", ColorKey: "build",
 			}},
 		}
 	}
 	return []releaseEntry{
-		{archKeyX64, tui.SubItem{
+		{archKeyX64, menu.SubItem{
 			Icon: iconDesktop, Label: "Windows x64",
 			Description: "64 bits · uso general", ColorKey: "run",
 		}},
-		{archKeyAll, tui.SubItem{
+		{archKeyAll, menu.SubItem{
 			Icon: iconAll, Label: "Todos",
 			Description: "Compila x86 + x64 + ARM64", ColorKey: "test",
 		}},
-		{archKeyX86, tui.SubItem{
+		{archKeyX86, menu.SubItem{
 			Icon: iconDesktop, Label: "Windows x86",
 			Description: "32 bits · PCs y VMs antiguas", ColorKey: "build",
 		}},
-		{archKeyArm64, tui.SubItem{
+		{archKeyArm64, menu.SubItem{
 			Icon: iconDesktop, Label: "Windows ARM64",
 			Description: "Snapdragon X · bajo consumo", ColorKey: "install",
 		}},
@@ -194,7 +194,7 @@ func androidEntries(ctx *project.ProjectContext) []releaseEntry {
 
 	if ctx.ProjectType == project.TypeKotlin && !hasNativeLibs(kotlinAndroidDir(ctx)) {
 		return []releaseEntry{
-			{archKeyUniversal, tui.SubItem{
+			{archKeyUniversal, menu.SubItem{
 				Icon: iconUniversal, Label: "Android universal",
 				Description: "Sin libs nativas · sirve para todas las ABIs", ColorKey: "apk",
 			}},
@@ -202,19 +202,19 @@ func androidEntries(ctx *project.ProjectContext) []releaseEntry {
 	}
 
 	return []releaseEntry{
-		{archKeyArm64, tui.SubItem{
+		{archKeyArm64, menu.SubItem{
 			Icon: iconAndroid, Label: "Android arm64",
 			Description: "arm64-v8a · moviles modernos", ColorKey: "android",
 		}},
-		{archKeyArmv7, tui.SubItem{
+		{archKeyArmv7, menu.SubItem{
 			Icon: iconAndroid, Label: "Android armv7",
 			Description: "armeabi-v7a · equipos antiguos", ColorKey: "apk32",
 		}},
-		{archKeyUniversal, tui.SubItem{
+		{archKeyUniversal, menu.SubItem{
 			Icon: iconUniversal, Label: "Android universal",
 			Description: "Una APK con todas las ABIs", ColorKey: "apk",
 		}},
-		{archKeyAll, tui.SubItem{
+		{archKeyAll, menu.SubItem{
 			Icon: iconAll, Label: "Todos",
 			Description: "Compila las tres APK en serie", ColorKey: "aab",
 		}},
@@ -302,8 +302,8 @@ func ReleaseAndroidArch(ctx *project.ProjectContext, arch string) error {
 	return nil
 }
 
-// runReleaseMenu es el bucle canónico de los submenús: ejecuta la acción con la
-// consola restaurada y vuelve al TUI sin cerrar el submenú si el build falla.
+// runReleaseMenu elige la variante por consola y ejecuta el build. La GUI no
+// pasa por aqui: usa las subcards (windows-release-*, android-release-*).
 func runReleaseMenu(
 	ctx *project.ProjectContext,
 	title string,
@@ -311,39 +311,26 @@ func runReleaseMenu(
 	reveal revealMode,
 	exec func(string) ([]string, error),
 ) error {
-	cards := make([]tui.SubEntry[string], len(entries))
+	labels := make([]string, len(entries))
 	for i, e := range entries {
-		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
+		labels[i] = e.card.Label + " · " + e.card.Description
 	}
-	menu := tui.NewSubmenu(title, "DEV", cards)
-	th := theme.Load()
-
-	for {
-		choice, ok, err := menu.Run(ctx, th)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
-
-		artifacts, err := exec(choice)
-		if err != nil {
-			sound.Failure()
-			fmt.Println()
-			fmt.Println(err)
-			fmt.Println()
-			ui.Pause()
-		} else {
-			finishRelease(ctx, artifacts, reveal)
-		}
-
-		// `finishRelease` agotó su cuenta atrás: pide cerrar la pestaña, así que
-		// el submenú no espera otra elección y la tarea termina.
-		if shell.CloseTabRequested() {
-			return nil
-		}
+	idx, err := prompts.Select(title, labels)
+	if err != nil || idx < 0 || idx >= len(entries) {
+		return err
 	}
+
+	artifacts, err := exec(entries[idx].key)
+	if err != nil {
+		sound.Failure()
+		fmt.Println()
+		fmt.Println(err)
+		fmt.Println()
+		ui.Pause()
+		return nil
+	}
+	finishRelease(ctx, artifacts, reveal)
+	return nil
 }
 
 // finishRelease lista lo generado, revela el resultado y espera una sola vez.

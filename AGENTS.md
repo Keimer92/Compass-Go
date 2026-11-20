@@ -45,7 +45,7 @@ Compass Go/
 │     └─ lib/bridge.ts        # Call.ByName + suscripción a eventos pty:*/workspace:changed
 ├─ internal/
 │  ├─ webui/                  # puente Go↔JS: Bridge, terminal, menú, temas, git
-│  ├─ tui/                    # solo tipos del menú (MenuItem, Label, Icon, Section)
+│  ├─ menu/                   # modelo de las cards (MenuItem, Label, Icon, Section, SubItem)
 │  ├─ container/              # contenedor ConPTY: sesión, scrollback, parser vt10x
 │  ├─ tasks/                  # ejecutores por plataforma + menús contextuales Windows + global tasks
 │  │  └─ assets/              # plantillas PowerShell (env-backup, opencode)
@@ -65,7 +65,8 @@ Compass Go/
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload/ + CompassGo-Setup.exe); desechable
-├─ dev.bat                    # Vite (HMR) + go run --dev: ciclo de desarrollo de la UI
+├─ dev.bat                    # Vite (HMR de UI) + recarga de Go vía dev-watch.ps1
+├─ dev-watch.ps1              # vigila los .go y recompila/reinicia Compass
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
@@ -624,16 +625,25 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 ### Desarrollo con HMR (`dev.bat`)
 
 `dev.bat` levanta Vite en su propia ventana (puerto 5173, `strictPort`) y luego
-`go run ./cmd/compass-web --dev`. El flag `--dev` exporta
-`FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`; con ese valor Wails v3 sirve la
-UI desde Vite en lugar del bundle embebido (rama `!production` de
-`internal/assetserver`), de modo que los cambios de Svelte/CSS se aplican en
-caliente. Los cambios en Go requieren cerrar y volver a ejecutar `dev.bat`.
+llama a `dev-watch.ps1`, que compila `build\dev\compass-go.exe` y lo arranca con
+`--dev`. El flag `--dev` exporta `FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`;
+con ese valor Wails v3 sirve la UI desde Vite en lugar del bundle embebido (rama
+`!production` de `internal/assetserver`), de modo que los cambios de
+Svelte/CSS/TS se aplican en caliente.
 
 ```bat
-dev.bat              # Vite + Compass Go en modo desarrollo
+dev.bat              # Vite (HMR de UI) + Compass Go con recarga de Go
 ```
 
+- **Recarga de Go** (`dev-watch.ps1`): vigila cada 600 ms los `*.go`, `go.mod` y
+  `go.sum` (excluyendo `frontend/`, `build/`, `dist/`, `corekit/`,
+  `node_modules/` y `.git/`). Al detectar un cambio mata la instancia, ejecuta
+  `go build -o build\dev\compass-go.exe ./cmd/compass-web` y la relanza. Si la
+  compilación falla, muestra el error y espera al siguiente cambio en vez de
+  morir. Al cerrar Compass a mano el script termina y `dev.bat` sale.
+- **No es hot reload**: Go está compilado, así que el proceso se reinicia. Eso
+  implica que **las ConPTY abiertas mueren** en cada cambio de Go (a diferencia
+  de una recarga de página, que sí las conserva).
 - `frontend/vite.config.ts` fija `server.hmr` a `ws://127.0.0.1:5173`: la
   página se sirve bajo el esquema `wails://wails:5173`, así que el cliente HMR
   no puede deducir el host del servidor y hay que indicárselo.
@@ -656,6 +666,20 @@ dev.bat              # Vite + Compass Go en modo desarrollo
 
 - **UI**: Wails v3 + Svelte 5 en vez de `ratatui`/Gio. El puente vive en
   `internal/webui`; el frontend llama `Call.ByName("compass/internal/webui.Bridge.<Metodo>")`.
+- **Sin TUI**: la interfaz de terminal se retiró por completo (`internal/tui` y
+  el render de `internal/container` ya no existen). Lo que queda es el *modelo*
+  de las cards en `internal/menu` (enum `MenuItem` + etiqueta/icono/color por
+  tipo de proyecto) y los ejecutores de `internal/tasks`. Las tareas que antes
+  abrían un submenú interactivo (`clean`, `git`, `signing`, `environment`,
+  `windows-release`, `android-release`) ahora piden la opción por consola con
+  `prompts.Select`; la GUI usa siempre las subcards (`<prefijo>-do-<clave>`).
+  Gracias a eso el binario ya no depende de `tcell` ni de `gioui`.
+- **Cards de Android condicionadas al proyecto**: `GetMenu` oculta toda card
+  con `MenuItem.IsAndroid(pt)` (And. Dev, APK Release, AAB, Install, Debug Andr
+  y Signing) cuando `ProjectContext.HasAndroidProject` es falso. Se detecta con
+  la presencia de `build/android/gradlew.bat` (Wails), `android/gradlew.bat`
+  (Flutter) o `gradlew.bat` en la raíz (Kotlin). Un proyecto Wails sin
+  `wails3 update build-assets` ya no ofrece builds de Android que abortarían.
 - **Terminal embebida**: `go-pty` (ConPTY) + `vt10x` (parser VT) en Go, y
   xterm.js en el frontend. La salida se reparte con `container.SpawnTap` entre
   el parser y el evento `pty:data` (nunca dos lectores sobre la misma ConPTY).

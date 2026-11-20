@@ -5,31 +5,31 @@ import (
 
 	"compass/internal/project"
 	"compass/internal/tasks"
-	"compass/internal/tui"
+	"compass/internal/menu"
 )
 
 // menuItems es el orden canónico de cards (mismo que la TUI/GUI anterior).
-var menuItems = []tui.MenuItem{
-	tui.WindowsDev, tui.AndroidDev, tui.AndroidHmr, tui.WindowsBuild,
-	tui.AndroidBuildArm64, tui.AndroidBuildArmv7, tui.AndroidBuildAll,
-	tui.InstallDebug, tui.FlutterProfile, tui.Tests,
-	tui.Clean, tui.DebugAndroid, tui.Signing, tui.VersionItem,
-	tui.Git, tui.ConfigureTerminal, tui.Environment,
-	tui.VibeCoding,
+var menuItems = []menu.MenuItem{
+	menu.WindowsDev, menu.AndroidDev, menu.AndroidHmr, menu.WindowsBuild,
+	menu.AndroidBuildArm64, menu.AndroidBuildArmv7, menu.AndroidBuildAll,
+	menu.InstallDebug, menu.FlutterProfile, menu.Tests,
+	menu.Clean, menu.DebugAndroid, menu.Signing, menu.VersionItem,
+	menu.Git, menu.ConfigureTerminal, menu.Environment,
+	menu.VibeCoding,
 }
 
 var allMenuItems = menuItems
 
 // hiddenMenuItems son cards retiradas del menu. Se deja el item en menuItems
-// (y en el enum de tui) para no desplazar los indices que usan los temas y los
+// (y en el enum de menu) para no desplazar los indices que usan los temas y los
 // IDs de pestaña, pero no se muestra nunca.
-var hiddenMenuItems = map[tui.MenuItem]bool{
-	tui.FlutterProfile: true, // modo --profile de Flutter retirado
+var hiddenMenuItems = map[menu.MenuItem]bool{
+	menu.FlutterProfile: true, // modo --profile de Flutter retirado
 }
 
 // menuItem devuelve la card del indice. WindowsDev vale 0, asi que el valor
 // cero NO puede usarse como centinela de "no existe".
-func menuItem(i int) (tui.MenuItem, bool) {
+func menuItem(i int) (menu.MenuItem, bool) {
 	if i < 0 || i >= len(menuItems) {
 		return 0, false
 	}
@@ -63,7 +63,7 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 		return nil
 	}
 	switch item {
-	case tui.WindowsBuild:
+	case menu.WindowsBuild:
 		if ctx.ProjectType == project.TypeGo || ctx.ProjectType == project.TypeGoWails {
 			return []Subcard{
 				{"windows-release-x64", "Windows x64", "64 bits · uso general", "run"},
@@ -79,20 +79,20 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 				{"flutter-installer", "Instalador", "Setup.exe con todo dentro", "build"},
 			}
 		}
-	case tui.AndroidBuildArm64, tui.AndroidBuildAll:
+	case menu.AndroidBuildArm64, menu.AndroidBuildAll:
 		return []Subcard{
 			{"android-release-arm64", "Android arm64", "arm64-v8a · móviles modernos", "android"},
 			{"android-release-armv7", "Android armv7", "armeabi-v7a · equipos antiguos", "apk32"},
 			{"android-release-universal", "Android universal", "Una APK con todas las ABIs", "apk"},
 			{"android-release-all", "Todos", "Compila las tres APK en serie", "aab"},
 		}
-	case tui.Git:
+	case menu.Git:
 		return []Subcard{
 			{"git-do-init", "Inicializar repositorio", "git init + rama main + primer commit", "build"},
 			{"git-do-remote", "Conectar con remoto", "Enlazar con GitHub (URL o gh)", "git"},
 			{"git-do-status", "Ver estado", "Rama, remoto y cambios", "debug"},
 		}
-	case tui.Clean:
+	case menu.Clean:
 		// Mismas acciones que el submenu de la TUI, pero como cards.
 		opts := tasks.CleanupOptions()
 		out := make([]Subcard, 0, len(opts))
@@ -105,7 +105,7 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			})
 		}
 		return out
-	case tui.Signing:
+	case menu.Signing:
 		// Mismas acciones que el submenu de la TUI, pero como cards.
 		opts := tasks.SigningOptions()
 		out := make([]Subcard, 0, len(opts))
@@ -118,7 +118,7 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			})
 		}
 		return out
-	case tui.Environment:
+	case menu.Environment:
 		return []Subcard{
 			{"env-do-backup", "Backup completo", "Variables, inventario y archivos", "environment"},
 			{"env-do-inventory", "Solo inventario", "Herramientas y versiones, sin copiar", "version"},
@@ -126,7 +126,7 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"env-do-validate", "Validar backup", "Diff sin modificar nada", "debug"},
 			{"env-do-open", "Abrir respaldos", "Carpeta de respaldos de Compass", "git"},
 		}
-	case tui.VibeCoding:
+	case menu.VibeCoding:
 		return vibeSubcards()
 	}
 	return nil
@@ -158,13 +158,13 @@ func vibeSubcards() []Subcard {
 }
 
 // taskFor mapea una card a su tarea CLI segun el tipo de proyecto.
-func taskFor(item tui.MenuItem, pt project.ProjectType) string {
+func taskFor(item menu.MenuItem, pt project.ProjectType) string {
 	switch item {
-	case tui.WindowsDev:
+	case menu.WindowsDev:
 		return "windows-dev"
-	case tui.AndroidDev:
+	case menu.AndroidDev:
 		return "android-dev"
-	case tui.AndroidHmr:
+	case menu.AndroidHmr:
 		// Python recarga Uvicorn (android-hmr) y Go puro usa Air (go-hmr).
 		// En el resto de tipos la card no se muestra (Label devuelve "").
 		switch pt {
@@ -174,41 +174,41 @@ func taskFor(item tui.MenuItem, pt project.ProjectType) string {
 			return "go-hmr"
 		}
 		return ""
-	case tui.WindowsBuild:
+	case menu.WindowsBuild:
 		switch pt {
 		case project.TypeGo, project.TypeGoWails:
 			return "windows-release"
 		default:
 			return "windows-build"
 		}
-	case tui.AndroidBuildArm64:
+	case menu.AndroidBuildArm64:
 		return "android-release"
-	case tui.AndroidBuildAll:
+	case menu.AndroidBuildAll:
 		return "android-aab"
-	case tui.InstallDebug:
+	case menu.InstallDebug:
 		return "android-install-debug"
-	case tui.Tests:
+	case menu.Tests:
 		switch pt {
 		case project.TypePython:
 			return "python-test"
 		case project.TypeGo:
 			return "go-test"
 		}
-	case tui.Clean:
+	case menu.Clean:
 		return "clean"
-	case tui.DebugAndroid:
+	case menu.DebugAndroid:
 		return "debug-android"
-	case tui.Signing:
+	case menu.Signing:
 		return "signing"
-	case tui.VersionItem:
+	case menu.VersionItem:
 		return "version"
-	case tui.Git:
+	case menu.Git:
 		return "git"
-	case tui.ConfigureTerminal:
+	case menu.ConfigureTerminal:
 		return "terminal"
-	case tui.Environment:
+	case menu.Environment:
 		return "environment"
-	case tui.VibeCoding:
+	case menu.VibeCoding:
 		return "vibe"
 	}
 	return ""

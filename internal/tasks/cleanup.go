@@ -10,8 +10,7 @@ import (
 	"compass/internal/project"
 	"compass/internal/prompts"
 	"compass/internal/shell"
-	"compass/internal/theme"
-	"compass/internal/tui"
+	"compass/internal/menu"
 	"compass/internal/ui"
 )
 
@@ -478,62 +477,44 @@ func confirmCLI(prompt string) (bool, error) {
 
 type cleanupItem struct {
 	key  string
-	card tui.SubItem
+	card menu.SubItem
 	run  func(*project.ProjectContext) error
 }
 
 func cleanupEntries() []cleanupItem {
 	return []cleanupItem{
-		{"quick", tui.SubItem{
+		{"quick", menu.SubItem{
 			Icon: "\u26a1", Label: "Rápida",
 			Description: "Builds y caches · conserva deps", ColorKey: "clean",
 		}, quickClean},
-		{"full", tui.SubItem{
+		{"full", menu.SubItem{
 			Icon: "\U0001f5d1", Label: "Completa",
 			Description: "Borra también dependencias", ColorKey: "build",
 		}, fullClean},
-		{"choose", tui.SubItem{
+		{"choose", menu.SubItem{
 			Icon: "\U0001f3af", Label: "Elegir qué borrar",
 			Description: "Lista y marca qué borrar", ColorKey: "debug",
 		}, chooseAndPurge},
-		{"sizes", tui.SubItem{
+		{"sizes", menu.SubItem{
 			Icon: "\U0001f4ca", Label: "Ver tamaños",
 			Description: "Mide sin borrar nada", ColorKey: "profile",
 		}, reportSizes},
 	}
 }
 
-// CleanupManage es el punto de entrada de las tareas clean/clean-cache/clean-project.
-//
-// Tras ejecutar una accion se vuelve al submenu, como en Rust.
+// CleanupManage es el punto de entrada de las tareas clean/clean-cache/clean-project
+// cuando se invocan por CLI. La GUI usa las subcards (clean-do-<key>).
 func CleanupManage(ctx *project.ProjectContext) error {
 	entries := cleanupEntries()
-	cards := make([]tui.SubEntry[string], len(entries))
+	labels := make([]string, len(entries))
 	for i, e := range entries {
-		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
+		labels[i] = e.card.Label + " · " + e.card.Description
 	}
-	menu := tui.NewSubmenu("LIMPIEZA", "MNT", cards)
-	th := theme.Load()
-
-	for {
-		choice, ok, err := menu.Run(ctx, th)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
-		for _, e := range entries {
-			if e.key == choice {
-				if e.run != nil {
-					if err := e.run(ctx); err != nil {
-						return err
-					}
-				}
-				break
-			}
-		}
+	idx, err := prompts.Select("Limpieza", labels)
+	if err != nil || idx < 0 || idx >= len(entries) {
+		return err
 	}
+	return entries[idx].run(ctx)
 }
 
 // orderedTargets devuelve las claves en orden estable (alfabetico) con su valor.

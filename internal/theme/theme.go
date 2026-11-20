@@ -1,17 +1,36 @@
-// Package theme contiene los temas del TUI (inspirados en los de OpenCode) y
-// su persistencia. Es el equivalente de src/theme.rs.
+// Package theme contiene los temas de Compass (inspirados en los de OpenCode)
+// y su persistencia.
 //
-// Cada Theme es un conjunto de roles semanticos (no colores sueltos) para que el
-// dibujado del menu no tenga literales de color: cambiar de tema solo cambia
-// esta tabla.
+// Cada Theme es un conjunto de roles semanticos (no colores sueltos) para que la
+// UI no tenga literales de color: cambiar de tema solo cambia esta tabla.
 package theme
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
+)
 
-	"github.com/gdamore/tcell/v2"
+// Color es un color RGB de 24 bits (0xRRGGBB). -1 representa "sin color".
+type Color int32
+
+// Hex devuelve el valor 0xRRGGBB, o -1 si el color no esta definido.
+func (c Color) Hex() int32 { return int32(c) }
+
+// RGB separa el color en sus tres componentes.
+func (c Color) RGB() (int32, int32, int32) {
+	v := int32(c)
+	return (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff
+}
+
+// Colores nombrados del tema por defecto.
+const (
+	colorWhite  Color = 0xffffff
+	colorGray   Color = 0x808080
+	colorGreen  Color = 0x008000
+	colorTeal   Color = 0x008080
+	colorOlive  Color = 0x808000
+	colorPurple Color = 0x800080
 )
 
 // CardKeys son las claves de los acentos por card, en el orden del arreglo
@@ -30,49 +49,27 @@ var CardKeys = [18]string{
 type Theme struct {
 	Name string
 
-	Text       tcell.Color
-	Muted      tcell.Color
-	Border     tcell.Color
-	Brand      tcell.Color
-	Dev        tcell.Color
-	Mnt        tcell.Color
-	Cfg        tcell.Color
-	HoverBg    tcell.Color
-	Background tcell.Color
-	Success    tcell.Color
-	Info       tcell.Color
-	Accent     tcell.Color
-	Warning    tcell.Color
+	Text       Color
+	Muted      Color
+	Border     Color
+	Brand      Color
+	Dev        Color
+	Mnt        Color
+	Cfg        Color
+	HoverBg    Color
+	Background Color
+	Success    Color
+	Info       Color
+	Accent     Color
+	Warning    Color
 
 	// CardHexes es el acento propio de cada card (0xRRGGBB), en el orden de
 	// CardKeys.
 	CardHexes [18]int32
 }
 
-// hex convierte un literal 0xRRGGBB en color tcell.
-func hex(v int32) tcell.Color { return tcell.NewHexColor(v) }
-
-// dark oscurece v hacia el negro al pct por ciento. Es el tinte que se usa como
-// fondo de la card seleccionada.
-func dark(v int32, pct int32) tcell.Color {
-	r := (v >> 16) & 0xff
-	g := (v >> 8) & 0xff
-	b := v & 0xff
-	return tcell.NewRGBColor(r*pct/100, g*pct/100, b*pct/100)
-}
-
-// Section devuelve el color de acento de una seccion ("DEV" | "MNT" | "CFG").
-// Cualquier otro valor cae en Cfg.
-func (t *Theme) Section(section string) tcell.Color {
-	switch section {
-	case "DEV":
-		return t.Dev
-	case "MNT":
-		return t.Mnt
-	default:
-		return t.Cfg
-	}
-}
+// hex convierte un literal 0xRRGGBB en color.
+func hex(v int32) Color { return Color(v) }
 
 func (t *Theme) cardHex(key string) int32 {
 	idx := -1
@@ -97,15 +94,8 @@ func (t *Theme) cardHex(key string) int32 {
 	return t.CardHexes[idx]
 }
 
-// CardAccent devuelve el color distintivo de una card (key sale de CardKeys).
-func (t *Theme) CardAccent(key string) tcell.Color { return hex(t.cardHex(key)) }
-
-// CardBg es el fondo de esa card cuando esta seleccionada: su acento apagado al
-// 27 %.
-func (t *Theme) CardBg(key string) tcell.Color { return dark(t.cardHex(key), 27) }
-
 // Mix interpola dos colores (t=0 -> a, t=1 -> b).
-func Mix(a, b tcell.Color, t float32) tcell.Color {
+func Mix(a, b Color, t float32) Color {
 	if t < 0 {
 		t = 0
 	} else if t > 1 {
@@ -116,26 +106,26 @@ func Mix(a, b tcell.Color, t float32) tcell.Color {
 	lerp := func(x, y int32) int32 {
 		return int32(float32(x) + (float32(y)-float32(x))*t + 0.5)
 	}
-	return tcell.NewRGBColor(lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
+	return Color(lerp(ar, br)<<16 | lerp(ag, bg)<<8 | lerp(ab, bb))
 }
 
-// Themes es el temario. El orden es el de Ctrl+T; Compass va primero.
+// Themes es el temario. El orden es el de la lista de temas; Compass va primero.
 var Themes = []*Theme{
 	{
 		Name:       "Compass",
-		Text:       tcell.ColorWhite,
-		Muted:      tcell.ColorGray,
-		Border:     tcell.ColorGray,
-		Brand:      tcell.ColorGreen,
-		Dev:        tcell.ColorTeal,
-		Mnt:        tcell.ColorOlive,
-		Cfg:        tcell.ColorPurple,
+		Text:       colorWhite,
+		Muted:      colorGray,
+		Border:     colorGray,
+		Brand:      colorGreen,
+		Dev:        colorTeal,
+		Mnt:        colorOlive,
+		Cfg:        colorPurple,
 		HoverBg:    hex(0x1e1e24),
 		Background: hex(0x16161e),
-		Success:    tcell.ColorGreen,
-		Info:       tcell.ColorTeal,
-		Accent:     tcell.ColorPurple,
-		Warning:    tcell.ColorOlive,
+		Success:    colorGreen,
+		Info:       colorTeal,
+		Accent:     colorPurple,
+		Warning:    colorOlive,
 		CardHexes: [18]int32{
 			0x00abcd, 0x00ffff, 0x5fd7ff, 0xafff00, 0xffd700, 0xffa500, 0xff87d7, 0x00d7af,
 			0xffe79f, 0xffff00, 0xffcc2f, 0xff6f6f, 0xffb72f, 0xff4f4f, 0xff00ff, 0xd787ff,

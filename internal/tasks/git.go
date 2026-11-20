@@ -10,8 +10,7 @@ import (
 	"compass/internal/project"
 	"compass/internal/prompts"
 	"compass/internal/shell"
-	"compass/internal/theme"
-	"compass/internal/tui"
+	"compass/internal/menu"
 	"compass/internal/ui"
 )
 
@@ -847,21 +846,21 @@ func AddContextGitignoreFromDir(start string) error {
 
 type gitItem struct {
 	key  string
-	card tui.SubItem
+	card menu.SubItem
 	run  func(*project.ProjectContext) error
 }
 
 func gitEntries() []gitItem {
 	return []gitItem{
-		{"init", tui.SubItem{
+		{"init", menu.SubItem{
 			Icon: "\U0001f4c1", Label: "Inicializar repositorio",
 			Description: "git init + main + primer commit", ColorKey: "build",
 		}, gitInit},
-		{"remote", tui.SubItem{
+		{"remote", menu.SubItem{
 			Icon: "\U0001f517", Label: "Conectar con remoto",
 			Description: "Enlazar con GitHub (URL o gh)", ColorKey: "git",
 		}, connectRemote},
-		{"status", tui.SubItem{
+		{"status", menu.SubItem{
 			Icon: "\U0001f4ca", Label: "Ver estado",
 			Description: "Rama, remoto y cambios", ColorKey: "debug",
 		}, showGitStatus},
@@ -874,30 +873,13 @@ func gitEntries() []gitItem {
 // imprime y pide Enter con la consola normal, y despues se repinta.
 func GitManage(ctx *project.ProjectContext) error {
 	entries := gitEntries()
-	cards := make([]tui.SubEntry[string], len(entries))
+	labels := make([]string, len(entries))
 	for i, e := range entries {
-		cards[i] = tui.SubEntry[string]{Value: e.key, Item: e.card}
+		labels[i] = e.card.Label + " · " + e.card.Description
 	}
-	menu := tui.NewSubmenu("GIT", "CFG", cards)
-	th := theme.Load()
-
-	for {
-		choice, ok, err := menu.Run(ctx, th)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
-		for _, e := range entries {
-			if e.key == choice {
-				if e.run != nil {
-					if err := e.run(ctx); err != nil {
-						return err
-					}
-				}
-				break
-			}
-		}
+	idx, err := prompts.Select("Git", labels)
+	if err != nil || idx < 0 || idx >= len(entries) {
+		return err
 	}
+	return entries[idx].run(ctx)
 }
