@@ -2,9 +2,16 @@
   import { onMount } from 'svelte'
   import { gitLog, commitDetail } from '../lib/bridge'
   import type { CommitEntry, CommitDetail } from '../lib/bridge'
+  import { onRepoChanged } from '../lib/repoChanged'
+  import { peekLog, saveLog } from '../lib/panelCache'
 
-  let commits = $state<CommitEntry[]>([])
-  let loading = $state(true)
+  let { projectPath = '' }: { projectPath?: string } = $props()
+
+  // Con cache la pestaña aparece pintada al instante; el `git log` real se
+  // lanza igualmente para traer commits nuevos.
+  const cached = peekLog(projectPath)
+  let commits = $state<CommitEntry[]>(cached ?? [])
+  let loading = $state(cached === null)
   let error = $state('')
 
   // Detalle del commit abierto. Mientras carga se muestra la cabecera que ya
@@ -14,10 +21,12 @@
   let detailError = $state('')
 
   async function load() {
-    loading = true
+    // Sin spinner si ya hay commits en pantalla: solo se actualiza la lista.
+    loading = commits.length === 0
     error = ''
     try {
       commits = await gitLog()
+      saveLog(projectPath, commits)
     } catch (e) {
       error = (e as Error).message
     } finally {
@@ -64,7 +73,10 @@
     }
   }
 
-  onMount(load)
+  onMount(() => {
+    load()
+    return onRepoChanged(load)
+  })
 </script>
 
 <svelte:window

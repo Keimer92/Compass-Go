@@ -33,6 +33,10 @@ type Settings struct {
 
 	// OpenRouterAPIKey es el bearer token de https://openrouter.ai/keys.
 	OpenRouterAPIKey string `json:"openrouter_api_key"`
+	// AutoCommitIdleMin son los minutos que el arbol debe quedarse quieto
+	// antes de que el boton "Auto" del panel Git commitee. 0 o negativo se
+	// normaliza al valor por defecto (5).
+	AutoCommitIdleMin int `json:"auto_commit_idle_min"`
 }
 
 // Default devuelve los valores de fabrica.
@@ -44,7 +48,8 @@ func Default() Settings {
 		OpenRouterEndpoint: "https://openrouter.ai/api/v1",
 		// Vacio: GenerateCommit elige el gratuito mas rapido disponible si el
 		// usuario no ha seleccionado uno en Opciones.
-		OpenRouterModel: "",
+		OpenRouterModel:   "",
+		AutoCommitIdleMin: 5,
 	}
 }
 
@@ -79,6 +84,14 @@ func Load() Settings {
 	}
 	if strings.TrimSpace(s.OpenRouterModel) == "" {
 		s.OpenRouterModel = def.OpenRouterModel
+	}
+	// El umbral del auto-commit se acota a un rango util: un valor 0 (fichero
+	// antiguo o entrada vacia) no debe commitear al instante.
+	if s.AutoCommitIdleMin < 1 {
+		s.AutoCommitIdleMin = def.AutoCommitIdleMin
+	}
+	if s.AutoCommitIdleMin > 240 {
+		s.AutoCommitIdleMin = 240
 	}
 	return s
 }

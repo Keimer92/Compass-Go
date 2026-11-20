@@ -11,7 +11,7 @@
 .add-project { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--panel) 55%, transparent); color: var(--muted); transition: color .15s ease, border-color .15s ease, background .15s ease, transform .1s ease; }
 .add-project:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .add-project:active { transform: scale(.9); }
-.projects { display: flex; flex-direction: column; gap: 2px; }
+.projects { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .project { position: relative; display: flex; align-items: center; width: 100%; border-radius: 10px; color: var(--text); font-size: 12.5px; transition: background .14s ease; }
 .project:hover { background: color-mix(in srgb, var(--border) 45%, transparent); }
 .project.active { background: color-mix(in srgb, var(--accent) 20%, transparent); }
@@ -22,14 +22,16 @@
 .project-close:hover { background: color-mix(in srgb, var(--red) 35%, transparent); color: var(--text); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent); }
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.topbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent); background: color-mix(in srgb, var(--panel) 55%, var(--bg)); backdrop-filter: blur(16px); }
-.topbar-title { color: var(--brand); font-weight: 700; font-size: 13px; letter-spacing: .02em; }
-.theme-btn { padding: 6px 14px; border: none; border-radius: 9px; background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--muted); font-size: 12px; font-weight: 500; transition: color .15s ease, background .15s ease; }
-.theme-btn:hover { color: var(--text); background: color-mix(in srgb, var(--border) 70%, transparent); }
+/* Sin barra superior: Tema/Opciones viven al pie del sidebar para no robar
+   alto a las cards ni al terminal. */
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding-top: 14px; }
+.theme-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; transition: color .15s ease, background .15s ease, border-color .15s ease; }
+.theme-btn:hover { color: var(--text); background: color-mix(in srgb, var(--border) 70%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.theme-btn-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .content { flex: 1; display: flex; min-height: 0; }
 .cards-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; gap: 14px; }
-.cards { flex: 0 0 auto; max-height: 30%; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; overflow-y: auto; }
-.terminal-panel { flex: 1 1 auto; min-height: 180px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
+.cards { flex: 0 0 auto; max-height: 38%; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; overflow-y: auto; }
+.terminal-panel { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
 .term-tabs { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: color-mix(in srgb, var(--border) 40%, var(--panel)); overflow-x: auto; }
 .term-tab { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-radius: 12px; background: color-mix(in srgb, var(--border) 35%, var(--panel)); color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; border: 1px solid transparent; }
 .term-tab:hover { color: var(--text); }
@@ -64,10 +66,9 @@
 .theme-swatch:hover { border-color: var(--brand); }
 .theme-hint { margin-top: 12px; font-size: 10px; color: var(--muted); text-align: center; }
 /* Transicion suave para que la vista previa al hover no parpadee. */
-body, .app, .sidebar, .topbar, .cards-area, .card, .right, .terminal-panel, .modal {
+body, .app, .sidebar, .cards-area, .card, .right, .terminal-panel, .modal {
   transition: background-color .18s ease, color .18s ease, border-color .18s ease;
 }
-.topbar-actions { display: flex; gap: 8px; }
 /* minmax(0,1fr) y no 1fr: con 1fr el track crece hasta el ancho del contenido
    (min-width:auto) y las rutas largas de las CLIs empujaban la 2a columna
    fuera del modal. Con minmax(0,…) el track no puede pasar de su fraccion. */
@@ -91,6 +92,7 @@ body, .app, .sidebar, .topbar, .cards-area, .card, .right, .terminal-panel, .mod
 .opt-row { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 14px; }
 .opt-row.column { flex-direction: column; align-items: stretch; gap: 6px; }
 .opt-input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 12px; }
+.opt-input.num { width: 72px; flex-shrink: 0; }
 .modal-actions { display: flex; justify-content: flex-end; }
 .btn-primary { padding: 7px 16px; border: none; border-radius: 16px; background: color-mix(in srgb, var(--accent) 35%, var(--bg)); color: var(--text); font-size: 12px; }
 .modal-actions button:disabled { opacity: .5; cursor: not-allowed; }

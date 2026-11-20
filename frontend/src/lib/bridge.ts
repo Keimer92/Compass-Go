@@ -66,6 +66,7 @@ export interface Settings {
   openrouter_endpoint: string
   openrouter_model: string
   openrouter_api_key: string
+  auto_commit_idle_min: number
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
@@ -115,6 +116,20 @@ export const gitPull = () => call<string>(M('GitPull'))
 export const gitSetRemote = (url: string) => call<string>(M('GitSetRemote'), url)
 export const gitInitRepo = () => call<string>(M('GitInitRepo'))
 export const openExternal = (url: string) => call<void>(M('OpenExternal'), url)
+
+export interface AutoCommitState {
+  enabled: boolean
+  idleMin: number
+  pending: boolean
+  idleSec: number
+  busy: boolean
+  lastMsg: string
+  lastError: string
+}
+export const setAutoCommit = (enabled: boolean) => call<void>(M('SetAutoCommit'), enabled)
+export const autoCommitStatus = () => call<AutoCommitState>(M('AutoCommitStatus'))
+export const onAutoCommit = (cb: (d: { dir: string; message: string }) => void) =>
+  Events.On('git:auto', (e: any) => cb(e.data))
 
 export interface CommitFile { path: string; status: string; added: number; removed: number; binary: boolean }
 export interface CommitDetail {

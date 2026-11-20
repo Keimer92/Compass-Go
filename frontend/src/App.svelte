@@ -15,6 +15,8 @@
   import Explorer from './components/Explorer.svelte'
   import Git from './components/Git.svelte'
   import History from './components/History.svelte'
+  import { loadGitInfo } from './lib/gitCache'
+  import { warmExplorer, warmLog } from './lib/panelCache'
   import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
 
   interface Tab {
@@ -42,6 +44,7 @@
     openrouter_endpoint: 'https://openrouter.ai/api/v1',
     openrouter_model: '',
     openrouter_api_key: '',
+    auto_commit_idle_min: 5,
   })
   let models = $state<ModelOption[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
@@ -68,6 +71,16 @@
   // siguen vivas en `tabs` (y sus xterm montados) pero ocultas.
   let projectPath = $derived(workspace.projects[workspace.active]?.path ?? '')
   let visibleTabs = $derived(tabs.filter((t) => t.project === projectPath))
+
+  // Precalienta el estado de git del proyecto activo: cuando el usuario abre
+  // la pestaña Git ya hay datos cacheados y no ve el estado de "cargando".
+  $effect(() => {
+    const p = projectPath
+    if (!p) return
+    loadGitInfo(p).catch(() => {})
+    warmExplorer(p).catch(() => {})
+    warmLog(p).catch(() => {})
+  })
   // Cards de Config (Terminal, Entorno) que antes vivian en la pestaña CFG y
   // ahora se lanzan desde la sección "Herramientas" del modal de Opciones.
   // Git también es CFG, pero ya vive en el panel derecho: se excluye aquí.
@@ -137,6 +150,10 @@
   }
 
   async function saveSettings() {
+    // El umbral del auto-commit se acota aqui tambien: un input vacio o un
+    // valor absurdo no debe llegar a Go (y NaN romperia el JSON).
+    const min = Math.round(Number(settings.auto_commit_idle_min))
+    settings.auto_commit_idle_min = Number.isFinite(min) ? Math.min(240, Math.max(1, min)) : 5
     await setSettings({ ...settings })
     optionsOpen = false
   }
@@ -559,18 +576,18 @@
         </div>
       {/each}
     </div>
+    <div class="sidebar-foot">
+      <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>
+        <span>◈</span><span class="theme-btn-text">{theme?.name ?? 'Tema'}</span>
+      </button>
+      <button class="theme-btn" onclick={openOptions}>
+        <span>⚙</span><span class="theme-btn-text">Opciones</span>
+      </button>
+    </div>
   </aside>
 
   <main class="main">
     {#if lastError}<div class="debug-line">{lastError}</div>{/if}
-    <header class="topbar">
-      <span class="topbar-title">Compass Go</span>
-      <div class="topbar-actions">
-        <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>◈ {theme?.name ?? 'Tema'} ▾</button>
-        <button class="theme-btn" onclick={openOptions}>⚙ Opciones</button>
-      </div>
-    </header>
-
     <section class="content">
       <div class="cards-area">
         <div class="cards">
@@ -628,7 +645,7 @@
         <div class="right-body">
           {#if rightTab === 'explorer'}
             {#key workspace.active}
-              <Explorer />
+              <Explorer projectPath={projectPath} />
             {/key}
           {:else if rightTab === 'git'}
             {#key workspace.active}
@@ -636,7 +653,7 @@
             {/key}
           {:else if rightTab === 'log'}
             {#key workspace.active}
-              <History />
+              <History projectPath={projectPath} />
             {/key}
           {/if}
         </div>
@@ -756,6 +773,12 @@
       <label class="opt-row">
         <input type="checkbox" bind:checked={settings.close_tab_on_build_end} />
         <span>Cerrar la pestaña del terminal al terminar un build <small>(cuenta atrás de 10 s)</small></span>
+      </label>
+      <div class="opt-section">Git</div>
+      <label class="opt-row">
+        <span>Commit automático tras</span>
+        <input class="opt-input num" type="number" min="1" max="240" step="1" bind:value={settings.auto_commit_idle_min} />
+        <span>min sin cambios <small>(botón «Auto» del panel Git)</small></span>
       </label>
       <label class="opt-row column">
         <span>Endpoint de OpenRouter</span>

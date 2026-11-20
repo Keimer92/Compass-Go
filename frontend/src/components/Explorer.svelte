@@ -3,15 +3,21 @@
   import { gitStatus, gitBranch, listDir, fileDelete, fileRename, fileCopy, fileMove } from '../lib/bridge'
   import type { Change, FileNode } from '../lib/bridge'
   import { onRepoChanged } from '../lib/repoChanged'
+  import { peekExplorer, saveExplorer } from '../lib/panelCache'
   import { svg } from '../lib/icons'
 
   type Row = { node: FileNode; depth: number }
 
-  let changes = $state<Change[]>([])
-  let branch = $state('')
-  let rootNodes = $state<FileNode[]>([])
-  let children = $state<Record<string, FileNode[]>>({})
-  let expanded = $state<Set<string>>(new Set())
+  let { projectPath = '' }: { projectPath?: string } = $props()
+
+  // Si ya se visito la pestaña, se arranca con el snapshot anterior: aparece
+  // pintada al instante y el refresco real ocurre en segundo plano.
+  const snap = peekExplorer(projectPath)
+  let changes = $state<Change[]>(snap?.changes ?? [])
+  let branch = $state(snap?.branch ?? '')
+  let rootNodes = $state<FileNode[]>(snap?.roots ?? [])
+  let children = $state<Record<string, FileNode[]>>(snap?.children ?? {})
+  let expanded = $state<Set<string>>(new Set(snap?.expanded ?? []))
   let selected = $state<FileNode | null>(null)
   let error = $state('')
   let refreshing = $state(false)
@@ -63,22 +69,32 @@
       do {
         queued = false
         error = ''
-        changes = await gitStatus()
-        branch = await gitBranch()
-        rootNodes = await listDir('')
+        // Las tres consultas son independientes: en serie sumaban casi dos
+        // segundos en Windows, en paralelo tardan lo que la mas lenta.
+        const [ch, br, roots] = await Promise.all([gitStatus(), gitBranch(), listDir('')])
+        changes = ch
+        branch = br
+        rootNodes = roots
         // Se recargan solo las carpetas abiertas, y se olvidan las que ya no
         // existen (borradas o renombradas desde fuera).
+        const open = [...expanded]
+        const lists = await Promise.all(
+          open.map((path) => listDir(path).then((l) => [path, l] as const).catch(() => null))
+        )
         const next: Record<string, FileNode[]> = {}
-        for (const path of [...expanded]) {
-          try {
-            next[path] = await listDir(path)
-          } catch {
-            // carpeta desaparecida: se descarta al filtrar el set
-          }
+        for (const entry of lists) {
+          if (entry) next[entry[0]] = entry[1]
         }
         children = next
-        expanded = new Set([...expanded].filter((p) => next[p] !== undefined))
+        expanded = new Set(open.filter((p) => next[p] !== undefined))
         if (selected && !existsIn(next, rootNodes, selected.path)) selected = null
+        saveExplorer(projectPath, {
+          changes,
+          branch,
+          roots: rootNodes,
+          children,
+          expanded: [...expanded]
+        })
       } while (queued)
     } catch (e) {
       error = (e as Error).message

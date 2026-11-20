@@ -40,7 +40,7 @@ Compass Go/
 ├─ cmd/compass-web/frontend/dist/  # bundle Svelte embebido con //go:embed
 ├─ frontend/                  # proyecto Svelte 5 + Vite + TS (fuente de la UI)
 │  └─ src/
-│     ├─ App.svelte           # layout: sidebar, topbar, cards, pestañas ConPTY, paneles
+│     ├─ App.svelte           # layout: sidebar, cards, pestañas ConPTY, paneles
 │     ├─ components/          # Card, Explorer (git status + árbol), Git (panel VSCode), History
 │     └─ lib/bridge.ts        # Call.ByName + suscripción a eventos pty:*/workspace:changed
 ├─ internal/
@@ -293,13 +293,15 @@ proyecto concreto:
 
 - **Git vive en el panel derecho, no en una card**: las acciones de Git se
   movieron del modal de subcards al panel derecho. La pestaña "Git" reemplaza
-  a la antigua pestaña "Commit": el generador de commit con IA queda como una
-  sección plegable (`<details>`) dentro del componente
+  a la antigua pestaña "Commit": el generador de commit con IA queda siempre
+  desplegado dentro del componente
   `frontend/src/components/Git.svelte`, para que todas las acciones git estén
   juntas. Las pestañas del panel derecho son ahora **Explorador / Git /
-  Historial**. Ya no hay pestañas DEV/CFG en la topbar: las cards usan todo el
-  ancho y el modal "Opciones" incluye una sección "Herramientas" con botones
-  que lanzan las antiguas cards de Config (Terminal, Entorno).
+  Historial**. No hay barra superior (topbar): el título lo aporta el sidebar y
+  los botones "Tema" y "Opciones" viven en un pie (`sidebar-foot`) al final del
+  sidebar, de modo que cards y terminal ganan esos 52 px de alto. El modal
+  "Opciones" incluye una sección "Herramientas" con botones que lanzan las
+  antiguas cards de Config (Terminal, Entorno).
 - **API del puente** (`internal/webui/git.go`): `Bridge.GitInfo()` devuelve un
   DTO con `isRepo`, `hasCommits`, `branch`, `upstream`, `remoteUrl`, `webUrl`,
   `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede
@@ -317,6 +319,32 @@ proyecto concreto:
   `gitHostIsGitHub` viven en `internal/webui/git.go` (duplicados a propósito de
   los de consola en `internal/tasks/git.go`, que no están expuestos a la GUI).
   El panel se refresca con `onRepoChanged`/`notifyRepoChanged` (`repoChanged.ts`).
+- **Auto-commit por inactividad** (`internal/webui/autocommit.go`): el botón
+  "Auto" del panel Git activa un vigilante **por proyecto** que corre en el
+  backend (no en el componente, para que siga vivo al cambiar de pestaña).
+  Cada 15 s lee `git status --porcelain`; si la firma del estado no cambia
+  durante `settings.AutoCommitIdleMin` minutos (5 por defecto, ajustable en
+  Opciones → Git, rango 1–240), genera el mensaje (OpenRouter; si no hay API
+  key, un `chore: cambios automaticos <fecha>`) y commitea. Nunca hace push. Se
+  salta árboles con conflictos (`hasConflict`), reinicia el reloj con cada
+  cambio nuevo y emite el evento `git:auto` para que la UI se refresque. El
+  umbral se relee en cada pasada, así que cambiarlo en Opciones aplica sin
+  reiniciar el botón. API: `Bridge.SetAutoCommit(bool)` y
+  `Bridge.AutoCommitStatus()`.
+- **Sin parpadeo "no es un repositorio"**: `Git.svelte` guarda el último
+  `GitInfo` por proyecto en `frontend/src/lib/gitCache.ts` y arranca con ese
+  valor, así al cambiar de pestaña pinta datos reales al instante (Go lanza
+  varios procesos git y tardaba lo suficiente para verse el estado inicial).
+  `App.svelte` precalienta el cache con un `$effect` sobre `projectPath`.
+  `loaded` solo pasa a `true` con una respuesta real de Go, así que el estado
+  vacío nunca se pinta antes de saber si hay repo.
+- **Explorador e Historial también usan cache** (`frontend/src/lib/panelCache.ts`):
+  guardan por proyecto el último snapshot del árbol (`changes`, `branch`,
+  `roots`, `children`, `expanded`) y la lista de commits. Al cambiar de pestaña
+  se pinta el snapshot y se refresca en segundo plano. Además `Explorer`
+  resuelve `gitStatus` + `gitBranch` + `listDir` en paralelo (antes eran
+  secuenciales y sumaban ~2 s). `App.svelte` precalienta ambos con
+  `warmExplorer`/`warmLog` en el mismo `$effect` que `loadGitInfo`.
 
 ## Core kits (motores canónicos)
 

@@ -34,6 +34,13 @@ type Bridge struct {
 	commitMu      sync.Mutex
 	commitCancels map[string]*commitRun
 	commitSeq     uint64
+
+	// Auto-commit por inactividad (boton "Auto" del panel Git). Vive en el
+	// backend y no en la pestana para que siga vigilando aunque el usuario
+	// cambie a Explorador o Historial.
+	autoMu   sync.Mutex
+	autoRuns map[string]*autoTrack
+	autoOnce sync.Once
 }
 
 // commitRun es una generacion de mensaje de commit en curso. El id permite
@@ -412,6 +419,9 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 
 	cur.OpenOutputDir = s.OpenOutputDir
 	cur.CloseTabOnBuildEnd = s.CloseTabOnBuildEnd
+	if s.AutoCommitIdleMin > 0 {
+		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
+	}
 	if v := strings.TrimSpace(s.OpenRouterEndpoint); v != "" {
 		cur.OpenRouterEndpoint = v
 	}
