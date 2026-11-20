@@ -342,6 +342,17 @@ proyecto concreto:
   mensaje. `Bridge.CopilotAvailable()` permite avisar en Opciones si falta el
   CLI. El prompt (resumen de git acotado a ~9 KB de diff) viaja como argv, muy
   por debajo del límite de Windows.
+- **Modelo de Copilot** (`settings.CopilotModel` + `Bridge.CopilotModels()`):
+  el catálogo curado son los perfiles Auto (`""` = equilibrado,
+  `auto-intelligence`) y los modelos pequeños del catálogo (haiku/flash/luna),
+  que son los más rápidos y baratos. `copilotModelArgs` traduce la elección a
+  `--model`/`--auto-tier` y **cae en Auto ante cualquier id desconocido**, así
+  que nunca se pasa texto arbitrario al CLI. Ojo: qué modelos están disponibles
+  depende del plan de GitHub; con Copilot Free solo responde `auto` y el resto
+  devuelve `Model "X" is not available`.
+- **Modal de Opciones**: `App.svelte` lo pinta como rejilla de dos columnas de
+  tarjetas (`.opt-grid`/`.opt-card`, 780 px, una columna por debajo de 720 px)
+  con secciones Herramientas, General, Git y OpenRouter.
 - **Sin parpadeo "no es un repositorio"**: `Git.svelte` guarda el último
   `GitInfo` por proyecto en `frontend/src/lib/gitCache.ts` y arranca con ese
   valor, así al cambiar de pestaña pinta datos reales al instante (Go lanza

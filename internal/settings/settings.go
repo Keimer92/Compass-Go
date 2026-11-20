@@ -40,6 +40,10 @@ type Settings struct {
 	// CommitProvider elige como se generan los mensajes de commit:
 	// "openrouter" (API con key) o "copilot" (GitHub Copilot CLI local).
 	CommitProvider string `json:"commit_provider"`
+	// CopilotModel es el modelo del CLI de Copilot. Vacio = Auto (equilibrado).
+	// "auto-intelligence" pide el perfil de maxima calidad; el resto son ids
+	// concretos del catalogo (haiku, flash, luna...).
+	CopilotModel string `json:"copilot_model"`
 }
 
 // Default devuelve los valores de fabrica.

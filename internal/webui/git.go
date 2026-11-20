@@ -406,7 +406,7 @@ func (b *Bridge) GenerateCommit(dir string) (string, error) {
 	var out string
 	var err error
 	if provider == settings.ProviderCopilot {
-		out, err = copilotCommitMessage(ctx, prompt)
+		out, err = copilotCommitMessage(ctx, prompt, cfg.CopilotModel)
 	} else {
 		out, err = openRouterChat(ctx, cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, model, prompt)
 	}

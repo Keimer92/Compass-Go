@@ -427,6 +427,9 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	} else {
 		cur.CommitProvider = settings.ProviderOpenRouter
 	}
+	// El modelo se valida contra el catalogo: cualquier id desconocido cae en
+	// Auto, que es lo que hace copilotModelArgs de todas formas.
+	cur.CopilotModel = s.CopilotModel
 	if v := strings.TrimSpace(s.OpenRouterEndpoint); v != "" {
 		cur.OpenRouterEndpoint = v
 	}

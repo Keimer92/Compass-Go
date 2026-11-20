@@ -7,7 +7,7 @@
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
-    listCleanupCandidates, purgeCleanupCandidates, copilotAvailable,
+    listCleanupCandidates, purgeCleanupCandidates, copilotAvailable, copilotModels,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -17,7 +17,7 @@
   import History from './components/History.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo, CleanupTarget, CleanupPurgeResult, CopilotModelOption } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -46,8 +46,10 @@
     openrouter_api_key: '',
     auto_commit_idle_min: 5,
     commit_provider: 'openrouter',
+    copilot_model: '',
   })
   let copilotOk = $state(false)
+  let copilotOptions = $state<CopilotModelOption[]>([])
   let models = $state<ModelOption[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
@@ -144,6 +146,11 @@
       copilotOk = await copilotAvailable()
     } catch {
       copilotOk = false
+    }
+    try {
+      copilotOptions = await copilotModels()
+    } catch {
+      /* el selector de modelo se queda vacio */
     }
     try {
       models = await listModels()
@@ -756,77 +763,109 @@
 
 {#if optionsOpen}
   <div class="modal-backdrop" onclick={() => (optionsOpen = false)} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Opciones">
+    <div class="modal options" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Opciones">
       <div class="modal-head"><span>Opciones</span><button onclick={() => (optionsOpen = false)}>×</button></div>
-      {#if cfgTools.length}
-        <div class="opt-section">Herramientas</div>
-        <div class="opt-tools">
-          {#each cfgTools as tool}
-            <button class="opt-tool" onclick={() => launchCfgTool(tool)} title={tool.description}>
-              <span class="opt-tool-ico">{@html svg(tool.icon, 17)}</span>
-              <span class="opt-tool-text">
-                <span class="opt-tool-label">{tool.label}</span>
-                <span class="opt-tool-desc">{tool.description}</span>
-              </span>
-              <span class="opt-tool-arrow">›</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-      <div class="opt-section">General</div>
-      <label class="opt-row">
-        <input type="checkbox" bind:checked={settings.open_output_dir} />
-        <span>Abrir la carpeta de salida al terminar un build</span>
-      </label>
-      <label class="opt-row">
-        <input type="checkbox" bind:checked={settings.close_tab_on_build_end} />
-        <span>Cerrar la pestaña del terminal al terminar un build <small>(cuenta atrás de 10 s)</small></span>
-      </label>
-      <div class="opt-section">Git</div>
-      <label class="opt-row">
-        <span>Commit automático tras</span>
-        <input class="opt-input num" type="number" min="1" max="240" step="1" bind:value={settings.auto_commit_idle_min} />
-        <span>min sin cambios <small>(botón «Auto» del panel Git)</small></span>
-      </label>
-      <label class="opt-row column">
-        <span>Proveedor de mensajes de commit</span>
-        <select class="opt-input" bind:value={settings.commit_provider}>
-          <option value="openrouter">OpenRouter (API key)</option>
-          <option value="copilot">GitHub Copilot CLI (local)</option>
-        </select>
-      </label>
-      {#if settings.commit_provider === 'copilot' && !copilotOk}
-        <p class="opt-warn">
-          No se encontró el CLI de Copilot. Instálalo con <code>npm i -g @github/copilot</code>
-          y ejecuta <code>copilot login</code>.
-        </p>
-      {:else if settings.commit_provider === 'copilot'}
-        <p class="opt-hint">Usa tu suscripción de Copilot (más lento: ~18 s por mensaje).</p>
-      {/if}
-      <label class="opt-row column">
-        <span>Endpoint de OpenRouter</span>
-        <input class="opt-input" type="text" bind:value={settings.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
-      </label>
-      <label class="opt-row column">
-        <span>Modelo para los commits <small>(gratuitos · los más rápidos primero)</small></span>
-        <select class="opt-input" bind:value={settings.openrouter_model}>
-          {#if settings.openrouter_model && !models.some((m) => m.id === settings.openrouter_model)}
-            <option value={settings.openrouter_model}>{settings.openrouter_model} (actual)</option>
+
+      <div class="opt-grid">
+        {#if cfgTools.length}
+          <section class="opt-card">
+            <h3 class="opt-card-title">Herramientas</h3>
+            <div class="opt-tools">
+              {#each cfgTools as tool}
+                <button class="opt-tool" onclick={() => launchCfgTool(tool)} title={tool.description}>
+                  <span class="opt-tool-ico">{@html svg(tool.icon, 17)}</span>
+                  <span class="opt-tool-text">
+                    <span class="opt-tool-label">{tool.label}</span>
+                    <span class="opt-tool-desc">{tool.description}</span>
+                  </span>
+                  <span class="opt-tool-arrow">›</span>
+                </button>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        <section class="opt-card">
+          <h3 class="opt-card-title">General</h3>
+          <label class="opt-check">
+            <input type="checkbox" bind:checked={settings.open_output_dir} />
+            <span>Abrir la carpeta de salida al terminar un build</span>
+          </label>
+          <label class="opt-check">
+            <input type="checkbox" bind:checked={settings.close_tab_on_build_end} />
+            <span>Cerrar la pestaña del terminal al terminar un build</span>
+          </label>
+        </section>
+
+        <section class="opt-card">
+          <h3 class="opt-card-title">Git</h3>
+          <label class="opt-row">
+            <span class="opt-label">Commit automático tras</span>
+            <input class="opt-input num" type="number" min="1" max="240" step="1" bind:value={settings.auto_commit_idle_min} />
+            <span class="opt-unit">min sin cambios</span>
+          </label>
+          <label class="opt-row column">
+            <span class="opt-label">Proveedor de mensajes</span>
+            <select class="opt-input" bind:value={settings.commit_provider}>
+              <option value="openrouter">OpenRouter (API key)</option>
+              <option value="copilot">GitHub Copilot CLI (local)</option>
+            </select>
+          </label>
+          {#if settings.commit_provider === 'copilot'}
+            <label class="opt-row column">
+              <span class="opt-label">Modelo de Copilot <small>(los más rápidos y baratos primero)</small></span>
+              <select class="opt-input" bind:value={settings.copilot_model}>
+                {#each copilotOptions as opt}
+                  <option value={opt.id}>{opt.label} — {opt.hint}</option>
+                {/each}
+              </select>
+            </label>
+            {#if !copilotOk}
+              <p class="opt-warn">
+                No se encontró el CLI. Instálalo con <code>npm i -g @github/copilot</code>
+                y ejecuta <code>copilot login</code>.
+              </p>
+            {:else}
+              <p class="opt-hint">
+                Usa tu suscripción de Copilot. La disponibilidad de cada modelo depende de tu plan;
+                si uno no aparece, elige Auto.
+              </p>
+            {/if}
           {/if}
-          {#each models as m}
-            <option value={m.id}>{m.name} — {m.id}</option>
-          {/each}
-          {#if !models.length}
-            <option value="">(no se pudieron cargar los modelos)</option>
+        </section>
+
+        <section class="opt-card" class:dim={settings.commit_provider === 'copilot'}>
+          <h3 class="opt-card-title">OpenRouter</h3>
+          <label class="opt-row column">
+            <span class="opt-label">Endpoint</span>
+            <input class="opt-input" type="text" bind:value={settings.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
+          </label>
+          <label class="opt-row column">
+            <span class="opt-label">Modelo <small>(gratuitos · los más rápidos primero)</small></span>
+            <select class="opt-input" bind:value={settings.openrouter_model}>
+              {#if settings.openrouter_model && !models.some((m) => m.id === settings.openrouter_model)}
+                <option value={settings.openrouter_model}>{settings.openrouter_model} (actual)</option>
+              {/if}
+              {#each models as m}
+                <option value={m.id}>{m.name} — {m.id}</option>
+              {/each}
+              {#if !models.length}
+                <option value="">(no se pudieron cargar los modelos)</option>
+              {/if}
+            </select>
+          </label>
+          <label class="opt-row column">
+            <span class="opt-label">API key <small>{settings.openrouter_api_key === '********'
+              ? '(guardada · escribe otra para cambiarla)'
+              : '(se guarda en settings.json)'}</small></span>
+            <input class="opt-input" type="password" bind:value={settings.openrouter_api_key} placeholder="********" autocomplete="off" />
+          </label>
+          {#if settings.commit_provider === 'copilot'}
+            <p class="opt-hint">No se usa mientras el proveedor sea Copilot.</p>
           {/if}
-        </select>
-      </label>
-      <label class="opt-row column">
-        <span>API key de OpenRouter <small>{settings.openrouter_api_key === '********'
-          ? '(guardada · escribe otra para cambiarla)'
-          : '(se guarda en settings.json)'}</small></span>
-        <input class="opt-input" type="password" bind:value={settings.openrouter_api_key} placeholder="********" autocomplete="off" />
-      </label>
+        </section>
+      </div>
+
       <div class="modal-actions">
         <button class="btn-primary" onclick={saveSettings}>Guardar</button>
       </div>
