@@ -70,7 +70,7 @@ Compass Go/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
 ├─ corekit/                  # core kits canónicos que viajan dentro de Compass (p.ej. whatsapp)
-│  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs, node.exe, node_modules
+│  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs (node.exe opcional, no se distribuye)
 ├─ PLAN_SVELTE.md             # estado y plan de la migración a la GUI web
 └─ PLAN.md                    # plan de migración original
 ```
@@ -95,9 +95,10 @@ anclaje a la barra de tareas. Al terminar, `install.bat` define
 `COMPASS_WHATSAPP_ENGINE` y configura **Vibe Coding** la primera vez.
 
 ```bat
-install.bat              # compilar + instalar
+install.bat              # compilar + instalar (sin node.exe; usa Node 20+ del sistema)
 install.bat --force      # rehace también la cascada Vibe Coding
 install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
+install.bat --with-node  # vuelve a empaquetar node.exe (sidecar)
 ```
 
 - Cierra `compass-go.exe` en ejecución antes de sobrescribir (Windows no
@@ -126,10 +127,16 @@ trabajo temporal: al terminar `makensis` se borran el `.nsi`, el `.bmp` y
 `--no-installer` sí se conserva `dist\payload` (es el único artefacto).
 
 Al copiar `corekit/` al payload se excluyen los artefactos de build del motor
-(`node_modules`, `out`, `examples`): en ejecución solo hacen falta `node.exe` +
-`whatsapp-engine-bundle`. El payload pasa de ~165 MB / 2418 archivos a ~83 MB /
-35 archivos, y la instalación silenciosa de ~15 s a ~5 s. El instalador además
-borra esos artefactos de instalaciones anteriores antes de extraer.
+(`node_modules`, `out`, `examples`) y, **por defecto, también `node.exe`**: el
+runtime usa el **Node 20+ instalado en el sistema** (PATH) y el bundle ya viaja
+compilado. El payload baja a ~13 MB / ~35 archivos y la instalación silenciosa
+ronda los 5 s. El instalador además borra esos artefactos y cualquier `node.exe`
+de instalaciones anteriores antes de extraer.
+
+Con `--with-node` se vuelve a incluir el sidecar `node.exe` (~70 MB, payload
+~83 MB). Es la opción para distribuir a terceros que no tengan Node instalado.
+En ambos modos los proyectos consumidores resuelven Node en cascada —sidecar si
+existe → `node` del PATH— y exigen **Node >= 20** (lo impone Baileys).
 
 El asistente usa Modern UI 2 con la marca de Compass Go (icono y cabecera,
 como el instalador de Firefox) y ofrece, además de la instalación base, acceso
@@ -138,9 +145,10 @@ tareas (best-effort: Windows 10 1903+ puede bloquearlo y se avisa al usuario)
 y la casilla **Ejecutar Compass Go** al terminar.
 
 ```bat
-dist.bat                 # compila + genera dist\CompassGo-Setup.exe (LZMA)
+dist.bat                 # compila + genera dist\CompassGo-Setup.exe (LZMA, sin node.exe)
 dist.bat --fast          # compresión zlib: instalador mayor pero mucho más rápido
 dist.bat --no-installer  # solo prepara dist\payload (sin NSIS)
+dist.bat --with-node     # incluye node.exe (sidecar) en el payload
 ```
 
 - `--fast` (zlib) tarda ~40 s y produce ~57 MB; sin él, LZMA sólido tarda
@@ -251,8 +259,10 @@ Compass lleva dentro ciertos **core kits** —motores o runtimes compartidos— 
 primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
 
 - `corekit/whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
-  `node_modules/`, `node.exe` y el bundle generado `whatsapp-engine-bundle/`.
-  `bundle.mjs` deja el bundle en la raíz del kit (junto a `node.exe`).
+  `node_modules/`, el bundle generado `whatsapp-engine-bundle/` y, en el repo
+  de desarrollo, un `node.exe` que **ya no se empaqueta ni se etaja**. El
+  runtime usa el **Node 20+ del sistema** (PATH); `--with-node` recupera el
+  sidecar para distribuir a máquinas sin Node.
 - **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
   2. `<dir del exe>/corekit/whatsapp` (instalación / binario compilado);
@@ -274,7 +284,7 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   multiplataforma**: sirve igual para Flutter, Kotlin, Python, Go y Go+Wails y
   sobrevive a refactors del código. Los criterios 3 y 4 son atajos heredados.
   La carpeta `whatsapp_engine/` **no** hace falta en el repo: Compass la genera
-  al compilar (con solo `index.js` + `node.exe` no cuenta como motor propio).
+  al compilar (con solo `index.js` no cuenta como motor propio).
 - **Auto-instalación de dependencias**: solo cuando hay que reconstruir el
   bundle (falta `index.js` o `engine.js` es más nuevo), y si `package.json` es
   más reciente que `node_modules`, Compass ejecuta `npm install` en el kit. La
@@ -282,9 +292,20 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   faltara y hubiera que reconstruir, se avisa y se usa el bundle existente.
 - **Etapado en build**: `stageWhatsappEngine` (llamado desde `windowsArtifacts`
   en el release de escritorio) reconstruye el bundle si `engine.js` cambió y
-  copia `node.exe` + `whatsapp-engine-bundle` al `bin/resources/` del proyecto
-  (o al `resources/` de Flutter/Kotlin según tipo). En **Flutter** el destino es
-  `whatsapp_engine/` (index.js `--single` + `node.exe`).
+  copia **solo `whatsapp-engine-bundle`** al `bin/resources/` del proyecto (o al
+  `resources/` de Flutter/Kotlin según tipo). En **Flutter** el destino es
+  `whatsapp_engine/` (index.js `--single`). No copia `node.exe` y, si quedó uno
+  de un staging anterior, lo elimina para forzar el Node del PATH.
+- **Node en runtime (cascada)**: los consumidores buscan primero un sidecar
+  `node.exe` **del propio proyecto** (staging/release anterior) y, si no,
+  `node` en el PATH; exigen **Node >= 20** (Baileys 6.7.x). No usan el
+  `node.exe` del engine canónico (`COMPASS_WHATSAPP_ENGINE`), para que el
+  runtime dependa del Node del sistema aunque el corekit conserve el binario.
+  GymPro lo hace en `internal/whatsapp/node.go` (`resolveNode` +
+  `checkNodeVersion`, con `findFirstProject`); ELA Group en
+  `WhatsappService._findNode` (sidecar → `where node` → rutas comunes → PATH,
+  validando la versión). Error típico si falta o es viejo:
+  «Node 20+ requerido».
 - **Flutter: staging efímero**: tras un release correcto (`FlutterBuildWindows`)
   se llama a `cleanupStagedWhatsappResources`, que borra `whatsapp_engine/` del
   proyecto porque CMake ya instaló su copia en el bundle del release. El motor
@@ -308,7 +329,8 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   Así el motor viaja al release sin que el proyecto tenga que mantener la regla.
 - **Tarea `whatsapp`**: compila el motor canónico (`node bundle.mjs`) y lo etaja.
 - `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador
-  (sin los artefactos de build del motor: `node_modules`, `out`, `examples`).
+  (sin los artefactos de build del motor: `node_modules`, `out`, `examples`, y
+  sin `node.exe` salvo con `--with-node`).
 - **Variable de entorno en la instalación**: `install.bat` define
   `COMPASS_WHATSAPP_ENGINE` (ámbito Usuario) apuntando al corekit instalado
   (`%LOCALAPPDATA%\Programs\Keimer\corekit\whatsapp`), para que los proyectos
@@ -327,7 +349,8 @@ protocolo stdin/stdout está en `corekit/whatsapp/AGENTS.md`.
 
 ### Modelo mental
 - El motor **canónico** vive en `corekit/whatsapp/` dentro de Compass Go: única
-  fuente de verdad (`engine.js`, `bundle.mjs`, `node.exe`, `node_modules/`).
+  fuente de verdad (`engine.js`, `bundle.mjs`, `node_modules/`). El `node.exe`
+  del repo ya no se distribuye: el runtime usa Node 20+ del sistema.
 - Cada proyecto consumidor recibe **su propia copia** del bundle generado
   (`whatsapp-engine-bundle/`) en su carpeta de recursos. **Nunca** se edita a
   mano el bundle dentro del proyecto: se regenera desde el canónico.
@@ -376,8 +399,9 @@ Compass etapará el motor solo. No hace falta marcador manual.
    ```bat
    compass-go.exe -p "RUTA_DEL_PROYECTO" -t whatsapp
    ```
-   Copia `node.exe` + `whatsapp-engine-bundle/` a `resources/whatsapp-engine-bundle/`
-   del proyecto (Go/Wails), o a la ruta de recursos según el tipo.
+   Copia `whatsapp-engine-bundle/` a `resources/whatsapp-engine-bundle/` del
+   proyecto (Go/Wails), o a la ruta de recursos según el tipo. No copia
+   `node.exe`: el runtime usa Node 20+ del PATH.
 4. **Dev en vivo** (sin re-etapar en cada cambio): asegúrate de que
    `COMPASS_WHATSAPP_ENGINE` apunte a la instalación (`install.bat` lo deja
    listo). El modo `windows-dev` hereda el entorno y el proyecto ve el engine.
@@ -439,13 +463,26 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// resolveEngine localiza node.exe y el bundle generado.
-func resolveEngine() (node, bundle string) {
-	node = findFirst("node.exe", "resources/node.exe", "bin/node.exe",
-		"resources/node-x86_64-pc-windows-msvc.exe")
+// resolveEngine localiza Node (sidecar o PATH) y el bundle generado, y valida
+// que Node sea >= 20 (lo exige Baileys).
+func resolveEngine() (node, bundle string, err error) {
 	bundle = findFirst("whatsapp-engine-bundle/index.js",
 		"resources/whatsapp-engine-bundle/index.js")
-	return
+	if bundle == "" {
+		return "", "", errors.New("no se encontró el bundle del motor")
+	}
+	if p := findFirstProject("node.exe", "resources/node.exe", "bin/node.exe",
+		"resources/node-x86_64-pc-windows-msvc.exe"); p != "" {
+		node = p
+	} else if p, lookErr := exec.LookPath("node"); lookErr == nil {
+		node = p
+	} else {
+		return "", "", errors.New("instala Node 20+ o vuelve a etapar el motor con su node.exe")
+	}
+	if err := checkNodeVersion(node); err != nil {
+		return "", "", err
+	}
+	return node, bundle, nil
 }
 
 // startEngine lanza `node <bundle>` con los 3 streams conectados y cwd en el
@@ -474,9 +511,9 @@ func startEngine(node, bundle, workDir string) (*exec.Cmd, io.WriteCloser, io.Re
 
 // Run arranca el motor, lo configura y procesa sus eventos.
 func Run() error {
-	node, bundle := resolveEngine()
-	if node == "" || bundle == "" {
-		return errors.New("motor no encontrado: define COMPASS_WHATSAPP_ENGINE o eta el bundle en resources/")
+	node, bundle, err := resolveEngine()
+	if err != nil {
+		return err
 	}
 	// workDir = directorio de datos de la app (allí el motor guarda whatsapp_auth)
 	appData, _ := os.UserConfigDir()
@@ -530,8 +567,8 @@ func SendText(stdin io.Writer, number, text string) error {
 >   lancen el motor sobre la misma carpeta de sesión** (evita "Bad MAC" y envíos
 >   colgados). Mantener ese candado.
 > - `logger.go` auto-genera el bundle con `node bundle.mjs` **dentro del engine
->   canónico** (`COMPASS_WHATSAPP_ENGINE`) si falta, usando el `node.exe` del
->   propio engine (no el del sistema).
+>   canónico** (`COMPASS_WHATSAPP_ENGINE`) si falta. Usa el `node.exe` del
+>   engine si existe; si no, se omite (el bundle ya viene compilado).
 > - `resources/whatsapp-engine-bundle/` de GymPro es la copia etapada por
 >   Compass; **no se edita a mano**.
 
@@ -547,7 +584,8 @@ compass-go.exe -p "D:\Mis Proyectos\Go + Wails v3\GymPro" -t whatsapp
 - ❌ Editar el bundle dentro de `resources/whatsapp-engine-bundle/` del
   proyecto. Regenera desde el canónico.
 - ❌ Asumir que en producción el engine se lee desde la máquina de dev. Cada
-  instalador debe embeber su propia copia del bundle y `node.exe` como sidecar.
+  instalador debe embeber su propia copia del bundle; el runtime exige Node
+  20+ (sidecar solo si se compila con `--with-node`).
 - ❌ Dejar `COMPASS_WHATSAPP_ENGINE` apuntando a una instalación vieja tras
   mover Compass. Re-ejecuta `install.bat`.
 

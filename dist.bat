@@ -11,14 +11,21 @@ REM ---------------------------------------------------------------
 REM  Flags:  dist.bat                 compila + genera el instalador
 REM          dist.bat --no-installer  solo prepara dist\payload
 REM          dist.bat --fast          compresion zlib (rapida, instalador mayor)
+REM          dist.bat --with-node     incluye node.exe (sidecar) en el payload
+REM
+REM  Por defecto NO se empaqueta node.exe: los proyectos usan el Node 20+
+REM  instalado en el sistema (PATH). Usa --with-node para volver al sidecar.
 REM ---------------------------------------------------------------
 set "MAKE_INSTALLER=1"
 set "FAST=0"
+set "NO_NODE=1"
 :parse
 if "%~1"=="" goto parsed
 if /i "%~1"=="--no-installer" set "MAKE_INSTALLER=0"
 if /i "%~1"=="--no-dist"      set "MAKE_INSTALLER=0"
 if /i "%~1"=="--fast"         set "FAST=1"
+if /i "%~1"=="--no-node"      set "NO_NODE=1"
+if /i "%~1"=="--with-node"    set "NO_NODE=0"
 shift
 goto parse
 :parsed
@@ -119,17 +126,28 @@ REM el instalador ya empaqueta payload\* con File /r.
 REM
 REM Se excluyen los artefactos de BUILD del motor (node_modules, out, examples):
 REM en tiempo de ejecucion solo hacen falta node.exe + whatsapp-engine-bundle,
-REM que ya viene compilado y es autocontenido. Esto reduce el payload de
-REM ~2418 archivos a ~30 y la instalacion de ~15 s a unos pocos segundos.
+REM que ya viene compilado y es autocontenido. Con --no-node se omite ademas
+REM node.exe y el proyecto usa el Node 20+ del sistema. Esto reduce el payload
+REM de ~2418 archivos a ~30 y la instalacion de ~15 s a unos pocos segundos.
 REM Se borra la copia previa porque /MIR + /XD no purga las carpetas excluidas.
 if exist "corekit" (
-    echo [INFO] Copiando core kits a dist\payload sin artefactos de build...
-    if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
-    robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
+    if "%NO_NODE%"=="1" (
+        echo [INFO] Copiando core kits sin node.exe ^(--no-node^)...
+        if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
+        robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /XF node.exe /NFL /NDL /NJH /NJS /NP >nul
+    ) else (
+        echo [INFO] Copiando core kits a dist\payload sin artefactos de build...
+        if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
+        robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
+    )
     if errorlevel 8 (
         echo [WARN] robocopy devolvio un error al copiar corekit; revisa dist\payload\corekit.
     ) else (
-        echo [OK] Core kits copiados.
+        if "%NO_NODE%"=="1" (
+            echo [OK] Core kits copiados ^(sin node.exe: los proyectos usaran Node 20+ del sistema^).
+        ) else (
+            echo [OK] Core kits copiados.
+        )
     )
 ) else (
     echo [SKIP] No se encontro la carpeta corekit; se omite.

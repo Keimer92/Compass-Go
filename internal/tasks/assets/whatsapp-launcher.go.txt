@@ -1,6 +1,6 @@
 // Plantilla del "stub" portable de Compass para proyectos que usan el motor de
 // WhatsApp. NO se compila dentro de Compass: buildWhatsappPortable la copia a un
-// modulo Go temporal, mete el exe real + node.exe + bundle en payload/ y compila
+// modulo Go temporal, mete el exe real + bundle (y node.exe si existe) en payload/ y compila
 // con go build. El resultado es un UNICO .exe que, al arrancar, extrae el payload
 // a %LOCALAPPDATA%\<App>\<buildID>\ y lanza la app real desde ahi.
 package main

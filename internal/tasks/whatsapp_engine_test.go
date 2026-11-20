@@ -66,6 +66,28 @@ func TestWhatsappDetection(t *testing.T) {
 	}
 }
 
+// TestCleanupReleaseWhatsappSidecar verifica que se borra el node.exe obsoleto
+// del Release de Flutter sin tocar el index.js del motor.
+func TestCleanupReleaseWhatsappSidecar(t *testing.T) {
+	dir := t.TempDir()
+	engine := filepath.Join(dir, "whatsapp_engine")
+	if err := os.MkdirAll(engine, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"node.exe", "index.js"} {
+		if err := os.WriteFile(filepath.Join(engine, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cleanupReleaseWhatsappSidecar(dir)
+	if fileExists(filepath.Join(engine, "node.exe")) {
+		t.Error("no se borro node.exe del Release")
+	}
+	if !fileExists(filepath.Join(engine, "index.js")) {
+		t.Error("se borro index.js del Release")
+	}
+}
+
 func TestCleanupStagedWhatsappResources(t *testing.T) {
 	root := t.TempDir()
 

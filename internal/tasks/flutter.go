@@ -145,6 +145,10 @@ func flutterBuildRelease(ctx *project.ProjectContext) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("[ERROR] No se encontro la carpeta del release.")
 	}
+	// Un build anterior pudo dejar node.exe en el Release; CMake no borra
+	// archivos obsoletos. Se elimina antes de empaquetar portables/instaladores
+	// para que el runtime use el Node 20+ del sistema.
+	cleanupReleaseWhatsappSidecar(dir)
 	return dir, nil
 }
 

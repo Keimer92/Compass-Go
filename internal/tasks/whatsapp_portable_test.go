@@ -51,6 +51,19 @@ func TestRenderAppInstallerScriptWhatsappMarkers(t *testing.T) {
 	if strings.Contains(withKit, "@WHATSAPP_") {
 		t.Fatal("quedaron marcadores de WhatsApp sin sustituir")
 	}
+
+	// Con bundle pero sin sidecar: el bundle viaja y no se referencia node.exe.
+	bundleOnly := &whatsappInstallerPayload{BundleDir: `C:\kit\whatsapp-engine-bundle`}
+	noNode := renderAppInstallerScript(app, ver, exe, icon, out, reg, bundleOnly)
+	if !strings.Contains(noNode, `File /r "C:\kit\whatsapp-engine-bundle\*.*"`) {
+		t.Error("falta el bundle en el NSIS sin node.exe")
+	}
+	if strings.Contains(noNode, `File "C:\kit\node.exe"`) {
+		t.Error("se incluyo node.exe aunque no existe")
+	}
+	if !strings.Contains(noNode, `Delete "$INSTDIR\resources\node.exe"`) {
+		t.Error("el desinstalador deberia limpiar un node.exe de versiones anteriores")
+	}
 }
 
 func TestStripWhatsappNsi(t *testing.T) {

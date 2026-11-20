@@ -38,7 +38,7 @@ func whatsappInstallerInfo(ctx *project.ProjectContext) *whatsappInstallerPayloa
 		return nil
 	}
 	node, bundle := whatsappPayloadPaths(ctx)
-	if !whatsappPayloadValid(node, bundle) {
+	if !whatsappPayloadValid(bundle) {
 		return nil
 	}
 	return &whatsappInstallerPayload{NodeExe: node, BundleDir: bundle}
@@ -49,11 +49,13 @@ func whatsappInstallerInfo(ctx *project.ProjectContext) *whatsappInstallerPayloa
 // invocar makensis.
 func renderAppInstallerScript(appName, version, exePath, iconPath, outFile, regKey string, wa *whatsappInstallerPayload) string {
 	files, uninstall := "", ""
-	if wa != nil && wa.NodeExe != "" && wa.BundleDir != "" {
+	if wa != nil && wa.BundleDir != "" {
 		files = "\r\n" +
-			"  SetOutPath \"$INSTDIR\\resources\"\r\n" +
-			"  File \"" + nsisValue(wa.NodeExe) + "\"\r\n" +
-			"  SetOutPath \"$INSTDIR\\resources\\whatsapp-engine-bundle\"\r\n" +
+			"  SetOutPath \"$INSTDIR\\resources\"\r\n"
+		if wa.NodeExe != "" {
+			files += "  File \"" + nsisValue(wa.NodeExe) + "\"\r\n"
+		}
+		files += "  SetOutPath \"$INSTDIR\\resources\\whatsapp-engine-bundle\"\r\n" +
 			"  File /r \"" + nsisValue(filepath.Join(wa.BundleDir, "*.*")) + "\"\r\n" +
 			"  SetOutPath \"$INSTDIR\"\r\n"
 		uninstall = "\r\n" +

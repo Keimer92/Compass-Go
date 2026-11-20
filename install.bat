@@ -8,8 +8,12 @@ echo =============================================
 echo.
 
 REM ---------------------------------------------------------------
-REM  Flags:  install.bat --force   rehace tambien la cascada Vibe Coding
-REM          install.bat --vibe    vuelve a configurar Vibe Coding
+REM  Flags:  install.bat --force     rehace tambien la cascada Vibe Coding
+REM          install.bat --vibe      vuelve a configurar Vibe Coding
+REM          install.bat --with-node incluye node.exe (sidecar) en el payload
+REM
+REM  Por defecto NO se empaqueta node.exe: los proyectos usan el Node 20+
+REM  instalado en el sistema (PATH). Usa --with-node para volver al sidecar.
 REM
 REM  Flujo: dist.bat compila y genera dist\CompassGo-Setup.exe, el instalador
 REM  NSIS hace la instalacion real y al terminar se borra dist\ (solo dist.bat
@@ -17,11 +21,14 @@ REM  vuelve a crearlo).
 REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
+set "NO_NODE=1"
 :parse
 if "%~1"=="" goto parsed
-if /i "%~1"=="--force" set "FORCE=1"
-if /i "%~1"=="-f"      set "FORCE=1"
-if /i "%~1"=="--vibe"  set "WITH_VIBE=1"
+if /i "%~1"=="--force"     set "FORCE=1"
+if /i "%~1"=="-f"          set "FORCE=1"
+if /i "%~1"=="--vibe"      set "WITH_VIBE=1"
+if /i "%~1"=="--no-node"   set "NO_NODE=1"
+if /i "%~1"=="--with-node" set "NO_NODE=0"
 shift
 goto parse
 :parsed
@@ -70,8 +77,10 @@ REM ---------------------------------------------------------------
 REM  1. Compilar y empaquetar con dist.bat
 REM ---------------------------------------------------------------
 if exist "%SETUP%" del /f /q "%SETUP%" >nul 2>nul
-echo [INFO] Compilando y generando el instalador (dist.bat --fast)...
-call "%~dp0dist.bat" --fast
+set "DIST_FLAGS=--fast --no-node"
+if "%NO_NODE%"=="0" set "DIST_FLAGS=--fast --with-node"
+echo [INFO] Compilando y generando el instalador (dist.bat %DIST_FLAGS%)...
+call "%~dp0dist.bat" %DIST_FLAGS%
 if errorlevel 1 (
     echo [ERROR] dist.bat fallo; no se ha instalado nada.
     exit /b 1

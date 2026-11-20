@@ -151,13 +151,13 @@ func projectImportsWhatsapp(root string) bool {
 }
 
 // engineOutputResources devuelve el directorio resources/ de salida donde el
-// binario espera node.exe + whatsapp-engine-bundle.
+// binario espera whatsapp-engine-bundle (y node.exe si se usa sidecar).
 func engineOutputResources(ctx *project.ProjectContext) string {
 	switch ctx.ProjectType {
 	case project.TypeGo, project.TypeGoWails:
 		return filepath.Join(wailsBinDir(ctx), "resources")
 	case project.TypeFlutter:
-		// El motor Flutter se etaja en whatsapp_engine/ (index.js + node.exe).
+		// El motor Flutter se etaja en whatsapp_engine/ (solo index.js).
 		return ctx.ProjectType.WhatsappBundlePath(ctx.ScriptDir)
 	default:
 		return filepath.Dir(ctx.ProjectType.WhatsappBundlePath(ctx.ScriptDir))
@@ -204,8 +204,11 @@ func stageWhatsappEngine(ctx *project.ProjectContext) {
 		fmt.Printf("[WARN] No se pudo copiar el bundle de WhatsApp: %v\n", err)
 		return
 	}
-	if fileExists(filepath.Join(src, "node.exe")) {
-		_ = copyFile(filepath.Join(src, "node.exe"), filepath.Join(dest, "node.exe"))
+	// El sidecar node.exe ya no se etaja: el runtime usa el Node 20+ del
+	// sistema (PATH). Si quedó uno de un staging anterior, se elimina para que
+	// el proyecto no lo prefiera sobre el del PATH.
+	if err := os.Remove(filepath.Join(dest, "node.exe")); err == nil {
+		fmt.Println("[INFO] Eliminado node.exe del staging anterior; se usará Node 20+ del sistema.")
 	}
 	fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s\n", dest)
 }
@@ -256,9 +259,9 @@ func ensureWhatsappSingleBundle(src string) bool {
 	return fileExists(indexJs)
 }
 
-// stageFlutterWhatsappEngine deja whatsapp_engine/index.js + node.exe en la raíz
-// del proyecto: es lo que empaqueta windows/CMakeLists.txt junto al exe y lo que
-// el servicio Dart resuelve en runtime.
+// stageFlutterWhatsappEngine deja whatsapp_engine/index.js en la raíz del
+// proyecto: es lo que empaqueta windows/CMakeLists.txt junto al exe y lo que el
+// servicio Dart resuelve en runtime (Node se toma del PATH).
 func stageFlutterWhatsappEngine(ctx *project.ProjectContext, src string) {
 	if !ensureWhatsappSingleBundle(src) {
 		return
@@ -272,8 +275,11 @@ func stageFlutterWhatsappEngine(ctx *project.ProjectContext, src string) {
 		fmt.Printf("[WARN] No se pudo copiar el bundle de WhatsApp: %v\n", err)
 		return
 	}
-	if fileExists(filepath.Join(src, "node.exe")) {
-		_ = copyFile(filepath.Join(src, "node.exe"), filepath.Join(dest, "node.exe"))
+	// El sidecar node.exe ya no se etaja: el runtime usa el Node 20+ del
+	// sistema (PATH). Si quedó uno de un staging anterior, se elimina para que
+	// el proyecto no lo prefiera sobre el del PATH.
+	if err := os.Remove(filepath.Join(dest, "node.exe")); err == nil {
+		fmt.Println("[INFO] Eliminado node.exe del staging anterior; se usará Node 20+ del sistema.")
 	}
 	fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s\n", dest)
 
@@ -328,6 +334,21 @@ func ensureFlutterWhatsappCmakeRule(root string) (bool, error) {
 	}
 	content += strings.ReplaceAll(whatsappCmakeRule, "\n", eol)
 	return true, os.WriteFile(path, []byte(content), 0o644)
+}
+
+// cleanupReleaseWhatsappSidecar borra el node.exe que un build anterior pudo
+// dejar en el Release de Flutter. CMake copia el contenido de whatsapp_engine/
+// pero no elimina archivos que ya no existen en origen, así que sin esto el
+// release seguiría llevando ~70 MB de sidecar. Solo toca node.exe; index.js se
+// conserva.
+func cleanupReleaseWhatsappSidecar(releaseDir string) {
+	if releaseDir == "" {
+		return
+	}
+	sidecar := filepath.Join(releaseDir, "whatsapp_engine", "node.exe")
+	if err := os.Remove(sidecar); err == nil {
+		fmt.Println("[INFO] Eliminado node.exe del Release; se usará Node 20+ del sistema.")
+	}
 }
 
 // cleanupStagedWhatsappResources borra el resources/ temporario que

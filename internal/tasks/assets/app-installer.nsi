@@ -61,7 +61,7 @@ Section "Instalar"
   SetOutPath "$INSTDIR"
   File "@APPSRC@"
 ; Si el proyecto usa el motor de WhatsApp, Compass sustituye este marcador por
-; la inclusion de node.exe y del bundle en $INSTDIR\resources.
+; la inclusion del bundle (y node.exe si existe) en $INSTDIR\resources.
 @WHATSAPP_FILES@
 
   CreateDirectory "$SMPROGRAMS\@APPNAME@"

@@ -30,24 +30,32 @@ func init() {
 	}
 }
 
-// whatsappPayloadPaths localiza node.exe + el bundle que deben viajar dentro
-// del portable. Prefiere lo que el release ya etapo en resources/ y, si no
-// existe, cae al motor canonico de Compass.
+// whatsappPayloadPaths localiza el bundle (y, si existe, node.exe) que deben
+// viajar dentro del portable. Prefiere lo que el release ya etapo en
+// resources/ y, si no existe, cae al motor canonico de Compass. node.exe es
+// opcional: sin el, el runtime usa Node 20+ del sistema.
 func whatsappPayloadPaths(ctx *project.ProjectContext) (nodeExe, bundleDir string) {
 	res := engineOutputResources(ctx)
 	candNode := filepath.Join(res, "node.exe")
 	candBundle := filepath.Join(res, "whatsapp-engine-bundle")
-	if fileExists(candNode) && dirExists(candBundle) {
-		return candNode, candBundle
+	if dirExists(candBundle) {
+		if fileExists(candNode) {
+			return candNode, candBundle
+		}
+		return "", candBundle
 	}
 	src := whatsappEngineSource()
-	return filepath.Join(src, "node.exe"), filepath.Join(src, "whatsapp-engine-bundle")
+	node := filepath.Join(src, "node.exe")
+	if !fileExists(node) {
+		node = ""
+	}
+	return node, filepath.Join(src, "whatsapp-engine-bundle")
 }
 
-// whatsappPayloadValid comprueba que el payload este completo.
-func whatsappPayloadValid(nodeExe, bundleDir string) bool {
-	return fileExists(nodeExe) && dirExists(bundleDir) &&
-		fileExists(filepath.Join(bundleDir, "index.js"))
+// whatsappPayloadValid comprueba que el bundle este completo. node.exe es
+// opcional: sin el, el runtime usa Node 20+ del sistema.
+func whatsappPayloadValid(bundleDir string) bool {
+	return dirExists(bundleDir) && fileExists(filepath.Join(bundleDir, "index.js"))
 }
 
 // whatsappPayloadHash produce un ID corto y estable a partir del contenido de
@@ -147,8 +155,8 @@ func buildWhatsappPortable(ctx *project.ProjectContext, appExe, appName, version
 		return "", fmt.Errorf("no se encontro el ejecutable a envolver: %q", appExe)
 	}
 	nodeExe, bundleDir := whatsappPayloadPaths(ctx)
-	if !whatsappPayloadValid(nodeExe, bundleDir) {
-		return "", fmt.Errorf("payload del motor de WhatsApp incompleto (node.exe / whatsapp-engine-bundle/index.js)")
+	if !whatsappPayloadValid(bundleDir) {
+		return "", fmt.Errorf("payload del motor de WhatsApp incompleto (falta whatsapp-engine-bundle/index.js)")
 	}
 
 	tmp, err := os.MkdirTemp("", "compass-wa-portable-")
@@ -171,8 +179,10 @@ func buildWhatsappPortable(ctx *project.ProjectContext, appExe, appName, version
 	if err := copyFile(appExe, filepath.Join(payloadDir, launcherExeName)); err != nil {
 		return "", fmt.Errorf("no se pudo copiar el exe al payload: %w", err)
 	}
-	if err := copyFile(nodeExe, filepath.Join(resourcesDir, "node.exe")); err != nil {
-		return "", fmt.Errorf("no se pudo copiar node.exe al payload: %w", err)
+	if nodeExe != "" {
+		if err := copyFile(nodeExe, filepath.Join(resourcesDir, "node.exe")); err != nil {
+			return "", fmt.Errorf("no se pudo copiar node.exe al payload: %w", err)
+		}
 	}
 	if err := copyDir(bundleDir, bundleOut); err != nil {
 		return "", fmt.Errorf("no se pudo copiar el bundle al payload: %w", err)
@@ -292,7 +302,7 @@ func stripWhatsappNsi(s string) string {
 }
 
 // injectWhatsappIntoWailsNsi parchea el project.nsi de un proyecto Wails para
-// que el instalador incluya node.exe + el bundle. Devuelve una funcion que
+// que el instalador incluya el bundle (y node.exe si existe). Devuelve una funcion que
 // restaura el archivo original y debe ejecutarse tras `wails3 task package`.
 // Si el proyecto no usa el kit o no hay script NSIS, no hace nada.
 func injectWhatsappIntoWailsNsi(ctx *project.ProjectContext) (func(), error) {
@@ -301,7 +311,7 @@ func injectWhatsappIntoWailsNsi(ctx *project.ProjectContext) (func(), error) {
 		return noop, nil
 	}
 	node, bundle := whatsappPayloadPaths(ctx)
-	if !whatsappPayloadValid(node, bundle) {
+	if !whatsappPayloadValid(bundle) {
 		fmt.Println("[WARN] Falta el payload del motor; el instalador Wails no lo incluira.")
 		return noop, nil
 	}
@@ -319,9 +329,11 @@ func injectWhatsappIntoWailsNsi(ctx *project.ProjectContext) (func(), error) {
 	snippet := "\r\n" + waNsiBegin + "\r\n" +
 		"Section \"Compass WhatsApp Engine\"\r\n" +
 		"  SectionIn RO\r\n" +
-		"  SetOutPath \"$INSTDIR\\resources\"\r\n" +
-		"  File \"" + nsisValue(node) + "\"\r\n" +
-		"  SetOutPath \"$INSTDIR\\resources\\whatsapp-engine-bundle\"\r\n" +
+		"  SetOutPath \"$INSTDIR\\resources\"\r\n"
+	if node != "" {
+		snippet += "  File \"" + nsisValue(node) + "\"\r\n"
+	}
+	snippet += "  SetOutPath \"$INSTDIR\\resources\\whatsapp-engine-bundle\"\r\n" +
 		"  File /r \"" + nsisValue(filepath.Join(bundle, "*.*")) + "\"\r\n" +
 		"  SetOutPath \"$INSTDIR\"\r\n" +
 		"SectionEnd\r\n" +
@@ -354,9 +366,9 @@ func WhatsappPortableManage(ctx *project.ProjectContext) error {
 		ui.Pause()
 		return nil
 	}
-	nodeExe, bundleDir := whatsappPayloadPaths(ctx)
-	if !whatsappPayloadValid(nodeExe, bundleDir) {
-		fmt.Printf("[WARN] Falta el payload del motor (node.exe / bundle). Ejecuta primero la tarea 'whatsapp'.\n")
+	_, bundleDir := whatsappPayloadPaths(ctx)
+	if !whatsappPayloadValid(bundleDir) {
+		fmt.Printf("[WARN] Falta el payload del motor (bundle). Ejecuta primero la tarea 'whatsapp'.\n")
 		ui.Pause()
 		return nil
 	}
