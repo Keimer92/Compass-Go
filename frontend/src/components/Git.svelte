@@ -349,11 +349,21 @@
   <div class="commit-box">
     <div class="commit-head">Commit con IA</div>
     <div class="commit-body">
-        <textarea
-          placeholder="Mensaje del commit..."
-          value={draft.message}
-          oninput={(e) => setMessage(projectPath, e.currentTarget.value)}
-        ></textarea>
+        <div class="commit-input">
+          <textarea
+            placeholder="Mensaje del commit..."
+            value={draft.message}
+            oninput={(e) => setMessage(projectPath, e.currentTarget.value)}
+          ></textarea>
+          {#if draft.message}
+            <button
+              class="clear-msg"
+              onclick={() => setMessage(projectPath, '')}
+              title="Limpiar el mensaje"
+              aria-label="Limpiar el mensaje"
+            >×</button>
+          {/if}
+        </div>
         <div class="commit-actions">
           <button
             class="pill ghost"
@@ -523,6 +533,10 @@
   .commit-box { margin:14px 12px 4px; border:1px solid var(--border); border-radius:10px; background:color-mix(in srgb, var(--panel) 40%, transparent); }
   .commit-head { padding:9px 11px; color:var(--accent); font-size:11px; font-weight:700; }
   .commit-body { padding:0 11px 11px; }
+  .commit-input { position:relative; }
+  .commit-input textarea { padding-right:26px; }
+  .clear-msg { position:absolute; top:4px; right:4px; width:18px; height:18px; display:flex; align-items:center; justify-content:center; border:none; border-radius:50%; background:color-mix(in srgb, var(--border) 70%, transparent); color:var(--muted); font-size:13px; line-height:1; cursor:pointer; padding:0; }
+  .clear-msg:hover { background:color-mix(in srgb, var(--accent) 45%, var(--bg)); color:var(--text); }
   textarea { width:100%; box-sizing:border-box; height:82px; resize:vertical; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; font:inherit; font-size:11px; outline:none; }
   textarea:focus { border-color:var(--accent); }
   .gen-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
