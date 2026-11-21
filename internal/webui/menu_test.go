@@ -54,15 +54,14 @@ func TestMenuSetsPlatformBadge(t *testing.T) {
 		got[it.Label] = it.Platform
 	}
 
-	want := map[string]string{
-		"Run":         "go",
-		"Win Release": "go",
-		"HMR":         "go",
-		"Test":        "go",
-		"Version":     "general",
-		"Git":         "general",
-		"Clean":       "general",
-	}
+        want := map[string]string{
+                "Run":         "go",
+                "Win Release": "go",
+                "HMR":         "go",
+                "Test":        "go",
+                "Version":     "general",
+                "Clean":       "general",
+        }
 	for label, platform := range want {
 		if got[label] != platform {
 			t.Errorf("card %q: platform = %q, queria %q", label, got[label], platform)
@@ -155,24 +154,28 @@ func TestWailsWithAndroidModuleShowsAndroidCards(t *testing.T) {
 
 // Sin Taskfile.yml, `wails3 task dev|build|package` aborta con "No Taskfile
 // found": las cards de escritorio de Wails no deben ofrecerse. El resto
-// (Clean, Version, Git, Entorno, Vibe Coding) no depende del CLI de Wails.
+// (Clean, Version, Entorno, Vibe Coding) no depende del CLI de Wails. Git ya
+// no es una card: vive en la pestana Git del panel derecho.
 func TestWailsWithoutTaskfileHidesDesktopCards(t *testing.T) {
-	b := newWailsProject(t, false, false)
+        b := newWailsProject(t, false, false)
 
-	got := map[string]bool{}
-	for _, it := range b.GetMenu() {
-		got[it.Label] = true
-	}
-	for _, label := range []string{"Windows", "Win Release"} {
-		if got[label] {
-			t.Errorf("la card %q no deberia aparecer sin Taskfile.yml", label)
-		}
-	}
-	for _, label := range []string{"Clean", "Version", "Git", "Entorno", "Vibe Coding"} {
-		if !got[label] {
-			t.Errorf("falta la card %q, que no depende del CLI de Wails", label)
-		}
-	}
+        got := map[string]bool{}
+        for _, it := range b.GetMenu() {
+                got[it.Label] = true
+        }
+        for _, label := range []string{"Windows", "Win Release"} {
+                if got[label] {
+                        t.Errorf("la card %q no deberia aparecer sin Taskfile.yml", label)
+                }
+        }
+        for _, label := range []string{"Clean", "Version", "Entorno", "Vibe Coding"} {
+                if !got[label] {
+                        t.Errorf("falta la card %q, que no depende del CLI de Wails", label)
+                }
+        }
+        if got["Git"] {
+                t.Error("la card Git ya no deberia aparecer: se gestiona en la pestana Git")
+        }
 }
 
 // newWailsProject crea un proyecto Go+Wails minimo (go.mod con la dependencia

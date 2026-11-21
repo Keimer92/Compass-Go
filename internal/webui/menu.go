@@ -25,6 +25,9 @@ var allMenuItems = menuItems
 // IDs de pestaña, pero no se muestra nunca.
 var hiddenMenuItems = map[menu.MenuItem]bool{
 	menu.FlutterProfile: true, // modo --profile de Flutter retirado
+	// Git se gestiona entero en la pestana Git del panel derecho (estado,
+	// init, remoto, commits): ya no tiene card ni subcards en el menu.
+	menu.Git: true,
 }
 
 // menuItem devuelve la card del indice. WindowsDev vale 0, asi que el valor
@@ -85,12 +88,6 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"android-release-armv7", "Android armv7", "armeabi-v7a · equipos antiguos", "apk32"},
 			{"android-release-universal", "Android universal", "Una APK con todas las ABIs", "apk"},
 			{"android-release-all", "Todos", "Compila las tres APK en serie", "aab"},
-		}
-	case menu.Git:
-		return []Subcard{
-			{"git-do-init", "Inicializar repositorio", "git init + rama main + primer commit", "build"},
-			{"git-do-remote", "Conectar con remoto", "Enlazar con GitHub (URL o gh)", "git"},
-			{"git-do-status", "Ver estado", "Rama, remoto y cambios", "debug"},
 		}
 	case menu.Clean:
 		// Mismas acciones que el submenu de la TUI, pero como cards.

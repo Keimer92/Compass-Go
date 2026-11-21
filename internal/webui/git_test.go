@@ -134,10 +134,12 @@ func TestSubcards(t *testing.T) {
 	if got := b.Subcards("0"); len(got) != 0 {
 		t.Fatalf("la card Run no deberia tener subcards: %+v", got)
 	}
-	for _, id := range []string{"14", "17"} { // Git, Environment
-		if got := b.Subcards(id); len(got) == 0 {
-			t.Fatalf("la card %s deberia tener subcards", id)
-		}
+	// Git ya no tiene card ni subcards: se gestiona en la pestana Git.
+	if got := b.Subcards("14"); len(got) != 0 {
+		t.Fatalf("la card Git ya no deberia tener subcards: %+v", got)
+	}
+	if got := b.Subcards("17"); len(got) == 0 { // Environment
+		t.Fatal("la card Environment deberia tener subcards")
 	}
 }
 

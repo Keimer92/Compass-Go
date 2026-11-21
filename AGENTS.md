@@ -302,17 +302,19 @@ proyecto concreto:
 
 ## Panel Git lateral (tipo VSCode)
 
-- **Git vive en el panel derecho, no en una card**: las acciones de Git se
-  movieron del modal de subcards al panel derecho. La pestaña "Git" reemplaza
-  a la antigua pestaña "Commit": el generador de commit con IA queda siempre
-  desplegado dentro del componente
-  `frontend/src/components/Git.svelte`, para que todas las acciones git estén
-  juntas. Las pestañas del panel derecho son ahora **Explorador / Git /
-  Historial**. No hay barra superior (topbar): el título lo aporta el sidebar y
-  los botones "Tema" y "Opciones" viven en un pie (`sidebar-foot`) al final del
-  sidebar, de modo que cards y terminal ganan esos 52 px de alto. El modal
-  "Opciones" incluye una sección "Herramientas" con botones que lanzan las
-  antiguas cards de Config (Terminal, Entorno).
+- **Git vive en el panel derecho, no en una card**: la card Git y sus subcards
+  (`git-do-*`) se retiraron; `menu.Git` queda en `hiddenMenuItems` para no mover
+  los índices de las demás cards. La pestaña "Git" reemplaza a la antigua
+  pestaña "Commit": el generador de commit con IA queda siempre desplegado y,
+  si la carpeta aún no es un repo, ofrece **Inicializar repositorio** (rama
+  `main` + primer commit). Toda la configuración (commit automático, proveedor
+  de mensajes, modelo de Copilot y OpenRouter) vive en el desplegable **Ajustes
+  de Git** del propio panel. Las pestañas del panel derecho son ahora
+  **Explorador / Git / Historial**. No hay barra superior (topbar): el título lo
+  aporta el sidebar y los botones "Tema" y "Opciones" viven en un pie
+  (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
+  52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
+  Terminal, Entorno) y "General".
 - **API del puente** (`internal/webui/git.go`): `Bridge.GitInfo()` devuelve un
   DTO con `isRepo`, `hasCommits`, `branch`, `upstream`, `remoteUrl`, `webUrl`,
   `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede
@@ -335,11 +337,11 @@ proyecto concreto:
   backend (no en el componente, para que siga vivo al cambiar de pestaña).
   Cada 15 s lee `git status --porcelain`; si la firma del estado no cambia
   durante `settings.AutoCommitIdleMin` minutos (5 por defecto, ajustable en
-  Opciones → Git, rango 1–240), genera el mensaje (OpenRouter; si no hay API
+  Git → Ajustes, rango 1–240), genera el mensaje (OpenRouter; si no hay API
   key, un `chore: cambios automaticos <fecha>`) y commitea. Nunca hace push. Se
   salta árboles con conflictos (`hasConflict`), reinicia el reloj con cada
   cambio nuevo y emite el evento `git:auto` para que la UI se refresque. El
-  umbral se relee en cada pasada, así que cambiarlo en Opciones aplica sin
+  umbral se relee en cada pasada, así que cambiarlo en Git → Ajustes aplica sin
   reiniciar el botón. API: `Bridge.SetAutoCommit(bool)` y
   `Bridge.AutoCommitStatus()`.
 - **Proveedor de mensajes de commit** (`settings.CommitProvider`):
@@ -349,7 +351,7 @@ proyecto concreto:
   `.cmd` de npm lo lanza vía `cmd /c`) y ejecuta
   `copilot -s --deny-tool=shell --deny-tool=write -p <prompt>` con timeout de
   120 s. No usa API: consume la suscripción del usuario y tarda ~18 s por
-  mensaje. `Bridge.CopilotAvailable()` permite avisar en Opciones si falta el
+  mensaje. `Bridge.CopilotAvailable()` permite avisar en Git → Ajustes si falta el
   CLI. El prompt (resumen de git acotado a ~9 KB de diff) viaja como argv, muy
   por debajo del límite de Windows.
 - **Modelo de Copilot** (`settings.CopilotModel` + `Bridge.CopilotModels()`):
@@ -362,7 +364,8 @@ proyecto concreto:
   devuelve `Model "X" is not available`.
 - **Modal de Opciones**: `App.svelte` lo pinta como rejilla de dos columnas de
   tarjetas (`.opt-grid`/`.opt-card`, 780 px, una columna por debajo de 720 px)
-  con secciones Herramientas, General, Git y OpenRouter.
+  con secciones Herramientas y General. La tarjeta Git solo remite a la pestaña
+  Git; los ajustes de commit/OpenRouter se editan allí (`Git.svelte`).
 - **Sin parpadeo "no es un repositorio"**: `Git.svelte` guarda el último
   `GitInfo` por proyecto en `frontend/src/lib/gitCache.ts` y arranca con ese
   valor, así al cambiar de pestaña pinta datos reales al instante (Go lanza

@@ -9,8 +9,16 @@
     setAutoCommit,
     autoCommitStatus,
     onAutoCommit,
+    getSettings,
+    setSettings,
+    listModels,
+    copilotAvailable,
+    copilotModels,
     type GitInfo,
-    type AutoCommitState
+    type AutoCommitState,
+    type Settings,
+    type ModelOption,
+    type CopilotModelOption,
   } from '../lib/bridge'
   import { draftFor, runFor, setMessage, generateFor, cancelFor, commitFor } from '../lib/commitStore.svelte'
   import { onRepoChanged, notifyRepoChanged } from '../lib/repoChanged'
@@ -36,6 +44,26 @@
     enabled: false, idleMin: 10, pending: false, idleSec: 0, busy: false, lastMsg: '', lastError: ''
   })
   let autoBusy = $state(false)
+
+  // Ajustes de Git (antes en el modal de Opciones): commit automatico,
+  // proveedor de mensajes, modelo de Copilot y credenciales de OpenRouter.
+  let cfg = $state<Settings>({
+    open_output_dir: true,
+    close_tab_on_build_end: false,
+    openrouter_endpoint: 'https://openrouter.ai/api/v1',
+    openrouter_model: '',
+    openrouter_api_key: '',
+    auto_commit_idle_min: 5,
+    commit_provider: 'openrouter',
+    copilot_model: '',
+  })
+  let models = $state<ModelOption[]>([])
+  let copilotOptions = $state<CopilotModelOption[]>([])
+  let copilotOk = $state(false)
+  let settingsOpen = $state(false)
+  let cfgLoaded = $state(false)
+  let cfgBusy = $state(false)
+  let cfgSaved = $state(false)
 
   // El borrador del commit vive en el store, como en la antigua pestaña:
   // sobrevive al cambio de pestaña y a los refrescos del panel.
@@ -74,6 +102,58 @@
       fail(e)
     } finally {
       autoBusy = false
+    }
+  }
+
+  async function loadCfg() {
+    if (cfgLoaded) return
+    cfgLoaded = true
+    try {
+      cfg = await getSettings()
+    } catch {
+      /* se mantienen los valores por defecto */
+    }
+    try {
+      copilotOk = await copilotAvailable()
+    } catch {
+      copilotOk = false
+    }
+    try {
+      copilotOptions = await copilotModels()
+    } catch {
+      copilotOptions = []
+    }
+    try {
+      models = await listModels()
+    } catch {
+      models = []
+    }
+    // Si el modelo guardado no esta en el catalogo, se preselecciona el primero
+    // (gratuito y rapido) para que el selector nunca quede en blanco.
+    if (models.length && !models.some((m) => m.id === cfg.openrouter_model)) {
+      cfg.openrouter_model = models[0].id
+    }
+  }
+
+  function toggleSettings() {
+    settingsOpen = !settingsOpen
+    if (settingsOpen) loadCfg()
+  }
+
+  async function saveCfg() {
+    cfgBusy = true
+    try {
+      const min = Math.round(Number(cfg.auto_commit_idle_min))
+      cfg.auto_commit_idle_min = Number.isFinite(min) ? Math.min(240, Math.max(1, min)) : 5
+      await setSettings({ ...cfg })
+      cfgSaved = true
+      error = ''
+      await loadAuto()
+      setTimeout(() => (cfgSaved = false), 2500)
+    } catch (e) {
+      fail(e)
+    } finally {
+      cfgBusy = false
     }
   }
 
@@ -304,6 +384,89 @@
         <div class="hint">Se añadirán todos los cambios (git add -A).</div>
       </div>
     </div>
+
+  <div class="settings-box">
+    <button class="settings-head" onclick={toggleSettings} aria-expanded={settingsOpen}>
+      <span>Ajustes de Git</span>
+      <span class="chev" class:open={settingsOpen}>›</span>
+    </button>
+    {#if settingsOpen}
+      <div class="settings-body">
+        <label class="set-row">
+          <span class="set-label">Commit automático tras</span>
+          <input class="set-input num" type="number" min="1" max="240" step="1" bind:value={cfg.auto_commit_idle_min} />
+          <span class="set-unit">min sin cambios</span>
+        </label>
+
+        <label class="set-col">
+          <span class="set-label">Proveedor de mensajes</span>
+          <select class="set-input" bind:value={cfg.commit_provider}>
+            <option value="openrouter">OpenRouter (API key)</option>
+            <option value="copilot">GitHub Copilot CLI (local)</option>
+          </select>
+        </label>
+
+        {#if cfg.commit_provider === 'copilot'}
+          <label class="set-col">
+            <span class="set-label">Modelo de Copilot <small>(los más rápidos y baratos primero)</small></span>
+            <select class="set-input" bind:value={cfg.copilot_model}>
+              {#each copilotOptions as opt}
+                <option value={opt.id}>{opt.label} — {opt.hint}</option>
+              {/each}
+            </select>
+          </label>
+          {#if !copilotOk}
+            <p class="set-warn">
+              No se encontró el CLI. Instálalo con <code>npm i -g @github/copilot</code>
+              y ejecuta <code>copilot login</code>.
+            </p>
+          {:else}
+            <p class="set-hint">
+              Usa tu suscripción de Copilot. La disponibilidad de cada modelo depende de tu plan;
+              si uno no aparece, elige Auto.
+            </p>
+          {/if}
+        {/if}
+
+        <div class:dim={cfg.commit_provider === 'copilot'}>
+          <label class="set-col">
+            <span class="set-label">Endpoint de OpenRouter</span>
+            <input class="set-input" type="text" bind:value={cfg.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
+          </label>
+          <label class="set-col">
+            <span class="set-label">Modelo <small>(gratuitos · los más rápidos primero)</small></span>
+            <select class="set-input" bind:value={cfg.openrouter_model}>
+              {#if cfg.openrouter_model && !models.some((m) => m.id === cfg.openrouter_model)}
+                <option value={cfg.openrouter_model}>{cfg.openrouter_model} (actual)</option>
+              {/if}
+              {#each models as m}
+                <option value={m.id}>{m.name} — {m.id}</option>
+              {/each}
+              {#if !models.length}
+                <option value="">(no se pudieron cargar los modelos)</option>
+              {/if}
+            </select>
+          </label>
+          <label class="set-col">
+            <span class="set-label">API key <small>{cfg.openrouter_api_key === '********'
+              ? '(guardada · escribe otra para cambiarla)'
+              : '(se guarda en settings.json)'}</small></span>
+            <input class="set-input" type="password" bind:value={cfg.openrouter_api_key} placeholder="********" autocomplete="off" />
+          </label>
+          {#if cfg.commit_provider === 'copilot'}
+            <p class="set-hint">No se usa mientras el proveedor sea Copilot.</p>
+          {/if}
+        </div>
+
+        <div class="set-actions">
+          <button class="pill primary" onclick={saveCfg} disabled={cfgBusy}>
+            {cfgBusy ? 'Guardando...' : 'Guardar ajustes'}
+          </button>
+        </div>
+        {#if cfgSaved}<div class="msg ok">Ajustes guardados.</div>{/if}
+      </div>
+    {/if}
+  </div>
 {/if}
 
 <style>
@@ -368,4 +531,23 @@
   @keyframes indeterminate { 0% { transform:translateX(-110%); } 100% { transform:translateX(320%); } }
   .elapsed { font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .elapsed.done { display:block; margin-top:6px; }
+  .settings-box { margin:10px 12px 14px; border:1px solid var(--border); border-radius:10px; background:color-mix(in srgb, var(--panel) 40%, transparent); overflow:hidden; }
+  .settings-head { display:flex; align-items:center; justify-content:space-between; width:100%; padding:9px 11px; border:none; background:none; color:var(--accent); font:inherit; font-size:11px; font-weight:700; cursor:pointer; }
+  .settings-head:hover { background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .chev { display:inline-block; color:var(--muted); transition:transform .15s ease; }
+  .chev.open { transform:rotate(90deg); }
+  .settings-body { padding:0 11px 11px; }
+  .set-row { display:flex; align-items:center; gap:7px; margin-top:8px; }
+  .set-col { display:flex; flex-direction:column; gap:4px; margin-top:8px; }
+  .set-label { color:var(--muted); font-size:10px; }
+  .set-label small { color:var(--muted); opacity:.8; }
+  .set-input { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--border); border-radius:7px; background:var(--panel); color:var(--text); font:inherit; font-size:11px; outline:none; }
+  .set-input:focus { border-color:var(--accent); }
+  .set-input.num { width:62px; text-align:center; }
+  .set-unit { color:var(--muted); font-size:10px; }
+  .set-actions { display:flex; margin-top:10px; }
+  .set-actions .pill { flex:1; }
+  .set-hint, .set-warn { margin:8px 0 0; font-size:10px; line-height:1.4; color:var(--muted); }
+  .set-warn { color:var(--yellow); }
+  .dim { opacity:.55; }
 </style>

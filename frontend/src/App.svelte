@@ -5,9 +5,9 @@
   import {
     getWorkspace, selectProject, removeProject, getMenu, runTask,
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
-    closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings, listModels,
+    closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
-    listCleanupCandidates, purgeCleanupCandidates, copilotAvailable, copilotModels,
+    listCleanupCandidates, purgeCleanupCandidates,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -17,7 +17,7 @@
   import History from './components/History.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, ModelOption, TerminalInfo, CleanupTarget, CleanupPurgeResult, CopilotModelOption } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -48,9 +48,6 @@
     commit_provider: 'openrouter',
     copilot_model: '',
   })
-  let copilotOk = $state(false)
-  let copilotOptions = $state<CopilotModelOption[]>([])
-  let models = $state<ModelOption[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   // Modal "Elegir que borrar" de la card Clean. cleanupSelected usa el path
@@ -87,8 +84,8 @@
   })
   // Cards de Config (Terminal, Entorno) que antes vivian en la pestaña CFG y
   // ahora se lanzan desde la sección "Herramientas" del modal de Opciones.
-  // Git también es CFG, pero ya vive en el panel derecho: se excluye aquí.
-  let cfgTools = $derived(menu.filter((m) => m.section === 'CFG' && m.icon !== 'git'))
+  // Git ya no es una card: todo vive en la pestaña Git del panel derecho.
+  let cfgTools = $derived(menu.filter((m) => m.section === 'CFG'))
 
   // applyTheme solo pinta (CSS vars + terminales); no toca el tema guardado.
   // Asi se puede llamar en hover para previsualizar sin persistir nada.
@@ -134,43 +131,28 @@
 
   async function openOptions() {
     optionsOpen = true
-    // Se relee lo guardado: la key vuelve enmascarada y el modal nunca
-    // muestra un estado obsoleto de una sesion anterior.
+    // Se relee lo guardado para no mostrar un estado obsoleto de otra sesion.
     try {
       settings = await getSettings()
     } catch {
       /* se mantiene lo que ya habia */
     }
-    // Para avisar en el modal si el CLI de Copilot esta instalado.
-    try {
-      copilotOk = await copilotAvailable()
-    } catch {
-      copilotOk = false
-    }
-    try {
-      copilotOptions = await copilotModels()
-    } catch {
-      /* el selector de modelo se queda vacio */
-    }
-    try {
-      models = await listModels()
-    } catch {
-      models = []
-    }
-    // Si el modelo guardado no es gratuito (o esta vacio), preselecciona el
-    // gratuito mas rapido de la lista.
-    if (models.length && !models.some((m) => m.id === settings.openrouter_model)) {
-      settings.openrouter_model = models[0].id
-    }
   }
 
   async function saveSettings() {
-    // El umbral del auto-commit se acota aqui tambien: un input vacio o un
-    // valor absurdo no debe llegar a Go (y NaN romperia el JSON).
-    const min = Math.round(Number(settings.auto_commit_idle_min))
-    settings.auto_commit_idle_min = Number.isFinite(min) ? Math.min(240, Math.max(1, min)) : 5
-    await setSettings({ ...settings })
-    optionsOpen = false
+    // El modal solo edita las opciones generales; se parte de lo guardado para
+    // no pisar los ajustes de Git que ahora vive en la pestana Git.
+    try {
+      const cur = await getSettings()
+      await setSettings({
+        ...cur,
+        open_output_dir: settings.open_output_dir,
+        close_tab_on_build_end: settings.close_tab_on_build_end,
+      })
+      optionsOpen = false
+    } catch (e) {
+      lastError = (e as Error).message
+    }
   }
 
   // Lanza una card de Config desde el modal de Opciones: se cierra Opciones
@@ -795,74 +777,6 @@
             <input type="checkbox" bind:checked={settings.close_tab_on_build_end} />
             <span>Cerrar la pestaña del terminal al terminar un build</span>
           </label>
-        </section>
-
-        <section class="opt-card">
-          <h3 class="opt-card-title">Git</h3>
-          <label class="opt-row">
-            <span class="opt-label">Commit automático tras</span>
-            <input class="opt-input num" type="number" min="1" max="240" step="1" bind:value={settings.auto_commit_idle_min} />
-            <span class="opt-unit">min sin cambios</span>
-          </label>
-          <label class="opt-row column">
-            <span class="opt-label">Proveedor de mensajes</span>
-            <select class="opt-input" bind:value={settings.commit_provider}>
-              <option value="openrouter">OpenRouter (API key)</option>
-              <option value="copilot">GitHub Copilot CLI (local)</option>
-            </select>
-          </label>
-          {#if settings.commit_provider === 'copilot'}
-            <label class="opt-row column">
-              <span class="opt-label">Modelo de Copilot <small>(los más rápidos y baratos primero)</small></span>
-              <select class="opt-input" bind:value={settings.copilot_model}>
-                {#each copilotOptions as opt}
-                  <option value={opt.id}>{opt.label} — {opt.hint}</option>
-                {/each}
-              </select>
-            </label>
-            {#if !copilotOk}
-              <p class="opt-warn">
-                No se encontró el CLI. Instálalo con <code>npm i -g @github/copilot</code>
-                y ejecuta <code>copilot login</code>.
-              </p>
-            {:else}
-              <p class="opt-hint">
-                Usa tu suscripción de Copilot. La disponibilidad de cada modelo depende de tu plan;
-                si uno no aparece, elige Auto.
-              </p>
-            {/if}
-          {/if}
-        </section>
-
-        <section class="opt-card" class:dim={settings.commit_provider === 'copilot'}>
-          <h3 class="opt-card-title">OpenRouter</h3>
-          <label class="opt-row column">
-            <span class="opt-label">Endpoint</span>
-            <input class="opt-input" type="text" bind:value={settings.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
-          </label>
-          <label class="opt-row column">
-            <span class="opt-label">Modelo <small>(gratuitos · los más rápidos primero)</small></span>
-            <select class="opt-input" bind:value={settings.openrouter_model}>
-              {#if settings.openrouter_model && !models.some((m) => m.id === settings.openrouter_model)}
-                <option value={settings.openrouter_model}>{settings.openrouter_model} (actual)</option>
-              {/if}
-              {#each models as m}
-                <option value={m.id}>{m.name} — {m.id}</option>
-              {/each}
-              {#if !models.length}
-                <option value="">(no se pudieron cargar los modelos)</option>
-              {/if}
-            </select>
-          </label>
-          <label class="opt-row column">
-            <span class="opt-label">API key <small>{settings.openrouter_api_key === '********'
-              ? '(guardada · escribe otra para cambiarla)'
-              : '(se guarda en settings.json)'}</small></span>
-            <input class="opt-input" type="password" bind:value={settings.openrouter_api_key} placeholder="********" autocomplete="off" />
-          </label>
-          {#if settings.commit_provider === 'copilot'}
-            <p class="opt-hint">No se usa mientras el proveedor sea Copilot.</p>
-          {/if}
         </section>
       </div>
 
