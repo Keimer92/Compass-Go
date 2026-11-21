@@ -326,6 +326,18 @@ proyecto concreto:
   abre el enlace del repo en el navegador del sistema. `GitPush`/`GitPull` usan
   `runGitTimeout` (90 s) para no congelar la promesa Wails si git espera
   credenciales. `@{u}` es revisión fija de git, no texto del usuario.
+- **Remoto caído y asistente de re-vinculación** (`internal/webui/git_remote.go`):
+  `Bridge.GitRemoteStatus(url)` comprueba el remoto con `git ls-remote
+  --exit-code` (25 s) y devuelve `state` = `ok` / `empty` / `missing` / `auth` /
+  `unreachable` / `none` / `error`. Con URL vacía comprueba `origin`; con URL
+  comprueba el candidato del asistente. El frontend solo lo consulta una vez
+  por proyecto+URL cada 5 minutos (el panel se refresca con cada guardado). Si
+  el estado es `missing`, el panel avisa y bloquea Push, y ofrece el asistente
+  (`Git.svelte`, modal `wiz`): crear un repo nuevo con `Bridge.GitCreateRemote(name,
+  private)` (usa `gh repo create` y luego enlaza `origin`; valida el nombre con
+  `^[A-Za-z0-9._-]{1,100}$`) o vincular uno existente validando la URL antes de
+  `GitSetRemote`. `Bridge.GitGhInfo()` indica si `gh` está instalado y con qué
+  cuenta. El asistente puede hacer push al terminar.
 - **Seguridad**: `GitSetRemote` valida la URL (no empieza por guion, sin CRLF,
   formato https/git@/ssh) antes de pasarla a git; `OpenExternal` solo acepta
   http/https. Los helpers `gitHost`, `gitWebURL`, `gitLooksLikeURL` y

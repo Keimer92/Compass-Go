@@ -5,6 +5,9 @@
     gitPull,
     gitSetRemote,
     gitInitRepo,
+    gitRemoteStatus,
+    gitGhInfo,
+    gitCreateRemote,
     openExternal,
     setAutoCommit,
     autoCommitStatus,
@@ -19,6 +22,8 @@
     type Settings,
     type ModelOption,
     type CopilotModelOption,
+    type RemoteStatus,
+    type GhInfo,
   } from '../lib/bridge'
   import { draftFor, runFor, setMessage, generateFor, cancelFor, commitFor } from '../lib/commitStore.svelte'
   import { onRepoChanged, notifyRepoChanged } from '../lib/repoChanged'
@@ -44,6 +49,23 @@
     enabled: false, idleMin: 10, pending: false, idleSec: 0, busy: false, lastMsg: '', lastError: ''
   })
   let autoBusy = $state(false)
+
+  // Estado del remoto: se comprueba con `git ls-remote` (una sola vez por
+  // proyecto+URL cada pocos minutos) para detectar repositorios borrados.
+  let remote = $state<RemoteStatus>({ state: 'none', detail: '', url: '' })
+  let remoteKey = ''
+  let remoteAt = 0
+
+  // Asistente para vincular otro repositorio cuando el actual ya no existe.
+  let wizardOpen = $state(false)
+  let wizStep = $state<'choose' | 'create' | 'link'>('choose')
+  let wizBusy = $state(false)
+  let wizError = $state('')
+  let wizPush = $state(true)
+  let gh = $state<GhInfo>({ available: false, account: '' })
+  let newName = $state('')
+  let newPrivate = $state(true)
+  let linkUrl = $state('')
 
   // Ajustes de Git (antes en el modal de Opciones): commit automatico,
   // proveedor de mensajes, modelo de Copilot y credenciales de OpenRouter.
@@ -77,10 +99,103 @@
       info = await loadGitInfo(projectPath)
       error = ''
       loaded = true
+      void checkRemote()
     } catch (e) {
       error = (e as Error).message
     } finally {
       refreshing = false
+    }
+  }
+
+  // checkRemote consulta al remoto real. Se cachea por proyecto+URL unos
+  // minutos: refresh() corre con cada guardado de archivo y no conviene lanzar
+  // una peticion de red cada vez.
+  async function checkRemote(force = false) {
+    if (!info.remoteUrl) {
+      remote = { state: 'none', detail: '', url: '' }
+      return
+    }
+    const key = `${projectPath}|${info.remoteUrl}`
+    if (!force && key === remoteKey && Date.now() - remoteAt < 5 * 60_000) return
+    remoteKey = key
+    remoteAt = Date.now()
+    try {
+      const st = await gitRemoteStatus()
+      // Descarta la respuesta si el remoto cambio mientras se comprobaba.
+      if (st.url === info.remoteUrl) remote = st
+    } catch {
+      /* la comprobacion es informativa: no rompe el panel */
+    }
+  }
+
+  function openWizard() {
+    wizStep = 'choose'
+    wizError = ''
+    wizBusy = false
+    wizPush = true
+    newPrivate = true
+    const base = projectPath.split(/[\\/]/).filter(Boolean).pop() ?? 'mi-repo'
+    newName = base.replace(/[^A-Za-z0-9._-]+/g, '-')
+    linkUrl = ''
+    wizardOpen = true
+    gitGhInfo().then((g) => (gh = g)).catch(() => (gh = { available: false, account: '' }))
+  }
+
+  function closeWizard() {
+    if (wizBusy) return
+    wizardOpen = false
+  }
+
+  async function wizardCreate() {
+    wizBusy = true
+    wizError = ''
+    try {
+      let msg = await gitCreateRemote(newName.trim(), newPrivate)
+      if (wizPush) {
+        try {
+          msg += '\n' + (await gitPush())
+        } catch (e) {
+          msg += '\nNo se pudo subir todavía: ' + (e as Error).message
+        }
+      }
+      wizardOpen = false
+      done(msg)
+    } catch (e) {
+      wizError = (e as Error).message
+    } finally {
+      wizBusy = false
+    }
+  }
+
+  async function wizardLink() {
+    wizBusy = true
+    wizError = ''
+    try {
+      const url = linkUrl.trim()
+      if (!url) {
+        wizError = 'Escribe la URL del repositorio.'
+        return
+      }
+      // Verifica que el destino exista antes de tocar la configuracion.
+      const st = await gitRemoteStatus(url)
+      if (st.state === 'missing' || st.state === 'none' || st.state === 'error') {
+        wizError = st.detail || 'Ese repositorio no existe o no es accesible.'
+        return
+      }
+      let msg = await gitSetRemote(url)
+      if (wizPush) {
+        try {
+          msg += '\n' + (await gitPush())
+        } catch (e) {
+          msg += '\nNo se pudo subir todavía: ' + (e as Error).message
+        }
+      }
+      wizardOpen = false
+      done(msg)
+    } catch (e) {
+      wizError = (e as Error).message
+    } finally {
+      wizBusy = false
     }
   }
 
@@ -186,7 +301,7 @@
     connectOpen = false
     remoteInput = ''
     notifyRepoChanged()
-    refresh()
+    refresh().then(() => checkRemote(true))
   }
 
   function fail(e: unknown) {
@@ -224,7 +339,7 @@
   }
 
   let canPush = $derived(
-    info.isRepo && info.hasCommits && !!info.remoteUrl &&
+    info.isRepo && info.hasCommits && !!info.remoteUrl && remote.state !== 'missing' &&
     !info.branch.startsWith('detached') && !busy
   )
   let canSync = $derived(canPush && !!info.upstream)
@@ -304,11 +419,20 @@
     <div class="remote">
       <div class="remote-row">
         <span class="host">{info.isGitHub ? 'GitHub' : 'Remoto'}</span>
-        {#if info.webUrl}
-          <button class="link" onclick={openWeb} title="Abrir en el navegador">Abrir ↗</button>
-        {/if}
+        <div class="remote-actions">
+          {#if info.webUrl}
+            <button class="link" onclick={openWeb} title="Abrir en el navegador">Abrir ↗</button>
+          {/if}
+          <button class="link" onclick={openWizard} title="Vincular otro repositorio">Cambiar</button>
+        </div>
       </div>
       <div class="remote-url" title={info.remoteUrl}>{info.remoteUrl}</div>
+      {#if remote.state === 'missing' || remote.state === 'auth'}
+        <div class="remote-warn">
+          {remote.detail}
+          <button class="warn-cta" onclick={openWizard}>Vincular otro repositorio</button>
+        </div>
+      {/if}
     </div>
   {:else if connectOpen}
     <div class="connect">
@@ -337,7 +461,7 @@
       {info.changes === 0 ? 'Sin cambios pendientes.' : `${info.changes} cambio${info.changes === 1 ? '' : 's'} pendiente${info.changes === 1 ? '' : 's'}.`}
     </div>
     <div class="actions">
-      <button class="pill primary" onclick={push} disabled={!canPush} title={info.remoteUrl ? 'Subir rama actual' : 'Configura un remoto primero'}>
+      <button class="pill primary" onclick={push} disabled={!canPush} title={remote.state === 'missing' ? 'El remoto ya no existe: vincula otro repositorio' : info.remoteUrl ? 'Subir rama actual' : 'Configura un remoto primero'}>
         {busy ? 'Subiendo...' : 'Push'}
       </button>
       <button class="pill ghost" onclick={sync} disabled={!canSync} title={info.upstream ? 'Pull --rebase + Push' : 'La rama no tiene upstream'}>
@@ -479,6 +603,95 @@
   </div>
 {/if}
 
+{#if wizardOpen}
+  <div class="wiz-backdrop" onclick={closeWizard} role="presentation">
+    <div class="wiz" tabindex="-1" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Vincular repositorio">
+      <div class="wiz-head">
+        <span>Vincular repositorio</span>
+        <button class="wiz-x" onclick={closeWizard} disabled={wizBusy} aria-label="Cerrar">×</button>
+      </div>
+
+      {#if wizStep === 'choose'}
+        <p class="wiz-text">
+          {remote.state === 'missing'
+            ? 'El remoto configurado ya no existe en GitHub. Elige cómo continuar:'
+            : 'Elige el nuevo destino para este repositorio:'}
+        </p>
+        <button class="wiz-opt" onclick={() => (wizStep = 'create')} disabled={!gh.available}>
+          <span class="wiz-opt-title">Crear uno nuevo en GitHub</span>
+          <span class="wiz-opt-sub">
+            {gh.available
+              ? (gh.account ? `Se creará en la cuenta ${gh.account}` : 'Usa el CLI de GitHub (gh)')
+              : 'Requiere el CLI de GitHub (gh) instalado'}
+          </span>
+        </button>
+        <button class="wiz-opt" onclick={() => (wizStep = 'link')}>
+          <span class="wiz-opt-title">Vincular uno existente</span>
+          <span class="wiz-opt-sub">Pega la URL del repositorio de GitHub</span>
+        </button>
+        {#if !gh.available}
+          <p class="wiz-hint">
+            Para crear repositorios desde aquí instala <code>gh</code> y ejecuta
+            <code>gh auth login</code>.
+          </p>
+        {/if}
+      {:else if wizStep === 'create'}
+        <p class="wiz-text">Se creará el repositorio y se enlazará como <b>origin</b>.</p>
+        <label class="wiz-col">
+          <span class="wiz-label">Nombre</span>
+          <input class="wiz-input" bind:value={newName} placeholder="mi-proyecto" />
+        </label>
+        <div class="wiz-col">
+          <span class="wiz-label">Visibilidad</span>
+          <div class="wiz-seg">
+            <button class:on={newPrivate} onclick={() => (newPrivate = true)}>Privado</button>
+            <button class:on={!newPrivate} onclick={() => (newPrivate = false)}>Público</button>
+          </div>
+        </div>
+        <label class="wiz-check">
+          <input type="checkbox" bind:checked={wizPush} />
+          <span>Subir la rama actual al terminar</span>
+        </label>
+      {:else}
+        <p class="wiz-text">Pega la URL del repositorio al que quieres enlazar este proyecto.</p>
+        <label class="wiz-col">
+          <span class="wiz-label">URL del remoto</span>
+          <input
+            class="wiz-input"
+            bind:value={linkUrl}
+            placeholder="https://github.com/usuario/repo.git"
+            onkeydown={(e) => { if (e.key === 'Enter') wizardLink() }}
+          />
+        </label>
+        <label class="wiz-check">
+          <input type="checkbox" bind:checked={wizPush} />
+          <span>Subir la rama actual al terminar</span>
+        </label>
+        <p class="wiz-hint">Se comprobará que el repositorio exista antes de enlazarlo.</p>
+      {/if}
+
+      {#if wizError}<div class="wiz-err">{wizError}</div>{/if}
+
+      <div class="wiz-actions">
+        {#if wizStep === 'choose'}
+          <button class="pill ghost" onclick={closeWizard} disabled={wizBusy}>Cancelar</button>
+        {:else}
+          <button class="pill ghost" onclick={() => { wizStep = 'choose'; wizError = '' }} disabled={wizBusy}>Atrás</button>
+          {#if wizStep === 'create'}
+            <button class="pill primary" onclick={wizardCreate} disabled={wizBusy || !newName.trim()}>
+              {wizBusy ? 'Creando...' : 'Crear y vincular'}
+            </button>
+          {:else}
+            <button class="pill primary" onclick={wizardLink} disabled={wizBusy || !linkUrl.trim()}>
+              {wizBusy ? 'Vinculando...' : 'Vincular'}
+            </button>
+          {/if}
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .head { display:flex; align-items:center; justify-content:space-between; padding:14px 14px 8px; color:var(--accent); font-weight:700; font-size:11px; letter-spacing:.08em; }
   .head-actions { display:flex; align-items:center; gap:6px; }
@@ -564,4 +777,34 @@
   .set-hint, .set-warn { margin:8px 0 0; font-size:10px; line-height:1.4; color:var(--muted); }
   .set-warn { color:var(--yellow); }
   .dim { opacity:.55; }
+
+  .remote-actions { display:flex; align-items:center; gap:8px; }
+  .remote-warn { margin-top:7px; padding:6px 8px; border-radius:7px; background:color-mix(in srgb, var(--yellow) 13%, transparent); color:var(--yellow); font-size:10px; line-height:1.45; }
+  .warn-cta { display:block; margin-top:5px; padding:0; border:none; background:none; color:var(--accent); font:inherit; font-size:10px; font-weight:700; text-decoration:underline; cursor:pointer; }
+
+  .wiz-backdrop { position:fixed; inset:0; z-index:60; display:grid; place-items:center; background:rgba(0,0,0,.6); }
+  .wiz { width:400px; max-width:92vw; max-height:88vh; overflow-y:auto; box-sizing:border-box; padding:16px; border:1px solid var(--border); border-radius:var(--r-lg); background:var(--bg); box-shadow:var(--shadow-3); }
+  .wiz-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; color:var(--accent); font-size:12px; font-weight:700; }
+  .wiz-x { width:22px; height:22px; padding:0; border:none; border-radius:6px; background:none; color:var(--muted); font-size:16px; line-height:1; cursor:pointer; }
+  .wiz-x:hover:not(:disabled) { color:var(--text); background:color-mix(in srgb, var(--border) 60%, transparent); }
+  .wiz-text { margin:0 0 12px; color:var(--text); font-size:11px; line-height:1.5; }
+  .wiz-opt { display:flex; flex-direction:column; gap:3px; width:100%; box-sizing:border-box; margin-bottom:8px; padding:10px 11px; border:1px solid var(--border); border-radius:10px; background:color-mix(in srgb, var(--panel) 45%, transparent); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+  .wiz-opt:hover:not(:disabled) { border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); background:color-mix(in srgb, var(--accent) 10%, transparent); }
+  .wiz-opt:disabled { opacity:.5; cursor:default; }
+  .wiz-opt-title { font-size:11px; font-weight:700; }
+  .wiz-opt-sub { color:var(--muted); font-size:10px; }
+  .wiz-col { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+  .wiz-label { color:var(--muted); font-size:10px; }
+  .wiz-input { width:100%; box-sizing:border-box; padding:7px 9px; border:1px solid var(--border); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; font-size:11px; outline:none; }
+  .wiz-input:focus { border-color:var(--accent); }
+  .wiz-seg { display:flex; gap:6px; }
+  .wiz-seg button { flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb, var(--panel) 45%, transparent); color:var(--muted); font:inherit; font-size:11px; cursor:pointer; }
+  .wiz-seg button.on { border-color:color-mix(in srgb, var(--accent) 60%, var(--border)); background:color-mix(in srgb, var(--accent) 22%, transparent); color:var(--text); }
+  .wiz-check { display:flex; align-items:center; gap:7px; margin-bottom:10px; color:var(--text); font-size:11px; cursor:pointer; }
+  .wiz-check input { accent-color:var(--accent); }
+  .wiz-hint { margin:0 0 10px; color:var(--muted); font-size:10px; line-height:1.45; }
+  .wiz-hint code { padding:1px 4px; border-radius:4px; background:color-mix(in srgb, var(--border) 55%, transparent); font-family:'Cascadia Mono', Consolas, monospace; }
+  .wiz-err { margin-bottom:10px; padding:6px 9px; border-radius:8px; background:color-mix(in srgb, var(--red) 12%, transparent); color:var(--red); font-size:11px; white-space:pre-wrap; word-break:break-word; }
+  .wiz-actions { display:flex; gap:8px; }
+  .wiz-actions .pill { flex:1; }
 </style>

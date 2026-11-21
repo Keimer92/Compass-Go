@@ -117,6 +117,21 @@ export const gitPush = () => call<string>(M('GitPush'))
 export const gitPull = () => call<string>(M('GitPull'))
 export const gitSetRemote = (url: string) => call<string>(M('GitSetRemote'), url)
 export const gitInitRepo = () => call<string>(M('GitInitRepo'))
+
+export interface RemoteStatus {
+  state: 'ok' | 'empty' | 'missing' | 'auth' | 'unreachable' | 'none' | 'error'
+  detail: string
+  url: string
+}
+export interface GhInfo {
+  available: boolean
+  account: string
+}
+// Sin url comprueba 'origin'; con url, el candidato del asistente.
+export const gitRemoteStatus = (url = '') => call<RemoteStatus>(M('GitRemoteStatus'), url)
+export const gitGhInfo = () => call<GhInfo>(M('GitGhInfo'))
+export const gitCreateRemote = (name: string, isPrivate: boolean) =>
+  call<string>(M('GitCreateRemote'), name, isPrivate)
 export const openExternal = (url: string) => call<void>(M('OpenExternal'), url)
 
 export interface AutoCommitState {
