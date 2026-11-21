@@ -65,6 +65,10 @@
   const sessionTag = Math.random().toString(36).slice(2, 8)
   const terms = new Map<number, { term: Terminal; fit: FitAddon }>()
   const mounted = new Set<number>()
+  // Recuerda si cada terminal estaba pegada al final. Al volver a su pestaña
+  // (o al redimensionar tras mucho tiempo oculta) xterm conserva viewportY y
+  // el contenido aparecia a media altura: si estaba abajo, se vuelve a bajar.
+  const termAtBottom = new Map<number, boolean>()
 
   const activeTab = () => tabs.find((t) => t.key === activeKey) ?? null
 
@@ -200,7 +204,11 @@
       const entry = activeKey != null ? terms.get(activeKey) : null
       const tab = activeTab()
       if (!entry) return
+      // Al cambiar el tamano, xterm recalcula filas y puede dejar el viewport
+      // a media altura; si estaba al final, se mantiene ahi.
+      const atBottom = entry.term.buffer.active.viewportY >= entry.term.buffer.active.baseY
       entry.fit.fit()
+      if (atBottom) entry.term.scrollToBottom()
       if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
     })
     // Cambios hechos fuera de Compass (otra terminal, IDE, Explorer): al volver
@@ -322,6 +330,7 @@
     const fit = new FitAddon()
     term.loadAddon(fit)
     terms.set(key, { term, fit })
+    termAtBottom.set(key, true)
     term.onData((data) => {
       const tab = tabs.find((t) => t.key === key)
       if (tab?.ptyId) writeTerminal(tab.ptyId, bytesToB64(new TextEncoder().encode(data)))
@@ -372,12 +381,22 @@
   }
 
   async function activate(key: number) {
+    // Antes de cambiar, anota si la terminal que se deja estaba al final del
+    // historial: al volver a ella se restaurara esa posicion.
+    if (activeKey != null && activeKey !== key) {
+      const prev = terms.get(activeKey)
+      if (prev) {
+        const buf = prev.term.buffer.active
+        termAtBottom.set(activeKey, buf.viewportY >= buf.baseY)
+      }
+    }
     activeKey = key
     await tick()
     const entry = terms.get(key)
     const tab = tabs.find((t) => t.key === key)
     if (!entry) return
     entry.fit.fit()
+    if (termAtBottom.get(key)) entry.term.scrollToBottom()
     if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
     entry.term.focus()
   }
@@ -527,6 +546,7 @@
       terms.delete(key)
     }
     mounted.delete(key)
+    termAtBottom.delete(key)
     tabs = tabs.filter((t) => t.key !== key)
     if (activeKey === key) {
       // Siguiente pestaña del MISMO proyecto (no salta a otro proyecto).
@@ -596,7 +616,7 @@
         <div class="terminal-panel">
           {#if visibleTabs.length}
             <div class="term-tabs">
-              {#each visibleTabs as tab}
+              {#each visibleTabs as tab (tab.key)}
                 <div
                   class="term-tab"
                   class:active={tab.key === activeKey}
@@ -621,7 +641,7 @@
             </div>
           {/if}
           <div class="term-stage">
-            {#each tabs as tab}
+            {#each tabs as tab (tab.key)}
               <div class="term-host" class:hidden={tab.key !== activeKey} id={`term-${tab.key}`}></div>
             {/each}
             {#if !visibleTabs.length}

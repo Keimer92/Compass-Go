@@ -802,6 +802,14 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   cada una (`terminal.go`). Al montar, `restoreTerminals` llama a
   `ListTerminals()` y reconstruye las pestañas con el mismo id, repintando el
   búfer, así que un build en curso no se interrumpe al editar la UI.
+- **Hosts de terminal keyed y siempre medibles**: el `{#each tabs}` que pinta
+  los `.term-host` usa clave `(tab.key)`. Sin clave, Svelte reutilizaba los
+  nodos al cerrar una pestaña y el DOM de xterm se quedaba en el host de otra
+  pestaña (se veía el contenido de una terminal en otra). Las pestañas ocultas
+  usan `visibility: hidden` (no `display: none`) para que el host conserve
+  tamaño y `FitAddon` no mida 0. Al volver a una pestaña se restaura el scroll:
+  `activate()` anota si la terminal que se deja estaba al final y hace
+  `scrollToBottom()` en la que se abre.
 - `dist.bat` compila con `-tags production`, así que el binario distribuido
   ignora `FRONTEND_DEVSERVER_URL` y siempre sirve el bundle embebido.
 

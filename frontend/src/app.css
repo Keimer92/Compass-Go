@@ -45,7 +45,10 @@
    con box-sizing:border-box, el padding no se descuenta, así que calculaba una
    fila de más y la última línea quedaba cortada por el borde inferior. */
 .term-host { position: absolute; inset: 8px; overflow: hidden; }
-.term-host.hidden { display: none; }
+/* Oculto con `visibility`, no con `display:none`: un host sin caja tiene
+   medidas 0 y xterm pierde el viewport (al volver, el scroll saltaba al
+   medio). Así el host conserva su tamaño y el terminal sigue midiendo bien. */
+.term-host.hidden { visibility: hidden; pointer-events: none; }
 .term-empty { height: 100%; display: grid; place-items: center; font-size: 12px; }
 .right { width: 300px; flex-shrink: 0; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 50%, var(--bg)); display: flex; flex-direction: column; }
 .right-tabs { display: flex; gap: 4px; padding: 10px; border-bottom: 1px solid var(--border); }
