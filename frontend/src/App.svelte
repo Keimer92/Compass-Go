@@ -207,7 +207,7 @@
       // Al cambiar el tamano, xterm recalcula filas y puede dejar el viewport
       // a media altura; si estaba al final, se mantiene ahi.
       const atBottom = entry.term.buffer.active.viewportY >= entry.term.buffer.active.baseY
-      entry.fit.fit()
+      if (activeKey != null) fitTerm(activeKey)
       if (atBottom) entry.term.scrollToBottom()
       if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
     })
@@ -377,7 +377,31 @@
       }
     }, { capture: true })
     mounted.add(key)
+    fitTerm(key)
+  }
+
+  // fitTerm ajusta el xterm al host y corrige el ancho util real.
+  // FitAddon mide el host, pero el ancho disponible de verdad lo marca el
+  // viewport, que descuenta su barra de scroll. Si la ultima columna sobresale
+  // (por el ancho de la barra o por el redondeo de la celda segun el DPR), se
+  // recorta el numero de columnas para que no quede texto oculto a la derecha.
+  function fitTerm(key: number) {
+    const entry = terms.get(key)
+    if (!entry) return
     entry.fit.fit()
+    const el = document.getElementById(`term-${key}`)
+    const screen = el?.querySelector('.xterm-screen') as HTMLElement | null
+    const viewport = el?.querySelector('.xterm-viewport') as HTMLElement | null
+    if (!screen || !viewport || !entry.term.cols) return
+    // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
+    const cell = screen.offsetWidth / entry.term.cols
+    if (!cell) return
+    // Solo se toca si el contenido sobresale del ancho util: asi no se pierde
+    // una columna por un simple redondeo cuando ya cabe.
+    const overflow = screen.offsetWidth - viewport.clientWidth
+    if (overflow <= 0) return
+    const cols = Math.max(2, entry.term.cols - Math.ceil(overflow / cell))
+    entry.term.resize(cols, entry.term.rows)
   }
 
   async function activate(key: number) {
@@ -395,7 +419,7 @@
     const entry = terms.get(key)
     const tab = tabs.find((t) => t.key === key)
     if (!entry) return
-    entry.fit.fit()
+    fitTerm(key)
     if (termAtBottom.get(key)) entry.term.scrollToBottom()
     if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
     entry.term.focus()
@@ -405,7 +429,7 @@
     const entry = terms.get(tab.key)
     if (!entry) return
     entry.term.clear()
-    entry.fit.fit()
+    fitTerm(tab.key)
     const script = await taskScript(task)
     // El id se fija ANTES de abrir: la salida de la tarea puede llegar antes
     // de que la promesa resuelva y hay que poder casarla ya.

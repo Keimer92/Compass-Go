@@ -810,6 +810,13 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   tamaño y `FitAddon` no mida 0. Al volver a una pestaña se restaura el scroll:
   `activate()` anota si la terminal que se deja estaba al final y hace
   `scrollToBottom()` en la que se abre.
+- **Ancho útil del terminal (`fitTerm`)**: `FitAddon` mide el host, pero el
+  ancho real lo marca el viewport de xterm (que descuenta su barra de scroll).
+  Si la última columna sobresale por el ancho de la barra o por el redondeo de
+  la celda según el DPR, se recortan las columnas necesarias para que no quede
+  texto oculto a la derecha. Solo actúa cuando hay desbordamiento real, y
+  `.term-host .xterm-viewport` lleva `overflow-x: hidden` para que no aparezca
+  una barra horizontal que robe una fila.
 - `dist.bat` compila con `-tags production`, así que el binario distribuido
   ignora `FRONTEND_DEVSERVER_URL` y siempre sirve el bundle embebido.
 
