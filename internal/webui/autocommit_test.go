@@ -10,22 +10,63 @@ import (
 	"compass/internal/settings"
 )
 
-func TestHasConflict(t *testing.T) {
+func TestIsConflict(t *testing.T) {
 	cases := []struct {
 		in   string
 		want bool
 	}{
-		{"", false},
-		{" M archivo.go", false},
-		{"?? nuevo.txt", false},
-		{"UU conflicto.go", true},
-		{" M ok.go\nAA ambos.go\n", true},
-		{"UD borrado.go", true},
+		{" M", false},
+		{"??", false},
+		{"UU", true},
+		{"AA", true},
+		{"UD", true},
+		{" M", false},
 	}
 	for _, tc := range cases {
-		if got := hasConflict(tc.in); got != tc.want {
-			t.Fatalf("hasConflict(%q) = %v, queria %v", tc.in, got, tc.want)
+		if got := isConflict(tc.in); got != tc.want {
+			t.Fatalf("isConflict(%q) = %v, queria %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+// Volver a guardar un archivo que YA estaba modificado debe reiniciar el reloj:
+// si la firma solo mirase los codigos de git status, la segunda edicion pasaba
+// desapercibida y el commit llegaba a mitad de la escritura.
+func TestAutoSigDetectsRepeatedEdits(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := initRepo(t)
+	path := filepath.Join(dir, "nota.txt")
+	if err := os.WriteFile(path, []byte("uno\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, _, err := autoSig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" {
+		t.Fatal("la firma no deberia estar vacia con un archivo modificado")
+	}
+
+	// Mismo estado git ("??" / "M"), contenido distinto: la firma cambia.
+	if err := os.WriteFile(path, []byte("dos, mas largo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := autoSig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first {
+		t.Fatal("editar otra vez el mismo archivo debe cambiar la firma")
+	}
+
+	// Sin tocar nada, la firma es estable.
+	third, _, err := autoSig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third != second {
+		t.Fatal("la firma debe ser estable cuando no hay actividad")
 	}
 }
 
@@ -73,6 +114,32 @@ func TestSetAutoCommitToggle(t *testing.T) {
 	}
 	if b.AutoCommitStatus().Enabled {
 		t.Fatal("Auto debe quedar apagado")
+	}
+}
+
+// Reiniciar Compass no debe apagar el boton "Auto": el estado se persiste por
+// proyecto y el vigilante se rearma al arrancar.
+func TestAutoCommitSurvivesRestart(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := initRepo(t)
+
+	b := NewBridge(dir)
+	if err := b.SetAutoCommit(true); err != nil {
+		t.Fatalf("activar Auto: %v", err)
+	}
+
+	// Un Bridge nuevo sobre la misma configuracion equivale a reiniciar la app.
+	b2 := NewBridge(dir)
+	if !b2.AutoCommitStatus().Enabled {
+		t.Fatal("Auto debe seguir activo tras reiniciar")
+	}
+
+	if err := b2.SetAutoCommit(false); err != nil {
+		t.Fatalf("desactivar Auto: %v", err)
+	}
+	b3 := NewBridge(dir)
+	if b3.AutoCommitStatus().Enabled {
+		t.Fatal("un Auto desactivado no debe rearmarse")
 	}
 }
 

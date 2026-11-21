@@ -335,15 +335,23 @@ proyecto concreto:
 - **Auto-commit por inactividad** (`internal/webui/autocommit.go`): el botón
   "Auto" del panel Git activa un vigilante **por proyecto** que corre en el
   backend (no en el componente, para que siga vivo al cambiar de pestaña).
-  Cada 15 s lee `git status --porcelain`; si la firma del estado no cambia
-  durante `settings.AutoCommitIdleMin` minutos (5 por defecto, ajustable en
-  Git → Ajustes, rango 1–240), genera el mensaje (OpenRouter; si no hay API
-  key, un `chore: cambios automaticos <fecha>`) y commitea. Nunca hace push. Se
-  salta árboles con conflictos (`hasConflict`), reinicia el reloj con cada
-  cambio nuevo y emite el evento `git:auto` para que la UI se refresque. El
+  Cada 15 s calcula la firma del árbol (`autoSig`): códigos de
+  `git status --porcelain -z` **más tamaño y mtime de cada archivo cambiado**,
+  de modo que volver a guardar un archivo ya modificado también reinicia el
+  reloj (con solo los códigos, la segunda edición pasaba desapercibida). Si la
+  firma no cambia durante `settings.AutoCommitIdleMin` minutos (5 por defecto,
+  ajustable en Git → Ajustes, rango 1–240), genera el mensaje (OpenRouter; si
+  no hay API key, un `chore: cambios automaticos <fecha>`) y commitea. Nunca
+  hace push. Se salta árboles con conflictos (`isConflict`), reinicia el reloj
+  con cada cambio nuevo y emite el evento `git:auto` para que la UI se
+  refresque. El
   umbral se relee en cada pasada, así que cambiarlo en Git → Ajustes aplica sin
-  reiniciar el botón. API: `Bridge.SetAutoCommit(bool)` y
-  `Bridge.AutoCommitStatus()`.
+  reiniciar el botón. El estado **persiste por proyecto** en
+  `settings.AutoCommitProjects`: al arrancar, `resumeAuto()` rearma los
+  vigilantes de los proyectos que siguen en el workspace, así que reiniciar
+  Compass ya no apaga el botón. Sacar un proyecto del workspace lo apaga
+  (`stopAuto`) para que no commitee en segundo plano. API:
+  `Bridge.SetAutoCommit(bool)` y `Bridge.AutoCommitStatus()`.
 - **Proveedor de mensajes de commit** (`settings.CommitProvider`):
   `openrouter` (por defecto, API con key) o `copilot` (CLI local de GitHub
   Copilot). El segundo vive en `internal/webui/copilot.go`: localiza el binario

@@ -2,6 +2,9 @@ package webui
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,6 +58,8 @@ type autoTrack struct {
 //
 // Al activarlo se siembra la firma actual, para que el reloj empiece a contar
 // desde ese momento: cambios viejos no se commitean de golpe al pulsar Auto.
+// El estado se persiste por proyecto: al reiniciar Compass el vigilante se
+// rearma solo (resumeAuto), que es lo que el usuario espera del boton.
 func (b *Bridge) SetAutoCommit(enabled bool) error {
 	dir := b.projectDir()
 	if dir == "" {
@@ -64,17 +69,33 @@ func (b *Bridge) SetAutoCommit(enabled bool) error {
 		return errors.New("esta carpeta no es un repositorio git")
 	}
 
+	persistAuto(dir, enabled)
+	if !enabled {
+		b.autoMu.Lock()
+		delete(b.autoRuns, commitKey(dir))
+		b.autoMu.Unlock()
+		return nil
+	}
+	b.armAuto(dir)
+	return nil
+}
+
+// armAuto arranca el vigilante de dir si no estaba ya corriendo, sin tocar la
+// persistencia. Lo usan SetAutoCommit y resumeAuto.
+func (b *Bridge) armAuto(dir string) {
+	if dir == "" {
+		return
+	}
 	key := commitKey(dir)
 	b.autoMu.Lock()
 	if b.autoRuns == nil {
 		b.autoRuns = map[string]*autoTrack{}
 	}
-	if !enabled {
-		delete(b.autoRuns, key)
+	if _, ok := b.autoRuns[key]; ok {
 		b.autoMu.Unlock()
-		return nil
+		return
 	}
-	sig, _ := runGit(dir, "status", "--porcelain=v1", "-uall")
+	sig, _, _ := autoSig(dir)
 	b.autoRuns[key] = &autoTrack{
 		dir:       dir,
 		idle:      autoIdle(),
@@ -85,7 +106,63 @@ func (b *Bridge) SetAutoCommit(enabled bool) error {
 	b.autoMu.Unlock()
 
 	b.autoOnce.Do(func() { go b.autoLoop() })
-	return nil
+}
+
+// resumeAuto rearma los vigilantes guardados en settings. Se llama al arrancar
+// y al cambiar de proyecto: sin esto, reiniciar Compass apagaba el modo Auto
+// aunque el usuario lo hubiera dejado activado.
+//
+// Solo se rearman proyectos que siguen en el workspace: quitar un proyecto de
+// la barra lateral no debe dejar un commit automatico corriendo en segundo
+// plano para siempre. El llamador debe tener tomado b.mu.
+func (b *Bridge) resumeAuto() {
+	want := map[string]bool{}
+	for _, dir := range settings.Load().AutoCommitProjects {
+		if strings.TrimSpace(dir) != "" {
+			want[commitKey(dir)] = true
+		}
+	}
+	if len(want) == 0 {
+		return
+	}
+	for _, p := range b.ws.Projects {
+		if p == nil || !want[commitKey(p.Path)] {
+			continue
+		}
+		if st, err := os.Stat(p.Path); err != nil || !st.IsDir() {
+			continue
+		}
+		if out, err := runGit(p.Path, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
+			continue
+		}
+		b.armAuto(p.Path)
+	}
+}
+
+// persistAuto guarda o quita dir de la lista de proyectos con Auto activado.
+func persistAuto(dir string, enabled bool) {
+	key := commitKey(dir)
+	s := settings.Load()
+	next := make([]string, 0, len(s.AutoCommitProjects)+1)
+	for _, p := range s.AutoCommitProjects {
+		if commitKey(p) != key {
+			next = append(next, p)
+		}
+	}
+	if enabled {
+		next = append(next, dir)
+	}
+	s.AutoCommitProjects = next
+	settings.Save(s)
+}
+
+// stopAuto apaga el vigilante de dir y lo olvida en settings. Se usa cuando el
+// proyecto sale del workspace: nadie debe commitear en segundo plano.
+func (b *Bridge) stopAuto(dir string) {
+	b.autoMu.Lock()
+	delete(b.autoRuns, commitKey(dir))
+	b.autoMu.Unlock()
+	persistAuto(dir, false)
 }
 
 // AutoCommitStatus devuelve el estado del vigilante del proyecto activo.
@@ -134,7 +211,7 @@ func (b *Bridge) autoTick() {
 }
 
 func (b *Bridge) autoStep(r *autoTrack) {
-	raw, err := runGit(r.dir, "status", "--porcelain=v1", "-uall")
+	sig, conflict, err := autoSig(r.dir)
 	idle := autoIdle()
 
 	b.autoMu.Lock()
@@ -145,11 +222,11 @@ func (b *Bridge) autoStep(r *autoTrack) {
 	if r.busy {
 		return
 	}
-	if err != nil && strings.TrimSpace(raw) == "" {
+	if err != nil && strings.TrimSpace(sig) == "" {
 		r.lastErr = "git status: " + err.Error()
 		return
 	}
-	if strings.TrimSpace(raw) == "" {
+	if strings.TrimSpace(sig) == "" {
 		r.sig = ""
 		r.changedAt = time.Time{}
 		r.pending = false
@@ -157,9 +234,11 @@ func (b *Bridge) autoStep(r *autoTrack) {
 		return
 	}
 	// Cualquier cambio nuevo reinicia el reloj: el commit solo ocurre cuando
-	// el arbol lleva un rato quieto, no a mitad de una edicion.
-	if raw != r.sig {
-		r.sig = raw
+	// el arbol lleva un rato quieto, no a mitad de una edicion. La firma
+	// incluye tamano y mtime de cada archivo, asi que volver a guardar un
+	// archivo ya modificado tambien cuenta como actividad.
+	if sig != r.sig {
+		r.sig = sig
 		r.changedAt = time.Now()
 		r.pending = true
 		r.lastErr = ""
@@ -172,7 +251,7 @@ func (b *Bridge) autoStep(r *autoTrack) {
 	if time.Since(r.changedAt) < r.idle {
 		return
 	}
-	if hasConflict(raw) {
+	if conflict {
 		// Un arbol en conflicto no se commitea solo: se espera a que lo
 		// resuelva el usuario y se reinicia el reloj para no repetir el aviso.
 		r.lastErr = "hay conflictos sin resolver"
@@ -216,16 +295,51 @@ func (b *Bridge) autoCommit(r *autoTrack) {
 	}
 }
 
-// hasConflict detecta codigos de conflicto de `git status --porcelain`.
-func hasConflict(porcelain string) bool {
-	for _, line := range strings.Split(porcelain, "\n") {
-		if len(line) < 2 {
+// autoSig resume el estado del arbol para detectar actividad: codigos de
+// `git status` MAS tamano y mtime de cada archivo cambiado. Solo los codigos no
+// bastan: volver a editar un archivo ya modificado no cambia su "M" y el reloj
+// seguia corriendo aunque el usuario estuviera escribiendo.
+//
+// Se usa `-z` para que git no entrecomille rutas con acentos o espacios; en
+// ese formato un renombrado ocupa dos campos (ruta nueva y ruta original).
+func autoSig(dir string) (sig string, conflict bool, err error) {
+	raw, err := runGit(dir, "status", "--porcelain=v1", "-z", "-uall")
+	if err != nil && strings.TrimSpace(raw) == "" {
+		return "", false, err
+	}
+	var sb strings.Builder
+	fields := strings.Split(raw, "\x00")
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		if len(f) < 4 {
 			continue
 		}
-		switch line[:2] {
-		case "UU", "AA", "DD", "AU", "UA", "DU", "UD":
-			return true
+		code, path := f[:2], f[3:]
+		if code[0] == 'R' || code[0] == 'C' {
+			i++ // el siguiente campo es la ruta original
 		}
+		if isConflict(code) {
+			conflict = true
+		}
+		sb.WriteString(code)
+		sb.WriteByte(' ')
+		sb.WriteString(path)
+		if fi, statErr := os.Stat(filepath.Join(dir, path)); statErr == nil {
+			fmt.Fprintf(&sb, "|%d|%d", fi.Size(), fi.ModTime().UnixNano())
+		} else {
+			// Borrados (o rutas que ya no existen): la firma es estable.
+			sb.WriteString("|gone")
+		}
+		sb.WriteByte('\n')
+	}
+	return sb.String(), conflict, nil
+}
+
+// isConflict detecta los codigos de conflicto de `git status --porcelain`.
+func isConflict(code string) bool {
+	switch code {
+	case "UU", "AA", "DD", "AU", "UA", "DU", "UD":
+		return true
 	}
 	return false
 }

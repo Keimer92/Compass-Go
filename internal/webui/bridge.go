@@ -77,6 +77,11 @@ func NewBridge(dir string) *Bridge {
 			b.detect(p.Path)
 		}
 	}
+	// El boton "Auto" del panel Git sobrevive al reinicio: se rearman los
+	// proyectos que lo tenian activado.
+	b.mu.Lock()
+	b.resumeAuto()
+	b.mu.Unlock()
 	return b
 }
 
@@ -134,6 +139,7 @@ func (b *Bridge) AddProject(dir string) {
 	if p := b.ws.Projects[i]; p != nil {
 		b.detect(p.Path)
 	}
+	b.resumeAuto()
 	Emit("workspace:changed", b.workspaceInfo())
 	// Si el proyecto llega desde el menu contextual (otra instancia), trae
 	// esta ventana al frente.
@@ -212,6 +218,7 @@ func (b *Bridge) SelectProject(index int) map[string]any {
 	if p := b.ws.Projects[index]; p != nil {
 		b.detect(p.Path)
 	}
+	b.resumeAuto()
 	info := b.workspaceInfo()
 	b.mu.Unlock()
 	return info
@@ -227,7 +234,12 @@ func (b *Bridge) RemoveProject(index int) map[string]any {
 		return b.workspaceInfo()
 	}
 	wasActive := index == b.ws.Active
+	removed := b.ws.Projects[index]
 	b.ws.Remove(index) // ajusta Active y hace Save
+	if removed != nil {
+		// Un proyecto que sale del workspace no debe seguir commiteando solo.
+		b.stopAuto(removed.Path)
+	}
 	if len(b.ws.Projects) == 0 {
 		b.ctx, b.dir = nil, ""
 	} else if wasActive {

@@ -37,6 +37,9 @@ type Settings struct {
 	// antes de que el boton "Auto" del panel Git commitee. 0 o negativo se
 	// normaliza al valor por defecto (5).
 	AutoCommitIdleMin int `json:"auto_commit_idle_min"`
+	// AutoCommitProjects guarda las carpetas con el boton "Auto" activado,
+	// para que al reiniciar Compass el vigilante se rearme solo en ellas.
+	AutoCommitProjects []string `json:"auto_commit_projects"`
 	// CommitProvider elige como se generan los mensajes de commit:
 	// "openrouter" (API con key) o "copilot" (GitHub Copilot CLI local).
 	CommitProvider string `json:"commit_provider"`
@@ -111,6 +114,21 @@ func Load() Settings {
 	// historico: OpenRouter.
 	if s.CommitProvider != ProviderCopilot {
 		s.CommitProvider = ProviderOpenRouter
+	}
+	// Rutas vacias o repetidas en la lista de proyectos con Auto: se limpian
+	// para que el arranque no intente vigilar entradas invalidas.
+	if len(s.AutoCommitProjects) > 0 {
+		seen := map[string]bool{}
+		clean := make([]string, 0, len(s.AutoCommitProjects))
+		for _, p := range s.AutoCommitProjects {
+			p = strings.TrimSpace(p)
+			if p == "" || seen[strings.ToLower(p)] {
+				continue
+			}
+			seen[strings.ToLower(p)] = true
+			clean = append(clean, p)
+		}
+		s.AutoCommitProjects = clean
 	}
 	return s
 }
