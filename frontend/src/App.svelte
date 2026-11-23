@@ -534,20 +534,23 @@
     resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
   }
 
-  // Reajusta la pestaña activa al nuevo tamano del panel, coalesciendo los
-  // avisos del ResizeObserver en un frame.
+  // Reajusta TODAS las pestanas montadas al nuevo tamano del panel. Todas
+  // comparten el mismo `.term-stage`, asi que cuando su tamano cambia se
+  // ajustan todas: al activar una pestana ya tiene el tamano correcto y el
+  // cambio de proyecto no necesita tocar la geometria (ni provocar un reflow
+  // que desplace la consola).
   function scheduleFit() {
     if (fitRaf) return
     fitRaf = requestAnimationFrame(() => {
       fitRaf = 0
       // Durante el arrastre del separador se ignora: el fit se hace al soltar.
       if (splitDrag) return
-      if (activeKey == null) return
-      const entry = terms.get(activeKey)
-      const tab = activeTab()
-      if (!entry) return
-      fitTerm(activeKey)
-      if (tab) resizePty(tab, entry)
+      for (const [key, entry] of terms) {
+        if (!mounted.has(key)) continue
+        fitTerm(key)
+        const tab = tabs.find((t) => t.key === key)
+        if (tab) resizePty(tab, entry)
+      }
     })
   }
 
@@ -555,20 +558,15 @@
     activeKey = key
     await tick()
     const entry = terms.get(key)
-    const tab = tabs.find((t) => t.key === key)
     if (!entry) return
-    // Se guarda donde estaba leyendo el usuario: `focus()` enfoca el textarea
-    // auxiliar, que xterm coloca en la celda del cursor, y el navegador
-    // desplaza el viewport hasta el. Eso devolvia la consola al final cada vez
-    // que se cambiaba de proyecto (o de pestaña) aunque se estuviera leyendo
-    // mas arriba. Se usa la posicion memorizada en el ultimo scroll porque el
-    // salto puede ocurrir antes de llegar aqui (al mostrar el host oculto).
+    // El tamano ya lo mantiene el ResizeObserver; aqui solo se enfoca y se
+    // recupera la posicion de lectura. Se usa la posicion memorizada en el
+    // ultimo scroll porque el salto puede ocurrir antes de llegar aqui (al
+    // mostrar el host oculto o al enfocar el textarea del cursor).
     const memo = scrollMemo.get(key)
     const buf = entry.term.buffer.active
     const wasAtBottom = memo ? memo.bottom : buf.viewportY >= buf.baseY
     const line = memo ? memo.line : buf.viewportY
-    fitTerm(key)
-    if (tab) resizePty(tab, entry)
     entry.term.focus()
     if (!wasAtBottom) {
       const restore = () => entry.term.scrollToLine(Math.min(line, entry.term.buffer.active.baseY))
