@@ -19,6 +19,12 @@
   let detail = $state<CommitDetail | null>(null)
   let detailLoading = $state(false)
   let detailError = $state('')
+  // El modal recibe el foco al abrirse para que Escape y Tab funcionen sin
+  // tener que hacer clic dentro primero.
+  let dialogEl = $state<HTMLDivElement | null>(null)
+  $effect(() => {
+    if (detail && dialogEl) dialogEl.focus()
+  })
 
   async function load() {
     // Sin spinner si ya hay commits en pantalla: solo se actualiza la lista.
@@ -115,7 +121,19 @@
 
 {#if detail}
   <div class="modal-backdrop" role="presentation" onclick={close}>
-    <div class="modal commit" role="dialog" aria-label="Detalle del commit" onclick={(e) => e.stopPropagation()}>
+    <div
+      class="modal commit"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Detalle del commit"
+      tabindex="-1"
+      bind:this={dialogEl}
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => {
+        if (e.key === 'Escape') close()
+        e.stopPropagation()
+      }}
+    >
       <div class="modal-head">
         <span class="modal-title">{detail.subject}</span>
         <button onclick={close} aria-label="Cerrar">×</button>
