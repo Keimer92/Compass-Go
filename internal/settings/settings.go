@@ -51,6 +51,12 @@ type Settings struct {
 	// terminal). Las claves son ids de evento y los valores ids de preset; el
 	// paquete sound normaliza ambos y rellena los que falten.
 	SoundPresets map[string]string `json:"sound_presets"`
+
+	// TerminalPanelPct es el porcentaje del area central que ocupa el panel
+	// de terminales. Lo ajusta el separador arrastrable entre las cards y el
+	// terminal; se acota a un rango util para que ninguno de los dos quede
+	// inutilizable.
+	TerminalPanelPct int `json:"terminal_panel_pct"`
 }
 
 // Default devuelve los valores de fabrica.
@@ -65,6 +71,7 @@ func Default() Settings {
 		OpenRouterModel:   "",
 		AutoCommitIdleMin: 5,
 		CommitProvider:    ProviderOpenRouter,
+		TerminalPanelPct:  60,
 		// Los avisos de terminal llegan apagados: un build ya suena desde su
 		// propio proceso y encender ambos duplicaria el aviso.
 		SoundPresets: map[string]string{
@@ -123,6 +130,14 @@ func Load() Settings {
 	}
 	if s.AutoCommitIdleMin > 240 {
 		s.AutoCommitIdleMin = 240
+	}
+	// El reparto cards/terminal se acota: 0 (fichero antiguo) cae en el valor
+	// por defecto y los extremos no pueden dejar un panel sin espacio.
+	if s.TerminalPanelPct < 25 {
+		s.TerminalPanelPct = def.TerminalPanelPct
+	}
+	if s.TerminalPanelPct > 80 {
+		s.TerminalPanelPct = 80
 	}
 	// Un proveedor desconocido (o vacio en un fichero antiguo) cae en el
 	// historico: OpenRouter.

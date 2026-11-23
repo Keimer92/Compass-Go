@@ -456,6 +456,8 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	cur.OpenOutputDir = s.OpenOutputDir
 	cur.CloseTabOnBuildEnd = s.CloseTabOnBuildEnd
 	cur.SoundPresets = sound.Normalize(s.SoundPresets)
+	// 0 lo descarta Load al normalizar; el rango util lo acota settings.Load.
+	cur.TerminalPanelPct = s.TerminalPanelPct
 	if s.AutoCommitIdleMin > 0 {
 		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
 	}

@@ -71,7 +71,13 @@
     commit_provider: 'openrouter',
     copilot_model: '',
     sound_presets: {},
+    terminal_panel_pct: 60,
   })
+  // Reparto cards/terminal en % del area central. Se cambia arrastrando el
+  // separador y se guarda en settings; al no depender del numero de cards, el
+  // terminal conserva su alto al cambiar de proyecto (sin SIGWINCH).
+  let termPct = $state(60)
+  let splitDrag = $state(false)
   // Catalogo de eventos/presets de sonido para la seccion "Sonidos" de Opciones.
   let soundCatalog = $state<SoundCatalog | null>(null)
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
@@ -100,6 +106,10 @@
   // disponible, y la ultima fila -el input del chat- quedaba cortada abajo).
   let termStageEl: HTMLElement | null = null
   let fitRaf = 0
+  // El viewport de cada xterm cambia de ancho util cuando aparece o desaparece
+  // su barra de scroll, sin que cambie el tamano del stage. Observarlo evita
+  // que la ultima columna quede tapada al crecer el scrollback.
+  const vpRo = new ResizeObserver(() => scheduleFit())
 
   const activeTab = () => tabs.find((t) => t.key === activeKey) ?? null
 
@@ -274,6 +284,8 @@
       if (document.visibilityState === 'visible') notifyRepoChanged()
     })
     loadTheme()
+    // El reparto elegido con el separador se restaura al arrancar.
+    getSettings().then((s) => { termPct = s.terminal_panel_pct }).catch(() => {})
     onWorkspaceChanged(() => {
       refresh()
       notifyRepoChanged()
@@ -284,6 +296,7 @@
     refresh().then(restoreTerminals).catch(() => {})
     return () => {
       ro.disconnect()
+      vpRo.disconnect()
       if (fitRaf) cancelAnimationFrame(fitRaf)
     }
   })
@@ -447,6 +460,8 @@
     const entry = terms.get(key)
     if (!el || !entry || mounted.has(key)) return
     entry.term.open(el)
+    const vp = el.querySelector('.xterm-viewport')
+    if (vp) vpRo.observe(vp)
     // Clic derecho sobre la terminal: copia la seleccion. Se detiene la
     // propagacion para que el menu contextual de Wails no lo intercepte.
     el.addEventListener('contextmenu', (ev) => {
@@ -483,14 +498,14 @@
     if (screen && viewport && entry.term.cols) {
       // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
       const cell = screen.offsetWidth / entry.term.cols
-      if (cell) {
-        // Solo se toca si el contenido sobresale del ancho util: asi no se
-        // pierde una columna por un simple redondeo cuando ya cabe.
-        const overflow = screen.offsetWidth - viewport.clientWidth
-        if (overflow > 0) {
-          const cols = Math.max(2, entry.term.cols - Math.ceil(overflow / cell))
-          entry.term.resize(cols, entry.term.rows)
-        }
+      if (cell > 0) {
+        // Se calculan las columnas que caben en el viewport en vez de restar
+        // el desbordamiento: `clientWidth` ya descuenta la barra de scroll.
+        // La barra aparece cuando crece el scrollback (sin cambiar el tamano
+        // del stage), y en ese momento las ultimas columnas quedaban tapadas
+        // a la derecha. vpRo se encarga de reajustar cuando eso pasa.
+        const cols = Math.max(2, Math.floor(viewport.clientWidth / cell))
+        if (cols < entry.term.cols) entry.term.resize(cols, entry.term.rows)
       }
     }
     if (wasAtBottom) {
@@ -517,6 +532,8 @@
     if (fitRaf) return
     fitRaf = requestAnimationFrame(() => {
       fitRaf = 0
+      // Durante el arrastre del separador se ignora: el fit se hace al soltar.
+      if (splitDrag) return
       if (activeKey == null) return
       const entry = terms.get(activeKey)
       const tab = activeTab()
@@ -540,6 +557,53 @@
   function toggleRightPanel() {
     // El ResizeObserver del stage detecta el nuevo ancho y reajusta xterm/PTY.
     rightCollapsed = !rightCollapsed
+  }
+
+  // Separador cards/terminal. Mientras se arrastra NO se reajusta el xterm:
+  // cada pixel cambiaria el PTY y la TUI se redibujaria sin parar. Al soltar
+  // se hace un unico fit (y se guarda el reparto para la proxima sesion).
+  function splitDown(e: PointerEvent) {
+    const handle = e.currentTarget as HTMLElement
+    const area = handle.parentElement
+    if (!area) return
+    e.preventDefault()
+    handle.setPointerCapture(e.pointerId)
+    splitDrag = true
+    const move = (ev: PointerEvent) => {
+      const r = area.getBoundingClientRect()
+      if (!r.height) return
+      const pct = ((r.bottom - ev.clientY) / r.height) * 100
+      termPct = Math.min(80, Math.max(25, Math.round(pct)))
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      splitDrag = false
+      scheduleFit()
+      persistSplit()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  function splitKey(e: KeyboardEvent) {
+    const step = e.shiftKey ? 10 : 3
+    if (e.key === 'ArrowUp') termPct = Math.min(80, termPct + step)
+    else if (e.key === 'ArrowDown') termPct = Math.max(25, termPct - step)
+    else if (e.key === 'Home') termPct = 60
+    else return
+    e.preventDefault()
+    scheduleFit()
+    persistSplit()
+  }
+
+  async function persistSplit() {
+    try {
+      const cur = await getSettings()
+      await setSettings({ ...cur, terminal_panel_pct: termPct })
+    } catch {
+      /* el reparto queda solo en esta sesion */
+    }
   }
 
   async function startPty(tab: Tab, task: string) {
@@ -685,6 +749,8 @@
     if (tab?.ptyId) await closeTerminal(tab.ptyId)
     const entry = terms.get(key)
     if (entry) {
+      const vp = document.getElementById(`term-${key}`)?.querySelector('.xterm-viewport')
+      if (vp) vpRo.unobserve(vp)
       entry.term.dispose()
       terms.delete(key)
     }
@@ -749,12 +815,22 @@
   <main class="main">
     {#if lastError}<div class="debug-line">{lastError}</div>{/if}
     <section class="content">
-      <div class="cards-area">
+      <div class="cards-area" class:dragging={splitDrag} style={`--term-pct: ${termPct}%`}>
         <div class="cards">
           {#each menu.filter((m) => m.section !== 'CFG') as item}
             <Card {item} accent={cardAccent(item)} onOpen={() => openTask(item)} />
           {/each}
         </div>
+
+        <button
+          type="button"
+          class="term-splitter"
+          class:dragging={splitDrag}
+          aria-label={`Ajustar el alto del terminal (${termPct}%). Flechas arriba/abajo, Inicio para 60%`}
+          title="Arrastra para ajustar el alto del terminal"
+          onpointerdown={splitDown}
+          onkeydown={splitKey}
+        ></button>
 
         <div class="terminal-panel">
           {#if visibleTabs.length}

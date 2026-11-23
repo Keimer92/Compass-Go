@@ -53,12 +53,21 @@
 .theme-btn-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .content { flex: 1; display: flex; min-height: 0; }
 .cards-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; gap: 14px; }
-/* El area de cards absorbe el espacio sobrante y hace scroll por dentro; el
-   terminal tiene una altura FIJA. Asi cambiar de proyecto (distinto numero de
-   cards) no redimensiona el terminal: evita el SIGWINCH que hacia que la TUI
-   del chat (Codebuddy, vim...) redibujara completa y perdiera el scroll. */
+/* El terminal ocupa un porcentaje FIJO (--term-pct) y las cards absorben el
+   resto con scroll propio. Asi cambiar de proyecto (distinto numero de cards)
+   no redimensiona el terminal: evita el SIGWINCH que hacia que la TUI del chat
+   (Codebuddy, vim...) redibujara completa y perdiera el scroll. El reparto se
+   ajusta arrastrando .term-splitter y se guarda en settings. */
 .cards { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-content: start; gap: 12px; overflow-y: auto; }
-.terminal-panel { flex: 0 0 60%; min-height: 220px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
+.term-splitter { flex: 0 0 6px; display: flex; align-items: center; justify-content: center; padding: 0; border: none; background: none; cursor: row-resize; touch-action: none; border-radius: 3px; }
+.term-splitter::after { content: ''; width: 44px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--border) 80%, transparent); transition: background .15s ease, width .15s ease; }
+.term-splitter:hover::after, .term-splitter.dragging::after, .term-splitter:focus-visible::after { background: var(--accent); width: 72px; }
+.term-splitter:focus-visible { outline: none; }
+/* Mientras se arrastra, el terminal no recibe eventos ni transiciones: el
+   contenido se recorta y se reajusta una sola vez al soltar. */
+.cards-area.dragging { cursor: row-resize; user-select: none; }
+.cards-area.dragging .terminal-panel { pointer-events: none; }
+.terminal-panel { flex: 0 0 var(--term-pct, 60%); min-height: 220px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
 .term-tabs { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: color-mix(in srgb, var(--border) 40%, var(--panel)); overflow-x: auto; }
 .term-tab { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-radius: 12px; background: color-mix(in srgb, var(--border) 35%, var(--panel)); color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; border: 1px solid transparent; }
 .term-tab:hover { color: var(--text); }

@@ -908,6 +908,19 @@ dev.bat              # Vite (HMR de UI) + go run --dev
     chat) quedaba cortada abajo y no se podia bajar mas. El observer de
     `.term-stage` coalesce el reflow en un `requestAnimationFrame` y vuelve a
     hacer `fitTerm` + `resizePty` de la pestaña activa.
+  - **Ancho util y barra de scroll**: `fitTerm` calcula las columnas que caben
+    en `viewport.clientWidth` (que ya descuenta la barra) en vez de restar el
+    desbordamiento de `.xterm-screen`. Un segundo `ResizeObserver` (`vpRo`)
+    observa el viewport de cada pestaña: la barra aparece cuando crece el
+    scrollback sin que cambie el tamaño del stage, y sin ese aviso las ultimas
+    columnas quedaban tapadas a la derecha.
+  - **Reparto cards/terminal**: `.terminal-panel` usa
+    `flex: 0 0 var(--term-pct, 60%)`, de modo que el alto no depende del numero
+    de cards (cambiar de proyecto no dispara SIGWINCH). El porcentaje se ajusta
+    arrastrando `.term-splitter` (o con flechas/Inicio si tiene el foco), se
+    acota a 25-80 y se persiste en `terminal_panel_pct`. Durante el arrastre
+    `scheduleFit` no hace nada: se reajusta una sola vez al soltar para no
+    redibujar la TUI en cada pixel.
   - **Rueda en TUI**: si la app activa mouse tracking en el buffer normal,
     `attachCustomWheelEventHandler` desplaza el scrollback de xterm en vez de
     mandar la rueda a la CLI; en el buffer alterno (vim, less, htop) se respeta

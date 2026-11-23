@@ -70,6 +70,7 @@ export interface Settings {
   commit_provider: 'openrouter' | 'copilot'
   copilot_model: string
   sound_presets: Record<string, string>
+  terminal_panel_pct: number
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
