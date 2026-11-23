@@ -402,8 +402,10 @@
       const tab = tabs.find((t) => t.key === key)
       if (tab?.ptyId) writeTerminal(tab.ptyId, bytesToB64(new TextEncoder().encode(data)))
     })
-    // Copiar/pegar: Ctrl+Shift+C copia siempre; Ctrl+C copia solo si hay
-    // seleccion (si no, envia ^C). Ctrl+V pega desde el portapapeles.
+    // Copiar: Ctrl+Shift+C copia siempre; Ctrl+C copia solo si hay seleccion
+    // (si no, envia ^C). NO interceptamos Ctrl+V: xterm.js ya escucha el
+    // evento `paste` nativo del navegador y lo inyecta en el PTY. Llamar
+    // ademas a term.paste() desde aqui pegaba el texto DOS veces.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
       const mod = e.ctrlKey || e.metaKey
@@ -415,10 +417,6 @@
           return false
         }
         if (e.shiftKey) return false
-      }
-      if (mod && k === 'v') {
-        navigator.clipboard.readText().then((txt) => { if (txt) term.paste(txt) }).catch(() => {})
-        return false
       }
       return true
     })

@@ -453,7 +453,7 @@
         </div>
       </div>
       <div class="remote-url" title={info.remoteUrl}>{info.remoteUrl}</div>
-      {#if remote.state === 'missing' || remote.state === 'auth'}
+      {#if remote.state === 'missing' || remote.state === 'auth' || remote.state === 'unverifiable'}
         <div class="remote-warn">
           {remote.detail}
           <button class="warn-cta" onclick={openWizard}>Vincular otro repositorio</button>
@@ -643,6 +643,9 @@
             ? 'El remoto configurado ya no existe en GitHub. Elige cómo continuar:'
             : 'Elige el nuevo destino para este repositorio:'}
         </p>
+        {#if remote.state === 'unverifiable'}
+          <p class="wiz-hint">No se pudo confirmar el remoto actual (GitHub devolvió 404). Puedes seguir usando este repositorio o vincular otro.</p>
+        {/if}
         <button class="wiz-opt" onclick={() => (wizStep = 'create')} disabled={!gh.available}>
           <span class="wiz-opt-title">Crear uno nuevo en GitHub</span>
           <span class="wiz-opt-sub">

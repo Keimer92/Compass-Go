@@ -133,7 +133,7 @@ export const gitSetRemote = (url: string) => call<string>(M('GitSetRemote'), url
 export const gitInitRepo = () => call<string>(M('GitInitRepo'))
 
 export interface RemoteStatus {
-  state: 'ok' | 'empty' | 'missing' | 'auth' | 'unreachable' | 'none' | 'error'
+  state: 'ok' | 'empty' | 'missing' | 'unverifiable' | 'auth' | 'unreachable' | 'none' | 'error'
   detail: string
   url: string
 }

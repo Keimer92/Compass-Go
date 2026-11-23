@@ -32,8 +32,8 @@ type GhInfo struct {
 var (
 	ghRepoNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 	ghURLRe      = regexp.MustCompile(`https://[^\s]+`)
-	// owner/repo de una URL https://github.com/owner/repo(.git)(/...)
-	ghRepoFromURLRe = regexp.MustCompile(`github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:/|$)`)
+	// owner/repo de https://github.com/owner/repo o git@github.com:owner/repo
+	ghRepoFromURLRe = regexp.MustCompile(`github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:/|$)`)
 )
 
 // runGh ejecuta el CLI de GitHub sin abrir consola y con plazo.
