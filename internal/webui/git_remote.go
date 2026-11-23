@@ -17,7 +17,7 @@ import (
 // El estado lo usa el panel Git para avisar cuando el repositorio de GitHub
 // fue borrado: en ese caso ofrece el asistente para vincular otro.
 type RemoteStatus struct {
-	// State: ok | empty | missing | auth | unreachable | none | error.
+	// State: ok | empty | missing | unverifiable | auth | unreachable | none | error.
 	State  string `json:"state"`
 	Detail string `json:"detail"`
 	URL    string `json:"url"`
@@ -32,6 +32,8 @@ type GhInfo struct {
 var (
 	ghRepoNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 	ghURLRe      = regexp.MustCompile(`https://[^\s]+`)
+	// owner/repo de una URL https://github.com/owner/repo(.git)(/...)
+	ghRepoFromURLRe = regexp.MustCompile(`github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:/|$)`)
 )
 
 // runGh ejecuta el CLI de GitHub sin abrir consola y con plazo.
@@ -87,7 +89,59 @@ func (b *Bridge) GitRemoteStatus(remoteURL string) RemoteStatus {
 		return st
 	}
 	st.State, st.Detail = classifyRemoteFailure(out, err)
+	// GitHub responde 404 tanto si el repo fue borrado como si es privado y
+	// quien consulta no esta autenticado (o git no encuentra credenciales).
+	// `git ls-remote` solo no puede distinguirlos, asi que un 404 NO es prueba
+	// de que el repo ya no existe. Si hay `gh` autenticado lo preguntamos a la
+	// API con la cuenta del usuario: ahi si sabemos si existe de verdad.
+	if st.State == "missing" {
+		if m := ghRepoFromURLRe.FindStringSubmatch(strings.TrimSuffix(target, "/")); m != nil {
+			switch repoExistsViaGh(dir, m[1], m[2]) {
+			case ghExists:
+				// Existe: el fallo fue de credenciales de Git, no del repo.
+				st.State = "auth"
+				st.Detail = "El repositorio existe, pero Git no pudo autenticarse. Comprueba tus credenciales de GitHub."
+			case ghMissing:
+				// La API (autenticada) confirma que no existe.
+				st.State = "missing"
+				st.Detail = "El repositorio remoto ya no existe en GitHub (404)."
+			default:
+				// Sin gh o sin sesion: no afirmamos que este borrado.
+				st.State = "unverifiable"
+				st.Detail = "GitHub devolvió 404. El repositorio puede no existir o ser privado y requerir credenciales. Comprueba la URL o vuelve a intentarlo."
+			}
+		}
+	}
 	return st
+}
+
+// Resultado de comprobar un repo con la API de GitHub.
+type ghRepoCheck int
+
+const (
+	ghUnknown ghRepoCheck = iota // no se pudo comprobar (sin gh o sin sesion/red)
+	ghExists                     // existe y la sesion tiene acceso
+	ghMissing                    // la API confirmo 404
+)
+
+// repoExistsViaGh pregunta a la API de GitHub, con la sesion del CLI, si
+// owner/repo existe. gh usa su propio token, asi que ve repositorios privados
+// aunque Git no tenga credenciales configuradas.
+func repoExistsViaGh(dir, owner, repo string) ghRepoCheck {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return ghUnknown
+	}
+	out, err := runGh(dir, 12*time.Second, "api", "repos/"+owner+"/"+repo, "--jq", ".full_name")
+	if err == nil && strings.TrimSpace(out) != "" {
+		return ghExists
+	}
+	// "Not Found" de la API confirma 404; cualquier otro fallo (sin login,
+	// sin red) significa que no pudimos comprobarlo.
+	low := strings.ToLower(out + " " + err.Error())
+	if strings.Contains(low, "not found") || strings.Contains(low, "404") {
+		return ghMissing
+	}
+	return ghUnknown
 }
 
 // classifyRemoteFailure traduce el error de `git ls-remote` a un estado.
@@ -105,7 +159,10 @@ func classifyRemoteFailure(out string, err error) (string, string) {
 		strings.Contains(low, "does not appear to be a git repository"),
 		strings.Contains(low, "repository does not exist"),
 		strings.Contains(low, "returned error: 404"):
-		return "missing", "El repositorio remoto ya no existe (404)."
+		// Un 404 no prueba que el repo este borrado: GitHub lo devuelve
+		// tambien si es privado y no hay credenciales. GitRemoteStatus lo
+		// refine con gh cuando puede; aqui el detalle es conservador.
+		return "missing", "GitHub devolvió 404: el repositorio no existe o no es accesible con las credenciales actuales."
 	case strings.Contains(low, "could not resolve host"),
 		strings.Contains(low, "unable to access"),
 		strings.Contains(low, "connection refused"),
