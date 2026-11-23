@@ -47,6 +47,9 @@ type Bridge struct {
 	// instante. Se activa para el proyecto activo y para los que tienen Auto.
 	watchMu sync.Mutex
 	watches map[string]*dirWatch
+	// watchDead marca carpetas retiradas mientras un ensureWatch en vuelo
+	// todavia recorre el arbol: al terminar no debe dejar un vigilante vivo.
+	watchDead map[string]bool
 }
 
 // commitRun es una generacion de mensaje de commit en curso. El id permite
@@ -148,7 +151,10 @@ func (b *Bridge) AddProject(dir string) {
 		b.detect(p.Path)
 	}
 	b.resumeAuto()
-	b.ensureWatch(b.dir)
+	// Igual que en SelectProject: el recorrido del arbol no bloquea el alta.
+	activeDir := b.dir
+	b.allowWatch(activeDir)
+	go b.ensureWatch(activeDir)
 	Emit("workspace:changed", b.workspaceInfo())
 	// Si el proyecto llega desde el menu contextual (otra instancia), trae
 	// esta ventana al frente.
@@ -228,9 +234,14 @@ func (b *Bridge) SelectProject(index int) map[string]any {
 		b.detect(p.Path)
 	}
 	b.resumeAuto()
-	b.ensureWatch(b.dir)
+	// El vigilante recorre el arbol para registrar sus carpetas y puede tardar
+	// en proyectos grandes: se arma fuera del lock y despues de responder a la
+	// UI, para que el cambio de proyecto no espere por el.
+	dir := b.dir
 	info := b.workspaceInfo()
 	b.mu.Unlock()
+	b.allowWatch(dir)
+	go b.ensureWatch(dir)
 	return info
 }
 

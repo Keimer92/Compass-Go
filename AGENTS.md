@@ -315,14 +315,25 @@ proyecto concreto:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
-- **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula con brazos en SVG puro
-  (sin assets, hereda `currentColor` del tema). Vive en el badge de la marca y,
-  en pequeño, en una línea del `sidebar-foot` con el estado en texto. Estados
-  `idle` / `working` / `success` / `error`: la aguja gira y los brazos saludan
-  mientras hay una tarea corriendo (`tabs` con `ptyId` vivo); `App.svelte`
-  destella `success` o `error` 2.6 s al recibir `pty:exit` con `code` 0 o >0
-  (un código negativo es un cierre forzado y no cuenta). Respeta
-  `prefers-reduced-motion`.
+- **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula 3D con brazos en SVG
+  puro (sin assets, hereda `currentColor` del tema). El bisel metalico se logra
+  con una base `currentColor` y capas de brillo/sombra; la esfera es oscura y
+  la aguja roja. Vive en el badge de la marca (40 px en un tile de 46 px) y, en
+  el `sidebar-foot`, a 30 px con el estado en texto. Estados `idle` / `working`
+  / `success` / `error`: la aguja se balancea o gira, los brazos saludan, los
+  ojos parpadean y miran alrededor, y hay saltos/destellos o tambaleo con gota
+  de sudor. `App.svelte` destella `success` o `error` 2.6 s al recibir
+  `pty:exit` con `code` 0 o >0 (un código negativo es un cierre forzado y no
+  cuenta). Respeta `prefers-reduced-motion`.
+  - **Rendimiento**: el flotado/bote se anima en la envoltura HTML `.float`
+    (transform compuesto, `will-change`) y no en grupos SVG; dentro del SVG solo
+    se mueven piezas pequeñas (aguja, brazos, ojos). Así la mascota no repinta
+    el sidebar a 60 fps ni ralentiza el cambio de proyecto.
+  - **Cambio de proyecto**: `pickProject` resalta el proyecto de forma optimista
+    antes de esperar al backend y solapa `getMenu` con la activación de la
+    terminal; `SelectProject`/`AddProject` arman el vigilante fsnotify fuera del
+    lock (`go b.ensureWatch(dir)`), porque recorrer el árbol bloqueaba la
+    respuesta en proyectos grandes.
 - **API del puente** (`internal/webui/git.go`): `Bridge.GitInfo()` devuelve un
   DTO con `isRepo`, `hasCommits`, `branch`, `upstream`, `remoteUrl`, `webUrl`,
   `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede

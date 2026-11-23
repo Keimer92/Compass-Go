@@ -334,10 +334,12 @@
   async function addProject() {
     try {
       workspace = await pickProjectDialog()
-      menu = await getMenu()
+      // El menu y la primera terminal no bloquean el repintado del proyecto.
+      const menuP = getMenu()
       const first = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
       if (first) await activate(first.key)
       else activeKey = null
+      menu = await menuP
     } catch (e) {
       lastError = 'ERROR al abrir el proyecto: ' + (e as Error).message
     }
@@ -346,12 +348,18 @@
   async function pickProject(i: number) {
     // No se cierran las pestañas: cada proyecto conserva sus terminales
     // abiertos y se puede volver a ellas al cambiar de proyecto.
+    //
+    // Se resalta la seleccion de inmediato (optimista) y se solapa la carga
+    // del menu con la activacion de la terminal: el cambio se siente al
+    // instante aunque el backend tarde en re-detectar el proyecto.
+    if (i !== workspace.active) workspace = { ...workspace, active: i }
     workspace = await selectProject(i)
-    menu = await getMenu()
+    const menuP = getMenu()
     // Activa la primera pestaña del proyecto recién seleccionado (si tiene).
     const first = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
     if (first) await activate(first.key)
     else activeKey = null
+    menu = await menuP
   }
 
   async function dropProject(i: number) {
@@ -638,7 +646,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <span class="logo" aria-hidden="true"><Mascot size={22} {mood} /></span>
+      <span class="logo" aria-hidden="true"><Mascot size={40} {mood} /></span>
       <span class="wordmark">Compass <b>Go</b></span>
     </div>
     {#if workspace.projects.length}
@@ -667,7 +675,7 @@
     </div>
     <div class="sidebar-foot">
       <div class="mascot-line {mood}" title={moodText}>
-        <Mascot size={19} {mood} />
+        <Mascot size={30} {mood} />
         <span class="mascot-text">{moodText}</span>
       </div>
       <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>

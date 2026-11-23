@@ -107,10 +107,24 @@ func (b *Bridge) ensureWatch(dir string) {
 		_ = w.Close()
 		return
 	}
+	if b.watchDead[key] { // el proyecto se retiro mientras recorriamos el arbol
+		b.watchMu.Unlock()
+		_ = w.Close()
+		return
+	}
 	b.watches[key] = dw
 	b.watchMu.Unlock()
 
 	go b.watchLoop(dw)
+}
+
+// allowWatch limpia la marca de carpeta retirada al volver a activar un
+// proyecto, para que un ensureWatch posterior si registre el vigilante.
+func (b *Bridge) allowWatch(dir string) {
+	key := commitKey(dir)
+	b.watchMu.Lock()
+	delete(b.watchDead, key)
+	b.watchMu.Unlock()
 }
 
 // stopWatch cierra el vigilante de dir (proyecto retirado del workspace).
@@ -119,6 +133,10 @@ func (b *Bridge) stopWatch(dir string) {
 	b.watchMu.Lock()
 	dw := b.watches[key]
 	delete(b.watches, key)
+	if b.watchDead == nil {
+		b.watchDead = map[string]bool{}
+	}
+	b.watchDead[key] = true
 	b.watchMu.Unlock()
 	if dw == nil {
 		return

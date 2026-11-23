@@ -1,8 +1,8 @@
 .app { display: flex; height: 100vh; }
 .sidebar { width: 252px; flex-shrink: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--sidebar) 94%, var(--bg)); border-right: 1px solid color-mix(in srgb, var(--border) 65%, transparent); padding: 14px 12px; }
 /* Marca: tile con degradado + wordmark. El icono es un SVG en currentColor. */
-.brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 2px; }
-.logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 92%, #fff), color-mix(in srgb, var(--brand) 72%, transparent)); color: #16161f; box-shadow: var(--shadow-1), inset 0 1px 0 rgba(255,255,255,.35); }
+.brand { display: flex; align-items: center; gap: 11px; padding: 4px 6px 2px; }
+.logo { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: radial-gradient(120% 120% at 30% 18%, color-mix(in srgb, var(--accent) 20%, #14141f), #0b0b12 72%); color: var(--accent); box-shadow: var(--shadow-1), inset 0 1px 0 rgba(255,255,255,.14), 0 6px 16px color-mix(in srgb, var(--accent) 16%, transparent); }
 .wordmark { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); }
 .wordmark b { font-weight: 700; color: var(--accent); }
 .project-name { margin-top: 18px; padding: 0 6px; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
