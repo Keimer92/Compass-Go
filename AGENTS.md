@@ -903,6 +903,11 @@ dev.bat              # Vite (HMR de UI) + go run --dev
     SIGWINCH innecesarios al cambiar de proyecto (las TUI redibujaban y perdian
     el scroll). Al salir un proceso se limpian los modos de mouse
     (`?1000l/?1002l/?1003l/?1005l/?1006l`).
+  - **ResizeObserver del stage**: al cambiar de proyecto cambian las cards y el
+    alto disponible del terminal; sin reajustar, la ultima fila (el input del
+    chat) quedaba cortada abajo y no se podia bajar mas. El observer de
+    `.term-stage` coalesce el reflow en un `requestAnimationFrame` y vuelve a
+    hacer `fitTerm` + `resizePty` de la pestaña activa.
   - **Rueda en TUI**: si la app activa mouse tracking en el buffer normal,
     `attachCustomWheelEventHandler` desplaza el scrollback de xterm en vez de
     mandar la rueda a la CLI; en el buffer alterno (vim, less, htop) se respeta

@@ -95,6 +95,11 @@
   // reenviar el mismo resize: un SIGWINCH innecesario hace que las TUI
   // (Codebuddy, vim...) redibujen y pierdan el scroll o corten el contenido.
   const lastPtySize = new Map<number, string>()
+  // Contenedor del terminal: un ResizeObserver reajusta xterm cuando el panel
+  // cambia de alto/ancho (al cambiar de proyecto cambian las cards y el alto
+  // disponible, y la ultima fila -el input del chat- quedaba cortada abajo).
+  let termStageEl: HTMLElement | null = null
+  let fitRaf = 0
 
   const activeTab = () => tabs.find((t) => t.key === activeKey) ?? null
 
@@ -256,15 +261,12 @@
       // codigo): que el explorador vuelva a leer el estado.
       notifyRepoChanged()
     })
-    window.addEventListener('resize', () => {
-      if (activeKey == null) return
-      const entry = terms.get(activeKey)
-      const tab = activeTab()
-      if (!entry) return
-      // fitTerm conserva el scroll (o el fondo si ya estaba al final).
-      fitTerm(activeKey)
-      if (tab) resizePty(tab, entry)
-    })
+    // El alto/ancho del terminal cambia al cargar las cards de otro proyecto,
+    // al plegar el panel derecho o al redimensionar la ventana. El observer
+    // reajusta xterm y la ConPTY para que no quede la ultima fila ni la
+    // ultima columna ocultas.
+    const ro = new ResizeObserver(() => scheduleFit())
+    if (termStageEl) ro.observe(termStageEl)
     // Cambios hechos fuera de Compass (otra terminal, IDE, Explorer): al volver
     // a la ventana se refresca el estado git del explorador.
     window.addEventListener('focus', notifyRepoChanged)
@@ -280,6 +282,10 @@
     // salida reciente. Se hace despues de refresh() porque hay que conocer el
     // proyecto activo para decidir cual queda seleccionada.
     refresh().then(restoreTerminals).catch(() => {})
+    return () => {
+      ro.disconnect()
+      if (fitRaf) cancelAnimationFrame(fitRaf)
+    }
   })
 
   // restoreTerminals reengancha la UI a las sesiones que ya estaban vivas.
@@ -507,6 +513,21 @@
     resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
   }
 
+  // Reajusta la pestaña activa al nuevo tamano del panel, coalesciendo los
+  // avisos del ResizeObserver en un frame.
+  function scheduleFit() {
+    if (fitRaf) return
+    fitRaf = requestAnimationFrame(() => {
+      fitRaf = 0
+      if (activeKey == null) return
+      const entry = terms.get(activeKey)
+      const tab = activeTab()
+      if (!entry) return
+      fitTerm(activeKey)
+      if (tab) resizePty(tab, entry)
+    })
+  }
+
   async function activate(key: number) {
     activeKey = key
     await tick()
@@ -518,17 +539,9 @@
     entry.term.focus()
   }
 
-  async function toggleRightPanel() {
+  function toggleRightPanel() {
+    // El ResizeObserver del stage detecta el nuevo ancho y reajusta xterm/PTY.
     rightCollapsed = !rightCollapsed
-    // Tras el reflow, el terminal tiene otro ancho: se reajusta y se avisa a
-    // la ConPTY una sola vez (resizePty evita repetir el mismo tamano).
-    await tick()
-    if (activeKey == null) return
-    const entry = terms.get(activeKey)
-    const tab = activeTab()
-    if (!entry) return
-    fitTerm(activeKey)
-    if (tab) resizePty(tab, entry)
   }
 
   async function startPty(tab: Tab, task: string) {
@@ -781,7 +794,7 @@
               >{rightCollapsed ? '⤡' : '⤢'}</button>
             </div>
           {/if}
-          <div class="term-stage">
+          <div class="term-stage" bind:this={termStageEl}>
             {#each tabs as tab (tab.key)}
               <div class="term-host" class:hidden={tab.key !== activeKey} id={`term-${tab.key}`}></div>
             {/each}
