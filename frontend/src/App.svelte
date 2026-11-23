@@ -52,6 +52,9 @@
     moodTimer = setTimeout(() => (moodFlash = null), 2600)
   }
   let rightTab = $state<'explorer' | 'git' | 'log'>('explorer')
+  // El panel derecho se puede plegar para darle todo el ancho al terminal
+  // (diffs anchos de las CLI, tablas, etc.). No se desmonta: solo se oculta.
+  let rightCollapsed = $state(false)
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
   let lastError = $state('')
@@ -88,10 +91,10 @@
   const sessionTag = Math.random().toString(36).slice(2, 8)
   const terms = new Map<number, { term: Terminal; fit: FitAddon }>()
   const mounted = new Set<number>()
-  // Recuerda si cada terminal estaba pegada al final. Al volver a su pestaña
-  // (o al redimensionar tras mucho tiempo oculta) xterm conserva viewportY y
-  // el contenido aparecia a media altura: si estaba abajo, se vuelve a bajar.
-  const termAtBottom = new Map<number, boolean>()
+  // Ultimo tamano enviado a cada ConPTY. Al cambiar de proyecto se evita
+  // reenviar el mismo resize: un SIGWINCH innecesario hace que las TUI
+  // (Codebuddy, vim...) redibujen y pierdan el scroll o corten el contenido.
+  const lastPtySize = new Map<number, string>()
 
   const activeTab = () => tabs.find((t) => t.key === activeKey) ?? null
 
@@ -233,7 +236,12 @@
     onPtyExit((d) => {
       const tab = tabs.find((t) => t.ptyId === d.id)
       const entry = tab && terms.get(tab.key)
-      if (entry) entry.term.writeln('\r\n\x1b[2m─ proceso terminado ─\x1b[0m')
+      if (entry) {
+        // Una TUI que muere sin desactivar el mouse deja la rueda capturada:
+        // al cerrar el proceso se restauran los modos para poder hacer scroll.
+        entry.term.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l')
+        entry.term.writeln('\r\n\x1b[2m─ proceso terminado ─\x1b[0m')
+      }
       if (tab) {
         tab.exited = true
         tab.ptyId = null
@@ -249,15 +257,13 @@
       notifyRepoChanged()
     })
     window.addEventListener('resize', () => {
-      const entry = activeKey != null ? terms.get(activeKey) : null
+      if (activeKey == null) return
+      const entry = terms.get(activeKey)
       const tab = activeTab()
       if (!entry) return
-      // Al cambiar el tamano, xterm recalcula filas y puede dejar el viewport
-      // a media altura; si estaba al final, se mantiene ahi.
-      const atBottom = entry.term.buffer.active.viewportY >= entry.term.buffer.active.baseY
-      if (activeKey != null) fitTerm(activeKey)
-      if (atBottom) entry.term.scrollToBottom()
-      if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
+      // fitTerm conserva el scroll (o el fondo si ya estaba al final).
+      fitTerm(activeKey)
+      if (tab) resizePty(tab, entry)
     })
     // Cambios hechos fuera de Compass (otra terminal, IDE, Explorer): al volver
     // a la ventana se refresca el estado git del explorador.
@@ -386,7 +392,6 @@
     const fit = new FitAddon()
     term.loadAddon(fit)
     terms.set(key, { term, fit })
-    termAtBottom.set(key, true)
     term.onData((data) => {
       const tab = tabs.find((t) => t.key === key)
       if (tab?.ptyId) writeTerminal(tab.ptyId, bytesToB64(new TextEncoder().encode(data)))
@@ -410,6 +415,23 @@
         return false
       }
       return true
+    })
+    // Las CLI con TUI (por ejemplo el chat de Codebuddy) activan mouse
+    // tracking: la rueda se envia a la aplicacion y el historial de xterm
+    // queda inmovil. En el buffer normal con scrollback la desplazamos
+    // nosotros; en el buffer alterno (vim, less, htop) se respeta la app.
+    term.attachCustomWheelEventHandler((ev) => {
+      const buf = term.buffer.active
+      if (buf.type !== 'normal' || buf.baseY === 0 || term.modes.mouseTrackingMode === 'none') {
+        return true
+      }
+      let lines = ev.deltaY
+      if (ev.deltaMode === 0) lines = ev.deltaY / 24
+      else if (ev.deltaMode === 2) lines = ev.deltaY * term.rows
+      const n = lines > 0 ? Math.max(1, Math.round(lines)) : Math.min(-1, Math.round(lines))
+      if (n) term.scrollLines(n)
+      ev.preventDefault()
+      return false
     })
     return term
   }
@@ -444,41 +466,69 @@
   function fitTerm(key: number) {
     const entry = terms.get(key)
     if (!entry) return
+    // Guarda la posicion del historial: `fit()` redimensiona y xterm puede
+    // saltar al final. Al volver a una pestaña desde otro proyecto se perdia
+    // el scroll y la consola quedaba pegada abajo.
+    const before = entry.term.buffer.active
+    const wasAtBottom = before.viewportY >= before.baseY
+    const line = before.viewportY
     entry.fit.fit()
     const el = document.getElementById(`term-${key}`)
     const screen = el?.querySelector('.xterm-screen') as HTMLElement | null
     const viewport = el?.querySelector('.xterm-viewport') as HTMLElement | null
-    if (!screen || !viewport || !entry.term.cols) return
-    // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
-    const cell = screen.offsetWidth / entry.term.cols
-    if (!cell) return
-    // Solo se toca si el contenido sobresale del ancho util: asi no se pierde
-    // una columna por un simple redondeo cuando ya cabe.
-    const overflow = screen.offsetWidth - viewport.clientWidth
-    if (overflow <= 0) return
-    const cols = Math.max(2, entry.term.cols - Math.ceil(overflow / cell))
-    entry.term.resize(cols, entry.term.rows)
+    if (screen && viewport && entry.term.cols) {
+      // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
+      const cell = screen.offsetWidth / entry.term.cols
+      if (cell) {
+        // Solo se toca si el contenido sobresale del ancho util: asi no se
+        // pierde una columna por un simple redondeo cuando ya cabe.
+        const overflow = screen.offsetWidth - viewport.clientWidth
+        if (overflow > 0) {
+          const cols = Math.max(2, entry.term.cols - Math.ceil(overflow / cell))
+          entry.term.resize(cols, entry.term.rows)
+        }
+      }
+    }
+    if (wasAtBottom) {
+      // Si estaba al final, se mantiene ahi tras el reflow.
+      entry.term.scrollToBottom()
+    } else {
+      // Se restaura la misma linea (acotada al nuevo scrollback) para que el
+      // usuario siga leyendo donde estaba.
+      entry.term.scrollToLine(Math.min(line, entry.term.buffer.active.baseY))
+    }
+  }
+
+  function resizePty(tab: Tab, entry: { term: Terminal }) {
+    if (!tab.ptyId) return
+    const sig = `${entry.term.cols}x${entry.term.rows}`
+    if (lastPtySize.get(tab.key) === sig) return
+    lastPtySize.set(tab.key, sig)
+    resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
   }
 
   async function activate(key: number) {
-    // Antes de cambiar, anota si la terminal que se deja estaba al final del
-    // historial: al volver a ella se restaurara esa posicion.
-    if (activeKey != null && activeKey !== key) {
-      const prev = terms.get(activeKey)
-      if (prev) {
-        const buf = prev.term.buffer.active
-        termAtBottom.set(activeKey, buf.viewportY >= buf.baseY)
-      }
-    }
     activeKey = key
     await tick()
     const entry = terms.get(key)
     const tab = tabs.find((t) => t.key === key)
     if (!entry) return
     fitTerm(key)
-    if (termAtBottom.get(key)) entry.term.scrollToBottom()
-    if (tab?.ptyId) resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
+    if (tab) resizePty(tab, entry)
     entry.term.focus()
+  }
+
+  async function toggleRightPanel() {
+    rightCollapsed = !rightCollapsed
+    // Tras el reflow, el terminal tiene otro ancho: se reajusta y se avisa a
+    // la ConPTY una sola vez (resizePty evita repetir el mismo tamano).
+    await tick()
+    if (activeKey == null) return
+    const entry = terms.get(activeKey)
+    const tab = activeTab()
+    if (!entry) return
+    fitTerm(activeKey)
+    if (tab) resizePty(tab, entry)
   }
 
   async function startPty(tab: Tab, task: string) {
@@ -500,6 +550,8 @@
       return
     }
     lastError = ''
+    // La ConPTY ya nace con este tamano: no hace falta reenviarlo al activar.
+    lastPtySize.set(tab.key, `${entry.term.cols}x${entry.term.rows}`)
     entry.term.focus()
     reclaimFocus()
   }
@@ -626,7 +678,7 @@
       terms.delete(key)
     }
     mounted.delete(key)
-    termAtBottom.delete(key)
+    lastPtySize.delete(key)
     tabs = tabs.filter((t) => t.key !== key)
     if (activeKey === key) {
       // Siguiente pestaña del MISMO proyecto (no salta a otro proyecto).
@@ -674,10 +726,6 @@
       {/each}
     </div>
     <div class="sidebar-foot">
-      <div class="mascot-line {mood}" title={moodText}>
-        <Mascot size={30} {mood} />
-        <span class="mascot-text">{moodText}</span>
-      </div>
       <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>
         <span>◈</span><span class="theme-btn-text">{theme?.name ?? 'Tema'}</span>
       </button>
@@ -722,6 +770,15 @@
                     }}>×</button>
                 </div>
               {/each}
+              <button
+                class="term-wide"
+                title={rightCollapsed ? 'Mostrar panel derecho' : 'Ampliar terminal'}
+                aria-label={rightCollapsed ? 'Mostrar panel derecho' : 'Ampliar terminal'}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  toggleRightPanel()
+                }}
+              >{rightCollapsed ? '⤡' : '⤢'}</button>
             </div>
           {/if}
           <div class="term-stage">
@@ -737,7 +794,7 @@
         </div>
       </div>
 
-      <aside class="right">
+      <aside class="right" class:collapsed={rightCollapsed}>
         <div class="right-tabs">
           <button class:active={rightTab === 'explorer'} onclick={() => (rightTab = 'explorer')}>Explorador</button>
           <button class:active={rightTab === 'git'} onclick={() => (rightTab = 'git')}>Git</button>
@@ -757,6 +814,17 @@
               <History projectPath={projectPath} />
             {/key}
           {/if}
+        </div>
+        <div class="right-foot" title={moodText}>
+          <div class="right-foot-label {mood}">
+            <span class="mood-dot"></span>
+            <span class="mascot-text">{moodText}</span>
+          </div>
+          <div class="mascot-track">
+            <span class="mascot-runner">
+              <Mascot size={40} {mood} walk />
+            </span>
+          </div>
         </div>
       </aside>
     </section>

@@ -25,11 +25,29 @@
 /* Sin barra superior: Tema/Opciones viven al pie del sidebar para no robar
    alto a las cards ni al terminal. */
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding-top: 14px; }
-.mascot-line { display: flex; align-items: center; gap: 8px; padding: 2px 8px 4px; color: var(--muted); font-size: 11px; font-weight: 500; transition: color .2s ease; }
-.mascot-line.working { color: var(--accent); }
-.mascot-line.success { color: var(--green); }
-.mascot-line.error { color: var(--red); }
+.right-foot { flex-shrink: 0; padding: 7px 10px 5px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 62%, var(--bg)); }
+.right-foot-label { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 500; color: var(--muted); transition: color .2s ease; }
+.right-foot-label.working { color: var(--accent); }
+.right-foot-label.success { color: var(--green); }
+.right-foot-label.error { color: var(--red); }
+.mood-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .mascot-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Pista de paseo: la mascota se mueve en horizontal y gira en los extremos.
+   El recorrido usa cqw para no depender del ancho fijo del panel. */
+.mascot-track { position: relative; height: 42px; margin-top: 2px; overflow: hidden; container-type: inline-size; }
+.mascot-track::before { content: ''; position: absolute; left: 10px; right: 10px; bottom: 4px; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--border) 80%, transparent), transparent); }
+.mascot-runner { position: absolute; left: 0; bottom: 0; width: 40px; height: 40px; color: var(--accent); animation: patrol 15s ease-in-out infinite; will-change: transform; }
+@keyframes patrol {
+  0%, 7% { transform: translateX(10px) scaleX(1); }
+  45% { transform: translateX(calc(100cqw - 100% - 10px)) scaleX(1); }
+  50% { transform: translateX(calc(100cqw - 100% - 10px)) scaleX(-1); }
+  52% { transform: translateX(calc(100cqw - 100% - 10px)) scaleX(-1); }
+  90% { transform: translateX(10px) scaleX(-1); }
+  95%, 100% { transform: translateX(10px) scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot-runner { animation: none !important; transform: translateX(10px); }
+}
 .theme-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; transition: color .15s ease, background .15s ease, border-color .15s ease; }
 .theme-btn:hover { color: var(--text); background: color-mix(in srgb, var(--border) 70%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .theme-btn-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -45,6 +63,8 @@
 .term-dot.dead { background: var(--muted); }
 .term-close { background: none; border: none; color: inherit; font-size: 14px; line-height: 1; padding: 0 2px; opacity: .6; cursor: pointer; }
 .term-close:hover { opacity: 1; }
+.term-wide { margin-left: auto; flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
+.term-wide:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .term-stage { position: relative; flex: 1; min-height: 0; }
 /* El margen va en `inset`, no en `padding`: FitAddon mide el alto del host y,
    con box-sizing:border-box, el padding no se descuenta, así que calculaba una
@@ -59,6 +79,7 @@
 .term-host .xterm-viewport { overflow-x: hidden; }
 .term-empty { height: 100%; display: grid; place-items: center; font-size: 12px; }
 .right { width: 300px; flex-shrink: 0; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 50%, var(--bg)); display: flex; flex-direction: column; }
+.right.collapsed { display: none; }
 .right-tabs { display: flex; gap: 4px; padding: 10px; border-bottom: 1px solid var(--border); }
 .right-tabs button { flex: 1; padding: 6px 4px; border: none; border-radius: 16px; background: color-mix(in srgb, var(--border) 45%, transparent); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .right-tabs button.active { background: color-mix(in srgb, var(--accent) 30%, var(--bg)); color: var(--text); }

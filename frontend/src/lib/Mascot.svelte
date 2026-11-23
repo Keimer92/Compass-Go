@@ -7,13 +7,13 @@
   // brazos, ojos), de modo que la mascota no repinta el sidebar a 60 fps.
   type Mood = 'idle' | 'working' | 'success' | 'error'
 
-  let { size = 40, mood = 'idle' as Mood }: { size?: number; mood?: Mood } = $props()
+  let { size = 40, mood = 'idle' as Mood, walk = false }: { size?: number; mood?: Mood; walk?: boolean } = $props()
 
   // IDs unicos por instancia: hay dos mascotas montadas (marca y pie).
   const uid = 'mz' + Math.random().toString(36).slice(2, 9)
 </script>
 
-<span class="mascot {mood}" style={`width:${size}px;height:${size}px`} aria-hidden="true">
+<span class="mascot {mood}" class:walk style={`width:${size}px;height:${size}px`} aria-hidden="true">
   <span class="float">
     <svg viewBox="0 0 96 96" width="100%" height="100%">
       <defs>
@@ -411,6 +411,47 @@
     }
     50% {
       transform: rotate(26deg);
+    }
+  }
+
+  /* --- Caminando: la mascota del panel derecho da pasos y gira al llegar. --- */
+  .walk .float {
+    animation: walkBob 0.5s ease-in-out infinite;
+  }
+  .walk .arm.left {
+    animation: walkArmL 0.5s ease-in-out infinite;
+  }
+  .walk .arm.right {
+    animation: walkArmR 0.5s ease-in-out infinite;
+  }
+  .walk .needle {
+    animation: sway 3.2s ease-in-out infinite;
+  }
+  @keyframes walkBob {
+    0%,
+    100% {
+      transform: translateY(0) rotate(-1.5deg);
+    }
+    50% {
+      transform: translateY(-6%) rotate(1.5deg);
+    }
+  }
+  @keyframes walkArmL {
+    0%,
+    100% {
+      transform: rotate(-16deg);
+    }
+    50% {
+      transform: rotate(16deg);
+    }
+  }
+  @keyframes walkArmR {
+    0%,
+    100% {
+      transform: rotate(16deg);
+    }
+    50% {
+      transform: rotate(-16deg);
     }
   }
 

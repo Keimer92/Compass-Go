@@ -318,13 +318,17 @@ proyecto concreto:
 - **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula 3D con brazos en SVG
   puro (sin assets, hereda `currentColor` del tema). El bisel metalico se logra
   con una base `currentColor` y capas de brillo/sombra; la esfera es oscura y
-  la aguja roja. Vive en el badge de la marca (40 px en un tile de 46 px) y, en
-  el `sidebar-foot`, a 30 px con el estado en texto. Estados `idle` / `working`
-  / `success` / `error`: la aguja se balancea o gira, los brazos saludan, los
-  ojos parpadean y miran alrededor, y hay saltos/destellos o tambaleo con gota
-  de sudor. `App.svelte` destella `success` o `error` 2.6 s al recibir
-  `pty:exit` con `code` 0 o >0 (un código negativo es un cierre forzado y no
-  cuenta). Respeta `prefers-reduced-motion`.
+  la aguja roja. Vive en el badge de la marca (40 px en un tile de 46 px) y en
+  el pie del panel derecho (40 px, caminando de lado a lado y girando en los
+  extremos, con el estado en texto). Estados `idle` / `working` / `success` /
+  `error`: la aguja se balancea o gira, los brazos saludan o caminan, los ojos
+  parpadean y miran alrededor, y hay saltos/destellos o tambaleo con gota de
+  sudor. `App.svelte` destella `success` o `error` 2.6 s al recibir `pty:exit`
+  con `code` 0 o >0 (un código negativo es un cierre forzado y no cuenta).
+  Respeta `prefers-reduced-motion`.
+  - **Paseo**: el recorrido horizontal va en `.mascot-runner` (transform con
+    `100cqw` sobre un track con `container-type: inline-size`) y el paso en la
+    prop `walk` del SVG; el giro en los extremos se hace con `scaleX(-1)`.
   - **Rendimiento**: el flotado/bote se anima en la envoltura HTML `.float`
     (transform compuesto, `will-change`) y no en grupos SVG; dentro del SVG solo
     se mueven piezas pequeñas (aguja, brazos, ojos). Así la mascota no repinta
@@ -893,6 +897,19 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   xterm.js en el frontend. La salida se reparte con `container.SpawnTap` entre
   el parser y el evento `pty:data` (nunca dos lectores sobre la misma ConPTY).
   **vt10x no tiene scrollback**; el scrollback lo aporta xterm.js.
+  - **Scroll y resize**: `fitTerm` guarda `viewportY` antes de `FitAddon.fit()`
+    y lo restaura (o baja al final si ya estaba abajo); el PTY solo recibe
+    `ResizeTerminal` cuando `cols x rows` cambia (`lastPtySize`), para no enviar
+    SIGWINCH innecesarios al cambiar de proyecto (las TUI redibujaban y perdian
+    el scroll). Al salir un proceso se limpian los modos de mouse
+    (`?1000l/?1002l/?1003l/?1005l/?1006l`).
+  - **Rueda en TUI**: si la app activa mouse tracking en el buffer normal,
+    `attachCustomWheelEventHandler` desplaza el scrollback de xterm en vez de
+    mandar la rueda a la CLI; en el buffer alterno (vim, less, htop) se respeta
+    el mouse de la aplicacion.
+  - **Panel derecho plegable**: el boton `⤢` de la barra de pestañas oculta
+    `.right` (`class:collapsed`) para dar todo el ancho al terminal cuando un
+    diff o una tabla no caben; al plegar/desplegar se reajusta el xterm y el PTY.
 - **Sonidos de eventos**: `internal/sound` genera los avisos con `Beep` de
   kernel32 (sin WAV ni PowerShell) y ofrece cinco presets (Clasico, Suave,
   Brillante, Grave, Silencio) para seis eventos: build correcto/fallido,
