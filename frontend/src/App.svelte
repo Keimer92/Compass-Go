@@ -379,15 +379,21 @@
     // No se cierran las pestañas: cada proyecto conserva sus terminales
     // abiertos y se puede volver a ellas al cambiar de proyecto.
     //
-    // Se resalta la seleccion de inmediato (optimista) y se solapa la carga
-    // del menu con la activacion de la terminal: el cambio se siente al
-    // instante aunque el backend tarde en re-detectar el proyecto.
+    // El proyecto Y su pestaña se cambian en el mismo frame. Si solo se
+    // adelanta el proyecto y se espera a que el backend responda, durante esa
+    // ventana `projectPath` ya es el nuevo pero `activeKey` apunta al
+    // anterior: no hay pestañas visibles, desaparecen la barra de pestañas y
+    // el terminal, y luego vuelven a pintarse (el "doble render" al cambiar
+    // de proyecto).
     if (i !== workspace.active) workspace = { ...workspace, active: i }
-    workspace = await selectProject(i)
+    const first = tabs.find((t) => t.project === (workspace.projects[i]?.path ?? ''))
+    activeKey = first ? first.key : null
     const menuP = getMenu()
-    // Activa la primera pestaña del proyecto recién seleccionado (si tiene).
-    const first = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
-    if (first) await activate(first.key)
+    workspace = await selectProject(i)
+    // El backend confirma el proyecto activo; la pestaña se revalida por si
+    // cambio el indice.
+    const confirmed = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
+    if (confirmed) await activate(confirmed.key)
     else activeKey = null
     menu = await menuP
   }
@@ -896,7 +902,7 @@
             {#each tabs as tab (tab.key)}
               <div class="term-host" class:hidden={tab.key !== activeKey} id={`term-${tab.key}`}></div>
             {/each}
-            {#if !visibleTabs.length}
+            {#if activeKey == null}
               <div class="term-empty">
                 <p class="muted">Abre una card para lanzar su tarea en una pestaña ConPTY.</p>
               </div>
