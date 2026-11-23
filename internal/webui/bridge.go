@@ -13,6 +13,7 @@ import (
 
 	"compass/internal/project"
 	"compass/internal/settings"
+	"compass/internal/sound"
 	"compass/internal/tasks"
 	"compass/internal/window"
 	"compass/internal/workspace"
@@ -428,6 +429,7 @@ const apiKeyMask = "********"
 // GetSettings devuelve las opciones globales con la API key enmascarada.
 func (b *Bridge) GetSettings() settings.Settings {
 	s := settings.Load()
+	s.SoundPresets = sound.Normalize(s.SoundPresets)
 	if strings.TrimSpace(s.OpenRouterAPIKey) != "" {
 		s.OpenRouterAPIKey = apiKeyMask
 	}
@@ -442,6 +444,7 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 
 	cur.OpenOutputDir = s.OpenOutputDir
 	cur.CloseTabOnBuildEnd = s.CloseTabOnBuildEnd
+	cur.SoundPresets = sound.Normalize(s.SoundPresets)
 	if s.AutoCommitIdleMin > 0 {
 		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
 	}
@@ -464,6 +467,23 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	}
 
 	settings.Save(cur)
+}
+
+// SoundCatalog describe los eventos y presets que ofrece el modal de Opciones.
+type SoundCatalog struct {
+	Events  []sound.EventInfo  `json:"events"`
+	Presets []sound.PresetInfo `json:"presets"`
+}
+
+// GetSoundCatalog devuelve la lista de eventos y presets de sonido.
+func (b *Bridge) GetSoundCatalog() SoundCatalog {
+	return SoundCatalog{Events: sound.Events(), Presets: sound.Presets()}
+}
+
+// PreviewSound reproduce un evento con el preset pedido, sin guardar nada.
+// El frontend lo usa en el boton de escucha de cada evento.
+func (b *Bridge) PreviewSound(event, preset string) {
+	sound.Preview(sound.Event(event), preset)
 }
 
 // ListCleanupCandidates devuelve los destinos que existen ahora mismo en el

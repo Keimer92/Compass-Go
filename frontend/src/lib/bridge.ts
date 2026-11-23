@@ -69,10 +69,24 @@ export interface Settings {
   auto_commit_idle_min: number
   commit_provider: 'openrouter' | 'copilot'
   copilot_model: string
+  sound_presets: Record<string, string>
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
 export const setSettings = (s: Settings) => call<void>(M('SetSettings'), s)
+
+export interface SoundEventInfo {
+  id: string
+  label: string
+  description: string
+  default_preset: string
+}
+export interface SoundPresetInfo { id: string; name: string; description: string }
+export interface SoundCatalog { events: SoundEventInfo[]; presets: SoundPresetInfo[] }
+
+export const getSoundCatalog = () => call<SoundCatalog>(M('GetSoundCatalog'))
+export const previewSound = (event: string, preset: string) =>
+  call<void>(M('PreviewSound'), event, preset)
 
 export interface ModelOption { id: string; name: string; context: number }
 export const listModels = () => call<ModelOption[]>(M('ListModels'))

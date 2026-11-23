@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"compass/internal/container"
+	"compass/internal/sound"
 )
 
 func tlog(format string, args ...any) {
@@ -123,6 +124,14 @@ func (t *TerminalService) OpenSession(id, label, project, script, dir string, ro
 		}
 		t.mu.Unlock()
 		Emit("pty:exit", map[string]any{"id": id, "code": code})
+		// Aviso de fin de tarea. Un codigo negativo es un cierre forzado
+		// (cerrar la pestana) y no debe sonar como fallo.
+		switch {
+		case code == 0:
+			sound.Play(sound.EventTaskOK)
+		case code > 0:
+			sound.Play(sound.EventTaskError)
+		}
 	}()
 	return id
 }

@@ -47,6 +47,10 @@ type Settings struct {
 	// "auto-intelligence" pide el perfil de maxima calidad; el resto son ids
 	// concretos del catalogo (haiku, flash, luna...).
 	CopilotModel string `json:"copilot_model"`
+	// SoundPresets elige el preset de sonido de cada evento (build, commit,
+	// terminal). Las claves son ids de evento y los valores ids de preset; el
+	// paquete sound normaliza ambos y rellena los que falten.
+	SoundPresets map[string]string `json:"sound_presets"`
 }
 
 // Default devuelve los valores de fabrica.
@@ -61,6 +65,16 @@ func Default() Settings {
 		OpenRouterModel:   "",
 		AutoCommitIdleMin: 5,
 		CommitProvider:    ProviderOpenRouter,
+		// Los avisos de terminal llegan apagados: un build ya suena desde su
+		// propio proceso y encender ambos duplicaria el aviso.
+		SoundPresets: map[string]string{
+			"build_ok":     "classic",
+			"build_error":  "classic",
+			"commit_ok":    "classic",
+			"commit_error": "classic",
+			"task_ok":      "none",
+			"task_error":   "none",
+		},
 	}
 }
 

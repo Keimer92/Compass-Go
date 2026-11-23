@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"compass/internal/settings"
+	"compass/internal/sound"
 	"compass/internal/windialog"
 )
 
@@ -487,12 +488,15 @@ func (b *Bridge) Commit(dir, message string) (string, error) {
 		return "", errors.New("no hay proyecto activo")
 	}
 	if out, err := runGit(dir, "add", "-A"); err != nil {
+		sound.Play(sound.EventCommitError)
 		return "", fmt.Errorf("git add: %s", out)
 	}
 	out, err := runGit(dir, "commit", "-m", message)
 	if err != nil {
+		sound.Play(sound.EventCommitError)
 		return "", fmt.Errorf("git commit: %s", out)
 	}
+	sound.Play(sound.EventCommitOK)
 	// El commit toca solo .git (excluido del vigilante): se olvida la firma
 	// para que el siguiente guardado vuelva a avisar al panel.
 	b.watchForget(dir)

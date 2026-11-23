@@ -882,6 +882,15 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   xterm.js en el frontend. La salida se reparte con `container.SpawnTap` entre
   el parser y el evento `pty:data` (nunca dos lectores sobre la misma ConPTY).
   **vt10x no tiene scrollback**; el scrollback lo aporta xterm.js.
+- **Sonidos de eventos**: `internal/sound` genera los avisos con `Beep` de
+  kernel32 (sin WAV ni PowerShell) y ofrece cinco presets (Clasico, Suave,
+  Brillante, Grave, Silencio) para seis eventos: build correcto/fallido,
+  commit correcto/fallido y tarea de terminal correcta/fallida. La seccion
+  "Sonidos" de Opciones permite elegir un preset por evento y escucharlo con
+  ▶ (`GetSoundCatalog`/`PreviewSound`). Los presets se guardan en
+  `sound_presets` de `settings.json`; `sound.Normalize` rellena claves
+  ausentes o desconocidas. Los eventos de terminal llegan en `none` porque un
+  build ya suena desde su propio proceso y encender ambos duplicaria el aviso.
 - **Instancia única por proyecto**: `internal/lock` con
   `x/sys/windows.LockFileEx` sobre un fichero por proyecto en
   `%LOCALAPPDATA%\compass\instances` (no se escribe nada en la carpeta del

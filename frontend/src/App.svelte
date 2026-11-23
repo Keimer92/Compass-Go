@@ -7,7 +7,7 @@
     onPtyData, onPtyExit, openTerminal, writeTerminal, resizeTerminal, taskScript,
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
-    listCleanupCandidates, purgeCleanupCandidates,
+    listCleanupCandidates, purgeCleanupCandidates, getSoundCatalog, previewSound,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -18,7 +18,7 @@
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -67,7 +67,10 @@
     auto_commit_idle_min: 5,
     commit_provider: 'openrouter',
     copilot_model: '',
+    sound_presets: {},
   })
+  // Catalogo de eventos/presets de sonido para la seccion "Sonidos" de Opciones.
+  let soundCatalog = $state<SoundCatalog | null>(null)
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   // Modal "Elegir que borrar" de la card Clean. cleanupSelected usa el path
@@ -161,6 +164,24 @@
     } catch {
       /* se mantiene lo que ya habia */
     }
+    try {
+      soundCatalog = await getSoundCatalog()
+    } catch {
+      /* la seccion Sonidos no se muestra */
+    }
+  }
+
+  // Preset elegido para un evento (si aun no hay valor guardado, el de fabrica).
+  function presetFor(ev: SoundEventInfo): string {
+    return settings.sound_presets?.[ev.id] || ev.default_preset
+  }
+
+  function setPreset(ev: SoundEventInfo, preset: string) {
+    settings.sound_presets = { ...settings.sound_presets, [ev.id]: preset }
+  }
+
+  function previewEvent(ev: SoundEventInfo) {
+    previewSound(ev.id, presetFor(ev)).catch(() => {})
   }
 
   async function saveSettings() {
@@ -172,6 +193,7 @@
         ...cur,
         open_output_dir: settings.open_output_dir,
         close_tab_on_build_end: settings.close_tab_on_build_end,
+        sound_presets: settings.sound_presets,
       })
       optionsOpen = false
     } catch (e) {
@@ -852,6 +874,42 @@
             <span>Cerrar la pestaña del terminal al terminar un build</span>
           </label>
         </section>
+
+        {#if soundCatalog}
+          <section class="opt-card opt-sounds">
+            <h3 class="opt-card-title">Sonidos</h3>
+            <p class="opt-hint">
+              Elige el sonido de cada evento. Usa ▶ para escucharlo antes de guardar.
+            </p>
+            <div class="sound-list">
+              {#each soundCatalog.events as ev}
+                <div class="sound-row">
+                  <div class="sound-text">
+                    <span class="sound-label">{ev.label}</span>
+                    <span class="sound-desc">{ev.description}</span>
+                  </div>
+                  <select
+                    class="opt-input sound-select"
+                    value={presetFor(ev)}
+                    onchange={(e) => setPreset(ev, e.currentTarget.value)}
+                    aria-label={`Sonido para ${ev.label}`}
+                  >
+                    {#each soundCatalog.presets as p}
+                      <option value={p.id} title={p.description}>{p.name}</option>
+                    {/each}
+                  </select>
+                  <button
+                    type="button"
+                    class="sound-preview"
+                    onclick={() => previewEvent(ev)}
+                    title="Escuchar"
+                    aria-label={`Escuchar ${ev.label}`}
+                  >▶</button>
+                </div>
+              {/each}
+            </div>
+          </section>
+        {/if}
       </div>
 
       <div class="modal-actions">
