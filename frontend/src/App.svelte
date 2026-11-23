@@ -101,11 +101,14 @@
   // reenviar el mismo resize: un SIGWINCH innecesario hace que las TUI
   // (Codebuddy, vim...) redibujen y pierdan el scroll o corten el contenido.
   const lastPtySize = new Map<number, string>()
-  // Ultima posicion de lectura de cada pestana. Se actualiza en cada scroll y
-  // se reaplica al volver a la pestana: xterm re-sincroniza su viewport cuando
-  // el host pasa de oculto a visible, y eso devolvia la consola al final al
-  // cambiar de proyecto.
-  const scrollMemo = new Map<number, { line: number; bottom: boolean }>()
+  // Ultima posicion de lectura de cada pestana, medida en lineas desde el
+  // final (no como linea absoluta): mientras la pestana esta oculta su PTY
+  // sigue escribiendo y `baseY` crece, asi que una linea absoluta apuntaria a
+  // otro contenido y la consola "saltaria" al volver al proyecto.
+  const scrollMemo = new Map<number, { fromBottom: number; bottom: boolean }>()
+  // Mientras se activa una pestana se ignoran los `onScroll`: son producto del
+  // re-sync de xterm, no del usuario.
+  let activating = false
   // Contenedor del terminal: un ResizeObserver reajusta xterm cuando el panel
   // cambia de alto/ancho (al cambiar de proyecto cambian las cards y el alto
   // disponible, y la ultima fila -el input del chat- quedaba cortada abajo).
@@ -424,11 +427,11 @@
     terms.set(key, { term, fit })
     term.onScroll(() => {
       // Solo se memoriza lo que hace el usuario en la pestana visible: el
-      // reajuste interno de xterm al mostrar un host oculto no debe pisar la
-      // posicion de lectura guardada.
-      if (activeKey !== key) return
+      // reajuste interno de xterm al mostrar un host oculto (o al activar una
+      // pestana) no debe pisar la posicion de lectura guardada.
+      if (activating || activeKey !== key) return
       const b = term.buffer.active
-      scrollMemo.set(key, { line: b.viewportY, bottom: b.viewportY >= b.baseY })
+      scrollMemo.set(key, { fromBottom: b.baseY - b.viewportY, bottom: b.viewportY >= b.baseY })
     })
     term.onData((data) => {
       const tab = tabs.find((t) => t.key === key)
@@ -520,15 +523,17 @@
     const rows = Math.max(1, dims.rows)
     if (cols === entry.term.cols && rows === entry.term.rows) return
     // Guarda la posicion del historial: `resize()` refluye y xterm puede saltar
-    // al final. Se restaura la misma linea para no perder la lectura.
+    // al final. Se mide en lineas desde el final porque el reflow cambia el
+    // numero absoluto de linea.
     const before = entry.term.buffer.active
     const wasAtBottom = before.viewportY >= before.baseY
-    const line = before.viewportY
+    const fromBottom = before.baseY - before.viewportY
     entry.term.resize(cols, rows)
     if (wasAtBottom) {
       entry.term.scrollToBottom()
     } else {
-      entry.term.scrollToLine(Math.min(line, entry.term.buffer.active.baseY))
+      const b = entry.term.buffer.active
+      entry.term.scrollToLine(Math.max(0, b.baseY - fromBottom))
     }
   }
 
@@ -561,25 +566,40 @@
   }
 
   async function activate(key: number) {
+    // La posicion se lee ANTES de tocar `activeKey`: al mostrar el host oculto
+    // xterm puede re-sincronizar su viewport y disparar `onScroll`, que
+    // sobrescribiria la posicion buena con la saltada.
+    const memo = scrollMemo.get(key)
+    activating = true
     activeKey = key
     await tick()
     const entry = terms.get(key)
-    if (!entry) return
+    if (!entry) {
+      activating = false
+      return
+    }
     // El tamano ya lo mantiene el ResizeObserver; aqui solo se enfoca y se
-    // recupera la posicion de lectura. Se usa la posicion memorizada en el
-    // ultimo scroll porque el salto puede ocurrir antes de llegar aqui (al
-    // mostrar el host oculto o al enfocar el textarea del cursor).
-    const memo = scrollMemo.get(key)
+    // recupera la posicion de lectura.
     const buf = entry.term.buffer.active
     const wasAtBottom = memo ? memo.bottom : buf.viewportY >= buf.baseY
-    const line = memo ? memo.line : buf.viewportY
+    const fromBottom = memo ? memo.fromBottom : buf.baseY - buf.viewportY
     entry.term.focus()
     if (!wasAtBottom) {
-      const restore = () => entry.term.scrollToLine(Math.min(line, entry.term.buffer.active.baseY))
+      // Se reaplica la distancia al final, no una linea absoluta: la salida
+      // que llego mientras la pestana estaba oculta no debe mover la vista.
+      const restore = () => {
+        const b = entry.term.buffer.active
+        entry.term.scrollToLine(Math.max(0, b.baseY - fromBottom))
+      }
       restore()
-      // Segundo intento en el frame siguiente: el scroll del foco y la
-      // re-sincronizacion del viewport pueden aplicarse al final del frame.
-      requestAnimationFrame(restore)
+      // Segundo intento en el frame siguiente: xterm puede re-sincronizar el
+      // viewport al mostrar el host oculto.
+      requestAnimationFrame(() => {
+        restore()
+        activating = false
+      })
+    } else {
+      activating = false
     }
   }
 
