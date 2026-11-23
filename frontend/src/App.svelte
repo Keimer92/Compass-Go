@@ -101,6 +101,11 @@
   // reenviar el mismo resize: un SIGWINCH innecesario hace que las TUI
   // (Codebuddy, vim...) redibujen y pierdan el scroll o corten el contenido.
   const lastPtySize = new Map<number, string>()
+  // Ultima posicion de lectura de cada pestana. Se actualiza en cada scroll y
+  // se reaplica al volver a la pestana: xterm re-sincroniza su viewport cuando
+  // el host pasa de oculto a visible, y eso devolvia la consola al final al
+  // cambiar de proyecto.
+  const scrollMemo = new Map<number, { line: number; bottom: boolean }>()
   // Contenedor del terminal: un ResizeObserver reajusta xterm cuando el panel
   // cambia de alto/ancho (al cambiar de proyecto cambian las cards y el alto
   // disponible, y la ultima fila -el input del chat- quedaba cortada abajo).
@@ -411,6 +416,14 @@
     const fit = new FitAddon()
     term.loadAddon(fit)
     terms.set(key, { term, fit })
+    term.onScroll(() => {
+      // Solo se memoriza lo que hace el usuario en la pestana visible: el
+      // reajuste interno de xterm al mostrar un host oculto no debe pisar la
+      // posicion de lectura guardada.
+      if (activeKey !== key) return
+      const b = term.buffer.active
+      scrollMemo.set(key, { line: b.viewportY, bottom: b.viewportY >= b.baseY })
+    })
     term.onData((data) => {
       const tab = tabs.find((t) => t.key === key)
       if (tab?.ptyId) writeTerminal(tab.ptyId, bytesToB64(new TextEncoder().encode(data)))
@@ -549,9 +562,26 @@
     const entry = terms.get(key)
     const tab = tabs.find((t) => t.key === key)
     if (!entry) return
+    // Se guarda donde estaba leyendo el usuario: `focus()` enfoca el textarea
+    // auxiliar, que xterm coloca en la celda del cursor, y el navegador
+    // desplaza el viewport hasta el. Eso devolvia la consola al final cada vez
+    // que se cambiaba de proyecto (o de pestaña) aunque se estuviera leyendo
+    // mas arriba. Se usa la posicion memorizada en el ultimo scroll porque el
+    // salto puede ocurrir antes de llegar aqui (al mostrar el host oculto).
+    const memo = scrollMemo.get(key)
+    const buf = entry.term.buffer.active
+    const wasAtBottom = memo ? memo.bottom : buf.viewportY >= buf.baseY
+    const line = memo ? memo.line : buf.viewportY
     fitTerm(key)
     if (tab) resizePty(tab, entry)
     entry.term.focus()
+    if (!wasAtBottom) {
+      const restore = () => entry.term.scrollToLine(Math.min(line, entry.term.buffer.active.baseY))
+      restore()
+      // Segundo intento en el frame siguiente: el scroll del foco y la
+      // re-sincronizacion del viewport pueden aplicarse al final del frame.
+      requestAnimationFrame(restore)
+    }
   }
 
   function toggleRightPanel() {
@@ -756,6 +786,7 @@
     }
     mounted.delete(key)
     lastPtySize.delete(key)
+    scrollMemo.delete(key)
     tabs = tabs.filter((t) => t.key !== key)
     if (activeKey === key) {
       // Siguiente pestaña del MISMO proyecto (no salta a otro proyecto).
