@@ -490,43 +490,38 @@
     fitTerm(key)
   }
 
-  // fitTerm ajusta el xterm al host y corrige el ancho util real.
-  // FitAddon mide el host, pero el ancho disponible de verdad lo marca el
-  // viewport, que descuenta su barra de scroll. Si la ultima columna sobresale
-  // (por el ancho de la barra o por el redondeo de la celda segun el DPR), se
-  // recorta el numero de columnas para que no quede texto oculto a la derecha.
+  // fitTerm ajusta el xterm al host sin proponer nunca un tamano que no quepa.
+  // FitAddon mide el host, pero el ancho util de verdad lo marca el viewport
+  // (descuenta su barra de scroll). Antes se llamaba a `fit()` y luego se
+  // recortaban columnas: eso redimensionaba DOS veces (ancho y luego menos
+  // ancho) en cada cambio de pestaña, y cada reflow desplazaba el contenido.
+  // Ahora se calcula el tamano final y solo se llama a `resize()` si de verdad
+  // cambia, de modo que cambiar de proyecto no toca la geometria del terminal.
   function fitTerm(key: number) {
     const entry = terms.get(key)
     if (!entry) return
-    // Guarda la posicion del historial: `fit()` redimensiona y xterm puede
-    // saltar al final. Al volver a una pestaña desde otro proyecto se perdia
-    // el scroll y la consola quedaba pegada abajo.
-    const before = entry.term.buffer.active
-    const wasAtBottom = before.viewportY >= before.baseY
-    const line = before.viewportY
-    entry.fit.fit()
     const el = document.getElementById(`term-${key}`)
     const screen = el?.querySelector('.xterm-screen') as HTMLElement | null
     const viewport = el?.querySelector('.xterm-viewport') as HTMLElement | null
-    if (screen && viewport && entry.term.cols) {
-      // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
-      const cell = screen.offsetWidth / entry.term.cols
-      if (cell > 0) {
-        // Se calculan las columnas que caben en el viewport en vez de restar
-        // el desbordamiento: `clientWidth` ya descuenta la barra de scroll.
-        // La barra aparece cuando crece el scrollback (sin cambiar el tamano
-        // del stage), y en ese momento las ultimas columnas quedaban tapadas
-        // a la derecha. vpRo se encarga de reajustar cuando eso pasa.
-        const cols = Math.max(2, Math.floor(viewport.clientWidth / cell))
-        if (cols < entry.term.cols) entry.term.resize(cols, entry.term.rows)
-      }
-    }
+    if (!screen || !viewport || !entry.term.cols) return
+    const dims = entry.fit.proposeDimensions()
+    if (!dims) return
+    // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
+    const cell = screen.offsetWidth / entry.term.cols
+    if (!cell) return
+    // Columnas que caben de verdad: clientWidth ya descuenta la barra de scroll.
+    const cols = Math.max(2, Math.min(dims.cols, Math.floor(viewport.clientWidth / cell)))
+    const rows = Math.max(1, dims.rows)
+    if (cols === entry.term.cols && rows === entry.term.rows) return
+    // Guarda la posicion del historial: `resize()` refluye y xterm puede saltar
+    // al final. Se restaura la misma linea para no perder la lectura.
+    const before = entry.term.buffer.active
+    const wasAtBottom = before.viewportY >= before.baseY
+    const line = before.viewportY
+    entry.term.resize(cols, rows)
     if (wasAtBottom) {
-      // Si estaba al final, se mantiene ahi tras el reflow.
       entry.term.scrollToBottom()
     } else {
-      // Se restaura la misma linea (acotada al nuevo scrollback) para que el
-      // usuario siga leyendo donde estaba.
       entry.term.scrollToLine(Math.min(line, entry.term.buffer.active.baseY))
     }
   }

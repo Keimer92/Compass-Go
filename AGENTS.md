@@ -908,12 +908,14 @@ dev.bat              # Vite (HMR de UI) + go run --dev
     chat) quedaba cortada abajo y no se podia bajar mas. El observer de
     `.term-stage` coalesce el reflow en un `requestAnimationFrame` y vuelve a
     hacer `fitTerm` + `resizePty` de la pestaña activa.
-  - **Ancho util y barra de scroll**: `fitTerm` calcula las columnas que caben
-    en `viewport.clientWidth` (que ya descuenta la barra) en vez de restar el
-    desbordamiento de `.xterm-screen`. Un segundo `ResizeObserver` (`vpRo`)
-    observa el viewport de cada pestaña: la barra aparece cuando crece el
-    scrollback sin que cambie el tamaño del stage, y sin ese aviso las ultimas
-    columnas quedaban tapadas a la derecha.
+  - **Ancho util y barra de scroll**: `fitTerm` calcula el tamano final con
+    `fit.proposeDimensions()` y lo acota a las columnas que caben en
+    `viewport.clientWidth` (que ya descuenta la barra), llamando a `resize()`
+    **una sola vez** y solo si el tamano cambia. Llamar a `fit()` y luego
+    recortar columnas redimensionaba dos veces en cada cambio de pestaña y ese
+    reflow desplazaba la consola. Un segundo `ResizeObserver` (`vpRo`) observa
+    el viewport de cada pestaña para reajustar cuando aparece la barra de
+    scrollback.
   - **Reparto cards/terminal**: `.terminal-panel` usa
     `flex: 0 0 var(--term-pct, 60%)`, de modo que el alto no depende del numero
     de cards (cambiar de proyecto no dispara SIGWINCH). El porcentaje se ajusta
