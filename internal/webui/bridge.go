@@ -41,6 +41,11 @@ type Bridge struct {
 	autoMu   sync.Mutex
 	autoRuns map[string]*autoTrack
 	autoOnce sync.Once
+
+	// Vigilancia del arbol de trabajo (fsnotify) para detectar cambios al
+	// instante. Se activa para el proyecto activo y para los que tienen Auto.
+	watchMu sync.Mutex
+	watches map[string]*dirWatch
 }
 
 // commitRun es una generacion de mensaje de commit en curso. El id permite
@@ -82,6 +87,8 @@ func NewBridge(dir string) *Bridge {
 	b.mu.Lock()
 	b.resumeAuto()
 	b.mu.Unlock()
+	// Cambios de archivo al instante en el panel Git del proyecto activo.
+	b.ensureWatch(b.dir)
 	return b
 }
 
@@ -140,6 +147,7 @@ func (b *Bridge) AddProject(dir string) {
 		b.detect(p.Path)
 	}
 	b.resumeAuto()
+	b.ensureWatch(b.dir)
 	Emit("workspace:changed", b.workspaceInfo())
 	// Si el proyecto llega desde el menu contextual (otra instancia), trae
 	// esta ventana al frente.
@@ -219,6 +227,7 @@ func (b *Bridge) SelectProject(index int) map[string]any {
 		b.detect(p.Path)
 	}
 	b.resumeAuto()
+	b.ensureWatch(b.dir)
 	info := b.workspaceInfo()
 	b.mu.Unlock()
 	return info
@@ -237,8 +246,10 @@ func (b *Bridge) RemoveProject(index int) map[string]any {
 	removed := b.ws.Projects[index]
 	b.ws.Remove(index) // ajusta Active y hace Save
 	if removed != nil {
-		// Un proyecto que sale del workspace no debe seguir commiteando solo.
+		// Un proyecto que sale del workspace no debe seguir commiteando solo
+		// ni mantener un vigilante de archivos abierto.
 		b.stopAuto(removed.Path)
+		b.stopWatch(removed.Path)
 	}
 	if len(b.ws.Projects) == 0 {
 		b.ctx, b.dir = nil, ""

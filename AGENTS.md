@@ -343,7 +343,19 @@ proyecto concreto:
   http/https. Los helpers `gitHost`, `gitWebURL`, `gitLooksLikeURL` y
   `gitHostIsGitHub` viven en `internal/webui/git.go` (duplicados a propósito de
   los de consola en `internal/tasks/git.go`, que no están expuestos a la GUI).
-  El panel se refresca con `onRepoChanged`/`notifyRepoChanged` (`repoChanged.ts`).
+  El panel se refresca con `onRepoChanged`/`notifyRepoChanged` (`repoChanged.ts`)
+  y, al instante, con `onGitChanged`.
+- **Detección instantánea de cambios** (`internal/webui/watch.go`): un
+  vigilante `fsnotify` por proyecto (activo + los que tienen Auto) escucha el
+  árbol de trabajo, agrupa las ráfagas de un guardado (200 ms), recalcula
+  `autoSig` y emite `git:changed` (`{dir, changes, conflict}`). El panel Git se
+  repinta en cuanto se guarda, sin esperar al sondeo de 5 s, y el reloj del
+  auto-commit arranca en el momento del guardado. Se excluyen `node_modules`,
+  `dist`, `build`, `vendor`, `target`, `.git`, `bin`, `obj`, etc. (tope de
+  3000 carpetas) y los temporales de editor; las carpetas nuevas se añaden al
+  vuelo. Tras un commit se olvida la firma (`watchForget`) porque `.git` no
+  genera eventos del árbol. El ticker de 15 s sigue como red de seguridad si
+  se pierde un evento.
 - **Auto-commit por inactividad** (`internal/webui/autocommit.go`): el botón
   "Auto" del panel Git activa un vigilante **por proyecto** que corre en el
   backend (no en el componente, para que siga vivo al cambiar de pestaña).

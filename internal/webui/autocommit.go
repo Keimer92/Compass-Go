@@ -14,7 +14,9 @@ import (
 // Auto-commit por inactividad.
 //
 // El boton "Auto" del panel Git activa, para el proyecto activo, un vigilante
-// que mira `git status --porcelain` cada autoTickEvery. Mientras la firma del
+// que mira `git status --porcelain` cada autoTickEvery. La deteccion normal es
+// instantanea (watch.go escucha el sistema de archivos); este sondeo es la red
+// de seguridad por si se pierde un evento. Mientras la firma del
 // estado no cambie, corre un reloj; cuando pasan los minutos configurados en
 // Opciones (settings.AutoCommitIdleMin, 5 por defecto) sin ningun cambio nuevo,
 // genera el mensaje (OpenRouter si hay API key; si no, un mensaje generico) y
@@ -105,6 +107,9 @@ func (b *Bridge) armAuto(dir string) {
 	}
 	b.autoMu.Unlock()
 
+	// El panel Git tambien se actualiza al instante para los proyectos con
+	// Auto: el vigilante de archivos y el auto-commit comparten la firma.
+	b.ensureWatch(dir)
 	b.autoOnce.Do(func() { go b.autoLoop() })
 }
 
@@ -211,6 +216,21 @@ func (b *Bridge) autoTick() {
 }
 
 func (b *Bridge) autoStep(r *autoTrack) {
+	sig, conflict, changed := b.autoStepLocked(r)
+	// El vigilante de archivos (watch.go) suele adelantarse; esto cubre el
+	// caso de un evento perdido: la UI se entera igual en el siguiente tick.
+	if changed {
+		Emit("git:changed", map[string]any{
+			"dir":      r.dir,
+			"changes":  countSig(sig),
+			"conflict": conflict,
+		})
+	}
+}
+
+// autoStepLocked hace una pasada del vigilante y devuelve la firma y si el
+// arbol cambio respecto a la ultima vez. Debe llamarse sin autoMu tomado.
+func (b *Bridge) autoStepLocked(r *autoTrack) (sig string, conflict, changed bool) {
 	sig, conflict, err := autoSig(r.dir)
 	idle := autoIdle()
 
@@ -220,18 +240,19 @@ func (b *Bridge) autoStep(r *autoTrack) {
 	// siguiente tick sin reiniciar el vigilante.
 	r.idle = idle
 	if r.busy {
-		return
+		return "", false, false
 	}
 	if err != nil && strings.TrimSpace(sig) == "" {
 		r.lastErr = "git status: " + err.Error()
-		return
+		return "", false, false
 	}
 	if strings.TrimSpace(sig) == "" {
+		changed = r.sig != ""
 		r.sig = ""
 		r.changedAt = time.Time{}
 		r.pending = false
 		r.lastErr = ""
-		return
+		return "", false, changed
 	}
 	// Cualquier cambio nuevo reinicia el reloj: el commit solo ocurre cuando
 	// el arbol lleva un rato quieto, no a mitad de una edicion. La firma
@@ -242,24 +263,25 @@ func (b *Bridge) autoStep(r *autoTrack) {
 		r.changedAt = time.Now()
 		r.pending = true
 		r.lastErr = ""
-		return
+		return sig, conflict, true
 	}
 	if r.changedAt.IsZero() {
 		r.changedAt = time.Now()
-		return
+		return "", false, false
 	}
 	if time.Since(r.changedAt) < r.idle {
-		return
+		return "", false, false
 	}
 	if conflict {
 		// Un arbol en conflicto no se commitea solo: se espera a que lo
 		// resuelva el usuario y se reinicia el reloj para no repetir el aviso.
 		r.lastErr = "hay conflictos sin resolver"
 		r.changedAt = time.Now()
-		return
+		return "", false, false
 	}
 	r.busy = true
 	go b.autoCommit(r)
+	return "", false, false
 }
 
 func (b *Bridge) autoCommit(r *autoTrack) {

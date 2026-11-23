@@ -151,6 +151,10 @@ export interface CopilotModelOption { id: string; label: string; hint: string }
 export const copilotModels = () => call<CopilotModelOption[]>(M('CopilotModels'))
 export const onAutoCommit = (cb: (d: { dir: string; message: string }) => void) =>
   Events.On('git:auto', (e: any) => cb(e.data))
+// Cambio en el arbol de trabajo detectado por fsnotify (al instante).
+export interface GitChangedEvent { dir: string; changes: number; conflict: boolean }
+export const onGitChanged = (cb: (d: GitChangedEvent) => void) =>
+  Events.On('git:changed', (e: any) => cb(e.data))
 
 export interface CommitFile { path: string; status: string; added: number; removed: number; binary: boolean }
 export interface CommitDetail {

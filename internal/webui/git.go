@@ -493,6 +493,9 @@ func (b *Bridge) Commit(dir, message string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("git commit: %s", out)
 	}
+	// El commit toca solo .git (excluido del vigilante): se olvida la firma
+	// para que el siguiente guardado vuelva a avisar al panel.
+	b.watchForget(dir)
 	return out, nil
 }
 
@@ -878,6 +881,8 @@ func (b *Bridge) GitInitRepo() (string, error) {
 		}
 		return "", fmt.Errorf("git commit: %s", out)
 	}
+	// Ya es repo: a partir de ahora el panel Git detecta cambios al instante.
+	b.ensureWatch(dir)
 	return out, nil
 }
 

@@ -12,6 +12,7 @@
     setAutoCommit,
     autoCommitStatus,
     onAutoCommit,
+    onGitChanged,
     getSettings,
     setSettings,
     listModels,
@@ -37,6 +38,7 @@
   const cached = peekGitInfo(projectPath)
   let info = $state<GitInfo>(cached ?? emptyGitInfo())
   let refreshing = $state(false)
+  let refreshQueued = false
   // `loaded` solo pasa a true con una respuesta real de Go: mientras tanto no
   // se puede afirmar que la carpeta no sea un repo.
   let loaded = $state(cached !== null)
@@ -93,7 +95,13 @@
   let state = $derived(runFor(projectPath))
 
   async function refresh() {
-    if (refreshing) return
+    // Si llega un aviso mientras ya se esta consultando (guardar y guardar
+    // otra vez), se encola UNA repeticion: descartarlo dejaria el panel con
+    // el estado de la primera consulta.
+    if (refreshing) {
+      refreshQueued = true
+      return
+    }
     refreshing = true
     try {
       info = await loadGitInfo(projectPath)
@@ -104,6 +112,10 @@
       error = (e as Error).message
     } finally {
       refreshing = false
+      if (refreshQueued) {
+        refreshQueued = false
+        void refresh()
+      }
     }
   }
 
@@ -279,6 +291,12 @@
     return `${Math.floor(m / 60)} h ${m % 60} min`
   }
 
+  // Rutas de Windows: comparar sin distinguir mayusculas ni el tipo de barra.
+  function samePath(a: string, b: string) {
+    if (!a || !b) return false
+    return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+  }
+
   onMount(() => {
     refresh()
     loadAuto()
@@ -287,10 +305,18 @@
       refresh()
       loadAuto()
     })
+    // Aviso instantaneo del vigilante de archivos: el panel se repinta en
+    // cuanto se guarda algo, sin esperar al sondeo de 5 s.
+    const offChanged = onGitChanged((e) => {
+      if (!samePath(e.dir, projectPath)) return
+      refresh()
+      loadAuto()
+    })
     const timer = setInterval(loadAuto, 5000)
     return () => {
       offRepo()
       offAuto()
+      offChanged()
       clearInterval(timer)
     }
   })
