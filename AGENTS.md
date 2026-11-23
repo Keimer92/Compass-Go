@@ -315,6 +315,14 @@ proyecto concreto:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
+- **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula con brazos en SVG puro
+  (sin assets, hereda `currentColor` del tema). Vive en el badge de la marca y,
+  en pequeño, en una línea del `sidebar-foot` con el estado en texto. Estados
+  `idle` / `working` / `success` / `error`: la aguja gira y los brazos saludan
+  mientras hay una tarea corriendo (`tabs` con `ptyId` vivo); `App.svelte`
+  destella `success` o `error` 2.6 s al recibir `pty:exit` con `code` 0 o >0
+  (un código negativo es un cierre forzado y no cuenta). Respeta
+  `prefers-reduced-motion`.
 - **API del puente** (`internal/webui/git.go`): `Bridge.GitInfo()` devuelve un
   DTO con `isRepo`, `hasCommits`, `branch`, `upstream`, `remoteUrl`, `webUrl`,
   `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede

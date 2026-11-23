@@ -15,6 +15,7 @@
   import Explorer from './components/Explorer.svelte'
   import Git from './components/Git.svelte'
   import History from './components/History.svelte'
+  import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
   import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult } from './lib/bridge'
@@ -31,6 +32,25 @@
   let menu = $state<MenuItemInfo[]>([])
   let tabs = $state<Tab[]>([])
   let activeKey = $state<number | null>(null)
+  // Mascota: reposo, trabajando (hay una tarea corriendo) y destellos de
+  // exito/error al terminar un proceso. El destello manda sobre el resto.
+  let moodFlash = $state<'success' | 'error' | null>(null)
+  let moodTimer: ReturnType<typeof setTimeout> | undefined
+  let running = $derived(tabs.some((t) => !t.exited && !!t.ptyId))
+  let mood = $derived<'idle' | 'working' | 'success' | 'error'>(
+    moodFlash ?? (running ? 'working' : 'idle')
+  )
+  let moodText = $derived(
+    mood === 'working' ? 'Trabajando…'
+      : mood === 'success' ? 'Terminó sin errores'
+      : mood === 'error' ? 'Algo falló'
+      : 'En reposo'
+  )
+  function flashMood(next: 'success' | 'error') {
+    moodFlash = next
+    clearTimeout(moodTimer)
+    moodTimer = setTimeout(() => (moodFlash = null), 2600)
+  }
   let rightTab = $state<'explorer' | 'git' | 'log'>('explorer')
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
@@ -195,6 +215,12 @@
       if (tab) {
         tab.exited = true
         tab.ptyId = null
+      }
+      // La mascota celebra o se lamenta. Un codigo negativo es un cierre
+      // forzado (cerrar la pestana): no es un fallo de la tarea.
+      if (typeof d.code === 'number') {
+        if (d.code === 0) flashMood('success')
+        else if (d.code > 0) flashMood('error')
       }
       // El comando/tarea pudo tocar el repo (git, builds, generacion de
       // codigo): que el explorador vuelva a leer el estado.
@@ -590,7 +616,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <span class="logo" aria-hidden="true">{@html svg('compass', 19)}</span>
+      <span class="logo" aria-hidden="true"><Mascot size={22} {mood} /></span>
       <span class="wordmark">Compass <b>Go</b></span>
     </div>
     {#if workspace.projects.length}
@@ -618,6 +644,10 @@
       {/each}
     </div>
     <div class="sidebar-foot">
+      <div class="mascot-line {mood}" title={moodText}>
+        <Mascot size={19} {mood} />
+        <span class="mascot-text">{moodText}</span>
+      </div>
       <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>
         <span>◈</span><span class="theme-btn-text">{theme?.name ?? 'Tema'}</span>
       </button>
