@@ -604,8 +604,9 @@
     // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
     const cell = screen.offsetWidth / entry.term.cols
     if (!cell) return
-    // Columnas que caben de verdad: clientWidth ya descuenta la barra de scroll.
-    const cols = Math.max(2, Math.min(dims.cols, Math.floor(viewport.clientWidth / cell)))
+    // Columnas que caben de verdad: clientWidth ya descuenta la barra de scroll;
+    // se restan 4px de margen para que el redondeo no recorte la última letra.
+    const cols = Math.max(2, Math.min(dims.cols, Math.floor((viewport.clientWidth - 4) / cell)))
     const rows = Math.max(1, dims.rows)
     if (cols === entry.term.cols && rows === entry.term.rows) return
     // Guarda la posicion del historial: `resize()` refluye y xterm puede saltar
