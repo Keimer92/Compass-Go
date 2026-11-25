@@ -354,6 +354,13 @@ proyecto concreto:
   abre el enlace del repo en el navegador del sistema. `GitPush`/`GitPull` usan
   `runGitTimeout` (90 s) para no congelar la promesa Wails si git espera
   credenciales. `@{u}` es revisión fija de git, no texto del usuario.
+- **403 al hacer push** (`internal/gitmsg`): cuando `git push` falla por
+  permisos, `gitmsg.ExplainPush` reconoce el `Permission to <repo>.git denied to
+  <cuenta>` de GitHub y el 403 genérico, y devuelve un mensaje que nombra la
+  cuenta con la que se autenticó y los comandos de Git Credential Manager para
+  cambiarla (`github login --username`, `github logout`). Lo usan el panel Git
+  (`Bridge.GitPush`) y la tarea CLI (`pushCurrentBranch`). La cuenta la elige el
+  credential helper del sistema, no Compass: el backend solo ejecuta `git push`.
 - **Remoto caído y asistente de re-vinculación** (`internal/webui/git_remote.go`):
   `Bridge.GitRemoteStatus(url)` comprueba el remoto con `git ls-remote
   --exit-code` (25 s) y devuelve `state` = `ok` / `empty` / `missing` / `auth` /

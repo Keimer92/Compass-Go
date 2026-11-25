@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"compass/internal/gitmsg"
+	"compass/internal/menu"
 	"compass/internal/project"
 	"compass/internal/prompts"
 	"compass/internal/shell"
-	"compass/internal/menu"
 	"compass/internal/ui"
 )
 
@@ -190,6 +191,10 @@ func pushCurrentBranch(ctx *project.ProjectContext) {
 	if err := gitCapture(ctx, "push", "-u", "origin", branch); err != nil {
 		fmt.Printf("[ERROR] git push fallo:\n%s\n", err)
 		fmt.Println()
+		if hint := gitmsg.ExplainPush(err.Error()); hint != "" {
+			fmt.Println(hint)
+			return
+		}
 		fmt.Println("Pistas:")
 		fmt.Println("  - ¿Estas autenticado? (Personal Access Token en HTTPS, o `gh auth login`).")
 		fmt.Printf("  - Si el remoto ya tenia contenido: git pull --rebase origin %s\n", branch)

@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"compass/internal/gitmsg"
 	"compass/internal/settings"
 	"compass/internal/sound"
 	"compass/internal/windialog"
@@ -772,6 +773,11 @@ func (b *Bridge) GitPush() (string, error) {
 		out, err = runGitTimeout(dir, 90*time.Second, "push")
 	}
 	if err != nil {
+		// Un 403 suele ser otra cuenta guardada en el credential helper: se
+		// explica con los comandos para cambiarla en vez de volcar el error.
+		if hint := gitmsg.ExplainPush(out); hint != "" {
+			return "", errors.New(hint)
+		}
 		return "", fmt.Errorf("git push: %s", out)
 	}
 	return out, nil
