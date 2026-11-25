@@ -187,6 +187,26 @@ func NormalizeVibeDisabled(keys []string) []string {
 	return clean
 }
 
+// SameVibeDisabled compara dos listas de CLIs deshabilitadas sin importar el
+// orden ni las mayusculas. Se usa para reescribir el menu del Explorador solo
+// cuando los interruptores cambian de verdad.
+func SameVibeDisabled(a, b []string) bool {
+	x, y := NormalizeVibeDisabled(a), NormalizeVibeDisabled(b)
+	if len(x) != len(y) {
+		return false
+	}
+	seen := make(map[string]bool, len(x))
+	for _, k := range x {
+		seen[strings.ToLower(k)] = true
+	}
+	for _, k := range y {
+		if !seen[strings.ToLower(k)] {
+			return false
+		}
+	}
+	return true
+}
+
 // Save persiste las opciones. Un fallo de escritura no es fatal.
 func Save(s Settings) {
 	path := configPath()

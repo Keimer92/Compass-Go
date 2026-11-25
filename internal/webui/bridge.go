@@ -458,6 +458,7 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	cur.SoundPresets = sound.Normalize(s.SoundPresets)
 	// 0 lo descarta Load al normalizar; el rango util lo acota settings.Load.
 	cur.TerminalPanelPct = s.TerminalPanelPct
+	vibeChanged := !settings.SameVibeDisabled(cur.VibeDisabled, s.VibeDisabled)
 	cur.VibeDisabled = settings.NormalizeVibeDisabled(s.VibeDisabled)
 	if s.AutoCommitIdleMin > 0 {
 		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
@@ -481,6 +482,13 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	}
 
 	settings.Save(cur)
+	// La cascada del Explorador se escribe en el registro al instalarse: si
+	// cambian los interruptores hay que reescribirla para que muestre las
+	// mismas CLIs que la card. Se hace en segundo plano (PowerShell tarda) y
+	// solo si el menu ya estaba instalado.
+	if vibeChanged {
+		go func() { _ = tasks.SyncVibeContextMenu() }()
+	}
 }
 
 // SoundCatalog describe los eventos y presets que ofrece el modal de Opciones.

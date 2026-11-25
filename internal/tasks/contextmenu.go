@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"compass/internal/project"
+	"compass/internal/settings"
 	"compass/internal/shell"
 	"compass/internal/ui"
 )
@@ -443,52 +444,43 @@ func vibeContextCommand(shellName, title, cmdline string) string {
 		shellName, shell.PsQuote(title), cmdline)
 }
 
-func installVibeCoding() error {
-	icon := vibeIcon()
-	removeVibeOldKeys()
-	removeVibeCtxTree()
-	// Tras instalar CLIs el catalogo cacheado de la GUI queda obsoleto.
-	invalidateVibeCache()
+type resolvedVibeTool struct {
+	tool vibeTool
+	cmd  string
+	note string
+}
 
-	type resolved struct {
-		tool vibeTool
-		cmd  string
-		note string
+// vibeDisabledSet devuelve las CLIs deshabilitadas en Opciones, en minusculas
+// para comparar sin depender de mayusculas.
+func vibeDisabledSet() map[string]bool {
+	disabled := map[string]bool{}
+	for _, k := range settings.Load().VibeDisabled {
+		disabled[strings.ToLower(strings.TrimSpace(k))] = true
 	}
-	var resolvedTools []resolved
+	return disabled
+}
+
+// resolveVibeTools resuelve las CLIs instaladas y descarta las que el usuario
+// deshabilito en Opciones, para que la cascada del Explorador muestre lo mismo
+// que la card Vibe Coding.
+func resolveVibeTools() []resolvedVibeTool {
+	disabled := vibeDisabledSet()
+	out := make([]resolvedVibeTool, 0, len(vibeTools))
 	for _, t := range vibeTools {
+		if disabled[strings.ToLower(t.key)] {
+			continue
+		}
 		if cmd, note := resolveToolCommand(t); cmd != "" {
-			resolvedTools = append(resolvedTools, resolved{tool: t, cmd: cmd, note: note})
+			out = append(out, resolvedVibeTool{tool: t, cmd: cmd, note: note})
 		}
 	}
+	return out
+}
 
-	if len(resolvedTools) == 0 {
-		fmt.Println("[WARN] No se encontro ninguna CLI de Vibe Coding (ni en el PATH ni en sus rutas de instalacion).")
-		fmt.Println("[WARN] Se instalara el menu Vibe Coding sin sub-entradas.")
-		fmt.Println("[WARN] Instala las CLIs y vuelve a ejecutar el instalador.")
-	} else {
-		fmt.Printf("[INFO] Detectadas %d herramienta(s) de Vibe Coding en el PATH.\n", len(resolvedTools))
-	}
-	fmt.Println("[INFO] Detectando herramientas Vibe Coding...")
-	for _, t := range vibeTools {
-		found := false
-		var note string
-		for _, r := range resolvedTools {
-			if r.tool.key == t.key {
-				found = true
-				note = r.note
-			}
-		}
-		switch {
-		case found && note != "":
-			fmt.Printf("  [OK] %-14s (PATH no lo expone, usando: %s)\n", t.title, note)
-		case found:
-			fmt.Printf("  [OK] %s\n", t.title)
-		default:
-			fmt.Printf("  [X] %s no encontrado\n", t.title)
-		}
-	}
-
+// vibeCtxScript genera el PowerShell que crea o reescribe la cascada Vibe
+// Coding con las herramientas indicadas (ya resueltas) y su icono. Lo comparten
+// la instalacion completa y la resincronizacion tras cambiar los interruptores.
+func vibeCtxScript(resolvedTools []resolvedVibeTool, icon string) string {
 	var ps strings.Builder
 	iconQuoted := shell.PsQuote(icon)
 	ps.WriteString(fmt.Sprintf(`
@@ -524,8 +516,62 @@ New-Item -Path 'HKCU:\Software\Classes\%s\shell\%s' -Force | Out-Null; `+
 Set-ItemProperty -Path 'HKCU:\Software\Classes\%s' -Name '%s' -Value '%s' -Force; `,
 			ctxVibePath, ctxMenuStamp, stamp))
 	}
+	return ps.String()
+}
 
-	if out, err := shell.RunPS(ps.String()); err != nil {
+// SyncVibeContextMenu reescribe la cascada del Explorador si ya esta
+// instalada, para que respete los interruptores de Opciones. No la crea si el
+// usuario no la habia instalado y no imprime nada (se llama al guardar).
+func SyncVibeContextMenu() error {
+	if !isInstalled(ctxVibeKey) {
+		return nil
+	}
+	invalidateVibeCache()
+	removeVibeCtxTree()
+	_, err := shell.RunPS(vibeCtxScript(resolveVibeTools(), vibeIcon()))
+	return err
+}
+
+func installVibeCoding() error {
+	icon := vibeIcon()
+	removeVibeOldKeys()
+	removeVibeCtxTree()
+	// Tras instalar CLIs el catalogo cacheado de la GUI queda obsoleto.
+	invalidateVibeCache()
+
+	resolvedTools := resolveVibeTools()
+
+	if len(resolvedTools) == 0 {
+		fmt.Println("[WARN] No se encontro ninguna CLI de Vibe Coding habilitada (ni en el PATH ni en sus rutas de instalacion).")
+		fmt.Println("[WARN] Se instalara el menu Vibe Coding sin sub-entradas.")
+		fmt.Println("[WARN] Instala las CLIs y vuelve a ejecutar el instalador.")
+	} else {
+		fmt.Printf("[INFO] Detectadas %d herramienta(s) de Vibe Coding habilitadas.\n", len(resolvedTools))
+	}
+	fmt.Println("[INFO] Detectando herramientas Vibe Coding...")
+	disabled := vibeDisabledSet()
+	for _, t := range vibeTools {
+		found := false
+		var note string
+		for _, r := range resolvedTools {
+			if r.tool.key == t.key {
+				found = true
+				note = r.note
+			}
+		}
+		switch {
+		case found && note != "":
+			fmt.Printf("  [OK] %-14s (PATH no lo expone, usando: %s)\n", t.title, note)
+		case found:
+			fmt.Printf("  [OK] %s\n", t.title)
+		case disabled[strings.ToLower(t.key)]:
+			fmt.Printf("  [-] %s deshabilitada en Opciones\n", t.title)
+		default:
+			fmt.Printf("  [X] %s no encontrado\n", t.title)
+		}
+	}
+
+	if out, err := shell.RunPS(vibeCtxScript(resolvedTools, icon)); err != nil {
 		return fmt.Errorf("error al instalar menu Vibe Coding:\n%s", string(out))
 	}
 

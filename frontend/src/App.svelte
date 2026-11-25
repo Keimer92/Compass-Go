@@ -1111,7 +1111,7 @@
           <section class="opt-card opt-vibe">
             <h3 class="opt-card-title">Vibe Coding</h3>
             <p class="opt-hint">
-              Elige qué CLIs aparecen en la card. Las desactivadas se ocultan del menú.
+              Elige qué CLIs aparecen en la card y en el menú contextual de Windows.
             </p>
             <div class="vibe-list">
               {#each vibeTools as tool}

@@ -127,3 +127,24 @@ func TestAutoCommitIdleMinClamped(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeVibeDisabled(t *testing.T) {
+	got := NormalizeVibeDisabled([]string{" 01OpenCode ", "", "01opencode", "02CodeBuddy"})
+	if len(got) != 2 || got[0] != "01OpenCode" || got[1] != "02CodeBuddy" {
+		t.Fatalf("NormalizeVibeDisabled = %#v, queria [01OpenCode 02CodeBuddy]", got)
+	}
+}
+
+func TestSameVibeDisabledIgnoresOrderAndCase(t *testing.T) {
+	a := []string{"01OpenCode", "02CodeBuddy"}
+	b := []string{"02codebuddy", "01OPENCODE"}
+	if !SameVibeDisabled(a, b) {
+		t.Error("las listas equivalentes deberian comparar iguales")
+	}
+	if SameVibeDisabled(a, []string{"01OpenCode"}) {
+		t.Error("una lista con menos CLIs no es igual")
+	}
+	if !SameVibeDisabled(nil, []string{}) {
+		t.Error("nil y lista vacia son equivalentes")
+	}
+}

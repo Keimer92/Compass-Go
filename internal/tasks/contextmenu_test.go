@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"compass/internal/settings"
 )
 
 func TestFallbackCandidatesIncludesNpmGlobalShims(t *testing.T) {
@@ -56,5 +58,35 @@ func TestPreferCmdShimForPowerShellScript(t *testing.T) {
 
 	if got := preferCmdShim(script); got != cmdShim {
 		t.Fatalf("preferCmdShim(%q) = %q, want %q", script, got, cmdShim)
+	}
+}
+
+// Las CLIs deshabilitadas en Opciones no deben entrar en la cascada del
+// Explorador. Con todas deshabilitadas la resolucion no debe buscar nada.
+func TestResolveVibeToolsSkipsDisabled(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	disabled := make([]string, 0, len(vibeTools))
+	for _, tool := range vibeTools {
+		disabled = append(disabled, tool.key)
+	}
+	settings.Save(settings.Settings{VibeDisabled: disabled})
+
+	if got := resolveVibeTools(); len(got) != 0 {
+		t.Fatalf("resolveVibeTools = %d herramientas, queria 0", len(got))
+	}
+}
+
+// El script de la cascada solo debe crear las sub-entradas recibidas: asi el
+// filtrado de resolveVibeTools se traslada al registro.
+func TestVibeCtxScriptOnlyWritesGivenTools(t *testing.T) {
+	got := vibeCtxScript([]resolvedVibeTool{
+		{tool: vibeTools[0], cmd: "'opencode.cmd' --auto"},
+	}, "C:\\icons\\VibeCoding.ico")
+
+	if !strings.Contains(got, vibeTools[0].key) {
+		t.Errorf("el script no menciona la CLI incluida %q", vibeTools[0].key)
+	}
+	if strings.Contains(got, vibeTools[1].key) {
+		t.Errorf("el script menciona la CLI excluida %q", vibeTools[1].key)
 	}
 }
