@@ -314,6 +314,27 @@ func TestGitPushNoRemote(t *testing.T) {
 	}
 }
 
+func TestGitSyncRequiresRemoteAndUpstream(t *testing.T) {
+	dir := initRepo(t)
+	b := NewBridge(dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	if _, err := b.GitSync(); err == nil || !strings.Contains(err.Error(), "remoto") {
+		t.Fatalf("sin remoto deberia fallar mencionando 'remoto': %v", err)
+	}
+
+	// Con remoto pero sin upstream, el pull --rebase no tiene contra que
+	// comparar: se rechaza antes de tocar la red.
+	gitCommit(t, dir, "remote", "add", "origin", "https://github.com/user/repo.git")
+	if _, err := b.GitSync(); err == nil || !strings.Contains(err.Error(), "upstream") {
+		t.Fatalf("sin upstream deberia fallar mencionando 'upstream': %v", err)
+	}
+}
+
 func TestGitSetRemoteRejectsBadURL(t *testing.T) {
 	dir := initRepo(t)
 	b := NewBridge(dir)

@@ -773,17 +773,58 @@ func (b *Bridge) GitPush() (string, error) {
 		out, err = runGitTimeout(dir, 90*time.Second, "push")
 	}
 	if err != nil {
-		// Un 403 suele ser otra cuenta guardada en el credential helper: se
-		// explica y se remite al modal que tiene login/logout como botones.
-		if d, ok := gitmsg.ParseDenied(out); ok {
-			return "", fmt.Errorf("GitHub autenticó como %q, que no tiene permiso de escritura sobre %q.\n\nCámbiala en Ajustes de Git → Cuenta de GitHub.", d.Account, d.Repo)
-		}
-		if gitmsg.IsForbidden(out) {
-			return "", errors.New("GitHub rechazó el push (403): la credencial guardada no tiene permiso de escritura sobre este repositorio.\n\nRevisa la cuenta en Ajustes de Git → Cuenta de GitHub.")
-		}
-		return "", fmt.Errorf("git push: %s", out)
+		return "", pushError(out)
 	}
 	return out, nil
+}
+
+// pushError traduce un push fallido. Un 403 suele ser otra cuenta guardada en
+// el credential helper: se explica y se remite al modal que tiene el
+// login/logout como botones.
+func pushError(out string) error {
+	if d, ok := gitmsg.ParseDenied(out); ok {
+		return fmt.Errorf("GitHub autenticó como %q, que no tiene permiso de escritura sobre %q.\n\nCámbiala en Ajustes de Git → Cuenta de GitHub.", d.Account, d.Repo)
+	}
+	if gitmsg.IsForbidden(out) {
+		return errors.New("GitHub rechazó el push (403): la credencial guardada no tiene permiso de escritura sobre este repositorio.\n\nRevisa la cuenta en Ajustes de Git → Cuenta de GitHub.")
+	}
+	return fmt.Errorf("git push: %s", out)
+}
+
+// GitSync hace pull --rebase y despues push en una sola llamada. Reutiliza una
+// unica deteccion de GitInfo (siete procesos git) en vez de repetirla para el
+// pull y para el push, que es lo que hacia lenta la sincronizacion.
+func (b *Bridge) GitSync() (string, error) {
+	dir := b.projectDir()
+	if dir == "" {
+		return "", errors.New("no hay proyecto activo")
+	}
+	info := b.GitInfo()
+	if !info.IsRepo {
+		return "", errors.New("no es un repositorio git")
+	}
+	if !info.HasCommits {
+		return "", errors.New("el repo no tiene commits")
+	}
+	if info.RemoteURL == "" {
+		return "", errors.New("sin remoto 'origin': configúralo antes de sincronizar")
+	}
+	if strings.HasPrefix(info.Branch, "detached") {
+		return "", errors.New("HEAD desacoplado: no se puede sincronizar")
+	}
+	if info.Upstream == "" {
+		return "", errors.New("la rama no tiene upstream: no se puede sincronizar")
+	}
+
+	pulled, err := runGitTimeout(dir, 90*time.Second, "pull", "--rebase")
+	if err != nil {
+		return "", fmt.Errorf("git pull: %s", pulled)
+	}
+	pushed, err := runGitTimeout(dir, 90*time.Second, "push")
+	if err != nil {
+		return "", pushError(pushed)
+	}
+	return strings.TrimSpace(strings.TrimSpace(pulled) + "\n" + strings.TrimSpace(pushed)), nil
 }
 
 // GitPull trae cambios del upstream con rebase. Lo compone el frontend con

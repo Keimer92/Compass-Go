@@ -363,10 +363,13 @@ proyecto concreto:
   `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede
   leer queda vacío. `Bridge.GitPush()` hace `git push` con upstream o
   `git push -u origin HEAD` la primera vez; `Bridge.GitPull()` hace
-  `git pull --rebase` (el frontend compone "Sincronizar" = pull + push);
+  `git pull --rebase`; `Bridge.GitSync()` encadena pull --rebase + push en una
+  sola llamada y reutiliza **una** detección de `GitInfo` (siete procesos git),
+  que era el coste evitable de sincronizar; el botón muestra un spinner y la
+  rama/upstream mientras corre (`action` en `Git.svelte`).
   `Bridge.GitSetRemote(url)` agrega/actualiza `origin`; `Bridge.GitInitRepo()`
   inicializa, fija rama `main` y hace el primer commit; `Bridge.OpenExternal(url)`
-  abre el enlace del repo en el navegador del sistema. `GitPush`/`GitPull` usan
+  abre el enlace del repo en el navegador del sistema. `GitPush`/`GitPull`/`GitSync` usan
   `runGitTimeout` (90 s) para no congelar la promesa Wails si git espera
   credenciales. `@{u}` es revisión fija de git, no texto del usuario.
 - **403 al hacer push** (`internal/gitmsg`): cuando `git push` falla por

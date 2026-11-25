@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import {
     gitPush,
-    gitPull,
+    gitSync,
     gitSetRemote,
     gitInitRepo,
     gitRemoteStatus,
@@ -35,6 +35,8 @@
   // se puede afirmar que la carpeta no sea un repo.
   let loaded = $state(cached !== null)
   let busy = $state(false)
+  // Que accion esta en curso, para poner el spinner solo en su boton.
+  let action = $state<'' | 'push' | 'sync'>('')
   let error = $state('')
   let notice = $state('')
   let connectOpen = $state(false)
@@ -267,16 +269,18 @@
 
   async function push() {
     busy = true
-    try { done(await gitPush()) } catch (e) { fail(e) } finally { busy = false }
+    action = 'push'
+    try { done(await gitPush()) } catch (e) { fail(e) } finally { busy = false; action = '' }
   }
 
   async function sync() {
     busy = true
+    action = 'sync'
     try {
-      const pulled = await gitPull()
-      const pushed = await gitPush()
-      done([pulled, pushed].filter(Boolean).join('\n'))
-    } catch (e) { fail(e) } finally { busy = false }
+      // Pull --rebase + push en una sola llamada al backend: comparte la
+      // deteccion de GitInfo y evita un viaje extra por la red de Wails.
+      done(await gitSync())
+    } catch (e) { fail(e) } finally { busy = false; action = '' }
   }
 
   function openWeb() {
@@ -408,12 +412,19 @@
     </div>
     <div class="actions">
       <button class="pill primary" onclick={push} disabled={!canPush} title={remote.state === 'missing' ? 'El remoto ya no existe: vincula otro repositorio' : info.remoteUrl ? 'Subir rama actual' : 'Configura un remoto primero'}>
-        {busy ? 'Subiendo...' : 'Push'}
+        {#if action === 'push'}<span class="spin" aria-hidden="true"></span>{/if}
+        {action === 'push' ? 'Subiendo…' : 'Push'}
       </button>
       <button class="pill ghost" onclick={sync} disabled={!canSync} title={info.upstream ? 'Pull --rebase + Push' : 'La rama no tiene upstream'}>
-        Sincronizar
+        {#if action === 'sync'}<span class="spin" aria-hidden="true"></span>{/if}
+        {action === 'sync' ? 'Sincronizando…' : 'Sincronizar'}
       </button>
     </div>
+    {#if action === 'sync'}
+      <div class="sync-line">Pull --rebase y push con {info.upstream || 'el remoto'}…</div>
+    {:else if action === 'push'}
+      <div class="sync-line">Subiendo {info.branch || 'la rama'} a {info.upstream || 'origin'}…</div>
+    {/if}
   {/if}
 
   <div class="commit-box">
@@ -604,6 +615,11 @@
   .pill.ghost { background:color-mix(in srgb, var(--border) 55%, transparent); color:var(--text); }
   .pill:disabled { opacity:.5; cursor:default; }
   .actions .pill, .commit-actions .pill { flex:1; }
+  .actions .pill { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+  .spin { flex:0 0 auto; width:11px; height:11px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration:1.8s; } }
+  .sync-line { margin-top:6px; font-size:10px; color:var(--muted); }
   .empty { padding:26px 18px; text-align:center; color:var(--text); }
   .empty-ico { color:var(--brand); }
   .empty p { font-size:12px; line-height:1.5; }
