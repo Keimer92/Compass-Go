@@ -192,6 +192,10 @@ func TestCommitDetailListsFilesAndCounts(t *testing.T) {
 	if len(log) < 2 {
 		t.Fatalf("esperaba al menos dos commits: %+v", log)
 	}
+	// "2006-01-02 15:04": fecha y hora, no solo el dia.
+	if d := log[0].Date; len(d) != 16 || d[10] != ' ' || d[13] != ':' {
+		t.Fatalf("fecha sin hora: %q", d)
+	}
 	detail, err := b.CommitDetail(log[0].Hash)
 	if err != nil {
 		t.Fatalf("CommitDetail: %v", err)

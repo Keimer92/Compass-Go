@@ -117,8 +117,9 @@ func systemTimes() (cpuTimes, bool) {
 	}, true
 }
 
-// cpuUsage devuelve el uso desde la lectura anterior. La primera vez toma dos
-// muestras separadas 200 ms para no informar el promedio desde el arranque.
+// cpuUsage devuelve el uso desde la lectura anterior. La primera llamada solo
+// toma la base y devuelve 0: dormir 200 ms aqui retrasaba el arranque de la
+// app, y el siguiente poll (2 s) ya da el uso real.
 func cpuUsage() float64 {
 	cpuMu.Lock()
 	defer cpuMu.Unlock()
@@ -128,29 +129,25 @@ func cpuUsage() float64 {
 		return cpuCached.usage
 	}
 
-	prev, ok := cpuLast, cpuHas
-	if !ok {
-		first, ok1 := systemTimes()
-		if !ok1 {
-			return 0
-		}
-		time.Sleep(200 * time.Millisecond)
-		second, ok2 := systemTimes()
-		if !ok2 {
-			return 0
-		}
-		prev, ok = first, true
-		cpuLast = second
-		cpuHas = true
-	} else {
-		cur, ok3 := systemTimes()
-		if !ok3 {
+	if !cpuHas {
+		cur, ok := systemTimes()
+		if !ok {
 			return 0
 		}
 		cpuLast = cur
+		cpuHas = true
+		cpuCached.usage = 0
+		cpuCached.at = time.Now()
+		return 0
 	}
 
-	cur := cpuLast
+	prev := cpuLast
+	cur, ok := systemTimes()
+	if !ok {
+		return 0
+	}
+	cpuLast = cur
+
 	dIdle := float64(cur.idle - prev.idle)
 	dKernel := float64(cur.kernel - prev.kernel)
 	dUser := float64(cur.user - prev.user)
@@ -184,9 +181,11 @@ func readGPU() []string {
 	gpuLoading = true
 	gpuMu.Unlock()
 
-	// Consultar PowerShell tarda cientos de ms: se hace en segundo plano. El
-	// primer snapshot sale sin GPU y el siguiente poll (2 s) ya la trae.
+	// Consultar PowerShell tarda cientos de ms y arrancar una consola cuesta
+	// CPU: se espera a que la app termine de abrir y se hace en segundo plano.
+	// El primer snapshot sale sin GPU y un poll posterior ya la trae.
 	go func() {
+		time.Sleep(2 * time.Second)
 		names, ok := queryGPU()
 		gpuMu.Lock()
 		gpuNames = names

@@ -536,6 +536,18 @@
         }
         if (e.shiftKey) return false
       }
+      // PageUp/PageDown mueven el scrollback en el buffer normal. En el buffer
+      // alterno (vim, less, htop) la secuencia debe llegar a la aplicacion.
+      if (!mod && !e.altKey && term.buffer.active.type === 'normal') {
+        if (e.key === 'PageUp') {
+          term.scrollPages(-1)
+          return false
+        }
+        if (e.key === 'PageDown') {
+          term.scrollPages(1)
+          return false
+        }
+      }
       return true
     })
     // Las CLI con TUI (por ejemplo el chat de Codebuddy) activan mouse

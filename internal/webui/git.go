@@ -525,8 +525,9 @@ func (b *Bridge) GitLog() []CommitEntry {
 	if dir == "" {
 		return nil
 	}
+	// Fecha y hora locales del commit, con el mismo formato que el historial.
 	format := "%h%x1f%H%x1f%an%x1f%ad%x1f%s%x1e"
-	out, err := runGit(dir, "log", "-n", "100", "--date=short", "--pretty=format:"+format)
+	out, err := runGit(dir, "log", "-n", "100", "--date=format:%Y-%m-%d %H:%M", "--pretty=format:"+format)
 	if err != nil {
 		return nil
 	}
@@ -639,7 +640,7 @@ func (b *Bridge) CommitDetail(hash string) (CommitDetail, error) {
 		return CommitDetail{}, errors.New("hash de commit invalido")
 	}
 
-	header, err := runGit(dir, "log", "-1", "--no-color", "--date=short",
+	header, err := runGit(dir, "log", "-1", "--no-color", "--date=format:%Y-%m-%d %H:%M",
 		"--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%b%x1e", hash)
 	if err != nil {
 		return CommitDetail{}, fmt.Errorf("git log: %s", header)

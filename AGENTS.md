@@ -317,6 +317,10 @@ proyecto concreto:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
+- **Fecha y hora en el Historial**: `GitLog` y `CommitDetail` usan
+  `--date=format:%Y-%m-%d %H:%M`, así que cada commit muestra el día y la hora
+  exacta (sin segundos ni zona horaria, que solo alargaban la fila). El formato
+  está fijado en `internal/webui/git.go` y cubierto por `git_test.go`.
 - **Cuenta de GitHub en la UI** (`internal/webui/github_auth.go`): el modal
   Ajustes de Git lista las cuentas de Git Credential Manager
   (`GitHubAccounts`), permite añadir una (`GitHubLogin`, abre el navegador,
@@ -332,10 +336,12 @@ proyecto concreto:
   `GetLogicalDrives` + `GetDiskFreeSpaceEx` para unidades fijas/extraíbles, y la
   GPU con una consulta CIM a PowerShell **en segundo plano** y cacheada (tarda
   ~1 s; el primer poll sale sin GPU y el siguiente la trae). El uso de CPU se
-  calcula con el delta entre lecturas y se reutiliza 1 s; la primera llamada
-  toma dos muestras separadas 200 ms para no informar el promedio desde el
-  arranque. El componente refresca cada 2 s y conserva el último valor si una
-  lectura falla. `sysinfo_other.go` mantiene `go build` fuera de Windows.
+  calcula con el delta entre lecturas y se reutiliza 1 s. Para no retrasar el
+  arranque, la primera lectura de CPU solo guarda la base y devuelve 0 (sin
+  esperar los 200 ms de una segunda muestra) y la consulta de GPU se lanza 2 s
+  después; el componente, además, espera 1.2 s antes de su primer poll. El
+  componente refresca cada 2 s y conserva el último valor si una lectura falla.
+  `sysinfo_other.go` mantiene `go build` fuera de Windows.
 - **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula 3D con brazos en SVG
   puro (sin assets, hereda `currentColor` del tema). El bisel metalico se logra
   con una base `currentColor` y capas de brillo/sombra; la esfera es oscura y
@@ -971,6 +977,10 @@ dev.bat              # Vite (HMR de UI) + backend con R = recompilar/reiniciar
     `attachCustomWheelEventHandler` desplaza el scrollback de xterm en vez de
     mandar la rueda a la CLI; en el buffer alterno (vim, less, htop) se respeta
     el mouse de la aplicacion.
+  - **Av Pág / Re Pág**: xterm no las mapea al scrollback por defecto, así que
+    `attachCustomKeyEventHandler` intercepta `PageUp`/`PageDown` y llama a
+    `term.scrollPages(-1|1)`. Solo actúa en el buffer normal (sin Ctrl/Alt); en
+    el alterno el par se envía a la TUI, que es quien pagina.
   - **Panel derecho plegable**: el boton `⤢` de la barra de pestañas oculta
     `.right` (`class:collapsed`) para dar todo el ancho al terminal cuando un
     diff o una tabla no caben; al plegar/desplegar se reajusta el xterm y el PTY.

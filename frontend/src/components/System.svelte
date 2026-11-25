@@ -13,6 +13,7 @@
 
   onMount(() => {
     let alive = true
+    let timer: ReturnType<typeof setInterval> | undefined
     const tick = async () => {
       try {
         const next = await getSystemInfo()
@@ -21,11 +22,16 @@
         /* se mantiene el ultimo valor */
       }
     }
-    void tick()
-    const timer = setInterval(tick, 2000)
+    // El primer poll se retrasa: al abrir la app no debe competir con la carga
+    // del workspace ni con el arranque de PowerShell para la GPU.
+    const first = setTimeout(() => {
+      void tick()
+      timer = setInterval(tick, 2000)
+    }, 1200)
     return () => {
       alive = false
-      clearInterval(timer)
+      clearTimeout(first)
+      if (timer) clearInterval(timer)
     }
   })
 </script>
