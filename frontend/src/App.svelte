@@ -85,6 +85,9 @@
   // CLIs de Vibe Coding con su interruptor para la seccion "Vibe Coding" de
   // Opciones. La card solo muestra las que quedan habilitadas.
   let vibeTools = $state<VibeToolInfo[]>([])
+  // CLIs que se muestran en la barra lateral: habilitadas en Opciones e
+  // instaladas (una card que solo mostrara un aviso no aporta nada).
+  let vibeSide = $derived(vibeTools.filter((t) => t.found && t.enabled))
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   // Modal "Elegir que borrar" de la card Clean. cleanupSelected usa el path
@@ -204,15 +207,36 @@
     } catch {
       /* la seccion Sonidos no se muestra */
     }
-    try {
-      vibeTools = await getVibeTools()
-    } catch {
-      /* la seccion Vibe Coding no se muestra */
-    }
+    await loadVibeTools()
   }
 
   function toggleVibeTool(key: string, enabled: boolean) {
     vibeTools = vibeTools.map((t) => (t.key === key ? { ...t, enabled } : t))
+  }
+
+  // Carga el catalogo de CLIs para las cards de la barra lateral. Se repite al
+  // guardar Opciones y al arrancar; si falla, la seccion no se muestra.
+  async function loadVibeTools() {
+    try {
+      vibeTools = await getVibeTools()
+    } catch {
+      /* sin catalogo no se pinta la seccion */
+    }
+  }
+
+  // Lanza una CLI en una pestana del proyecto activo.
+  async function launchVibe(tool: VibeToolInfo) {
+    try {
+      const t = await runTask('vibe-run-' + tool.key)
+      if (!t) {
+        lastError = `Sin tarea para ${tool.title}`
+        return
+      }
+      lastError = ''
+      await runNamedTask(tool.title, t)
+    } catch (e) {
+      lastError = 'ERROR: ' + (e as Error).message
+    }
   }
 
   // Acciones de mantenimiento de Vibe Coding, que antes vivian en el submenu
@@ -262,6 +286,8 @@
           : cur.vibe_disabled,
       })
       optionsOpen = false
+      // La barra lateral refleja los interruptores al instante.
+      await loadVibeTools()
     } catch (e) {
       lastError = (e as Error).message
     }
@@ -332,6 +358,8 @@
       if (document.visibilityState === 'visible') notifyRepoChanged()
     })
     loadTheme()
+    // Catalogo de CLIs para la seccion Vibe Coding de la barra lateral.
+    loadVibeTools()
     // El reparto elegido con el separador se restaura al arrancar.
     getSettings().then((s) => { termPct = s.terminal_panel_pct }).catch(() => {})
     onWorkspaceChanged(() => {
@@ -910,6 +938,25 @@
         </div>
       {/each}
     </div>
+    {#if vibeSide.length}
+      <div class="section-title"><span>VIBE CODING</span></div>
+      <div class="vibe-grid">
+        {#each vibeSide as tool (tool.key)}
+          <button
+            class="vibe-card"
+            onclick={() => launchVibe(tool)}
+            aria-label={`Abrir ${tool.title} en el proyecto activo`}
+          >
+            <span class="vibe-name">{tool.title}</span>
+            <span class="vibe-tip" role="tooltip">
+              <span class="vibe-tip-title">{tool.title}</span>
+              <span class="vibe-tip-path">{tool.path}</span>
+              <span class="vibe-tip-hint">Clic para abrir en el proyecto activo</span>
+            </span>
+          </button>
+        {/each}
+      </div>
+    {/if}
     <div class="sidebar-foot">
       <button class="theme-btn" onclick={() => (themeMenu = !themeMenu)}>
         <span>◈</span><span class="theme-btn-text">{theme?.name ?? 'Tema'}</span>

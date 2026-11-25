@@ -943,15 +943,17 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   `sound_presets` de `settings.json`; `sound.Normalize` rellena claves
   ausentes o desconocidas. Los eventos de terminal llegan en `none` porque un
   build ya suena desde su propio proceso y encender ambos duplicaria el aviso.
-- **CLIs de Vibe Coding como cards**: la seccion "Vibe Coding" de Opciones lista
-  todas las CLIs (`GetVibeTools`, incluidas las no instaladas) con un
-  interruptor. `vibeMenuCards` convierte cada CLI **habilitada e instalada** en
-  una card propia al final de DEV (id `vibe-run-<clave>`), y `RunTask` devuelve
-  ese id tal cual porque no tiene indice de menu. Las no instaladas solo se ven
-  en Opciones, donde tambien viven "Instalar faltantes" y "Configurar OpenCode"
-  (antes subcards de la card retirada; el enum `VibeCoding` se conserva oculto
-  para no desplazar indices). Se guarda la lista de deshabilitadas (no la de
-  habilitadas) para que una CLI nueva aparezca activa sin migrar el fichero;
+- **CLIs de Vibe Coding en la barra lateral**: la seccion "Vibe Coding" de
+  Opciones lista todas las CLIs (`GetVibeTools`, incluidas las no instaladas)
+  con un interruptor. La barra lateral pinta las **habilitadas e instaladas**
+  en una rejilla de dos columnas (`vibeSide`), solo con el nombre; al hacer
+  hover/foco un tooltip muestra la ruta y la accion. Al pulsar se lanza
+  `vibe-run-<clave>` (`RunTask` devuelve ese id tal cual porque no tiene indice
+  de menu). Las no instaladas solo se ven en Opciones, donde tambien viven
+  "Instalar faltantes" y "Configurar OpenCode" (antes subcards de la card
+  retirada; el enum `VibeCoding` se conserva oculto para no desplazar indices).
+  Se guarda la lista de deshabilitadas (no la de habilitadas) para que una CLI
+  nueva aparezca activa sin migrar el fichero;
   `settings.NormalizeVibeDisabled` recorta espacios y duplica sin distinguir
   mayusculas. La cascada del Explorador se escribe en el registro al instalarse,
   asi que `SetSettings` llama (en segundo plano y solo si la lista cambio) a

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"compass/internal/settings"
-	"compass/internal/tasks"
 )
 
 // Un proyecto Go puro no tiene tareas de Android: esas cards no deben
@@ -69,28 +68,6 @@ func TestMenuSetsPlatformBadge(t *testing.T) {
 		if got[label] != platform {
 			t.Errorf("card %q: platform = %q, queria %q", label, got[label], platform)
 		}
-	}
-}
-
-// Vibe Coding ya no es una card con submenu: cada CLI habilitada e instalada
-// se convierte en una card propia al final de DEV. Las no instaladas y las
-// deshabilitadas en Opciones se quedan fuera del menu.
-func TestVibeMenuCards(t *testing.T) {
-	tools := []tasks.VibeToolInfo{
-		{Key: "01OpenCode", Title: "OpenCode", Path: `C:\bin\opencode.cmd`, Found: true},
-		{Key: "02CodeBuddy", Title: "CodeBuddy", Found: false},
-		{Key: "03KiloCode", Title: "Kilo Code", Path: `C:\bin\kilo.cmd`, Found: true},
-	}
-	cards := vibeMenuCards(tools, map[string]bool{"03kilocode": true})
-	if len(cards) != 1 {
-		t.Fatalf("cards = %d, queria 1", len(cards))
-	}
-	card := cards[0]
-	if card.ID != "vibe-run-01OpenCode" || card.Label != "OpenCode" {
-		t.Errorf("card = %+v, queria OpenCode con id vibe-run-01OpenCode", card)
-	}
-	if card.Section != "DEV" || card.Icon != "vibe" || card.Color != "vibe" {
-		t.Errorf("card fuera de DEV o sin icono de vibe: %+v", card)
 	}
 }
 
