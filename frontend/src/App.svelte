@@ -31,6 +31,9 @@
 
   let workspace = $state<WorkspaceInfo>({ projects: [], active: 0 })
   let menu = $state<MenuItemInfo[]>([])
+  // Numero de la ultima peticion de menu: si dos cambios de proyecto se
+  // solapan, solo la respuesta mas reciente puede pintar las cards.
+  let menuSeq = 0
   let tabs = $state<Tab[]>([])
   let activeKey = $state<number | null>(null)
   // Mascota: reposo, trabajando (hay una tarea corriendo) y destellos de
@@ -427,7 +430,9 @@
 
   async function refresh() {
     workspace = await getWorkspace()
-    menu = await getMenu()
+    const seq = ++menuSeq
+    const m = await getMenu()
+    if (seq === menuSeq) menu = m
   }
 
   // Boton "+" de la barra lateral: selector nativo de carpetas. El backend
@@ -436,11 +441,15 @@
     try {
       workspace = await pickProjectDialog()
       // El menu y la primera terminal no bloquean el repintado del proyecto.
+      // El dialogo ya cambio el proyecto en el backend, asi que getMenu
+      // devuelve las cards correctas.
+      const seq = ++menuSeq
       const menuP = getMenu()
       const first = tabForProject(workspace.projects[workspace.active]?.path ?? '')
       if (first) await activate(first.key)
       else activeKey = null
-      menu = await menuP
+      const next = await menuP
+      if (seq === menuSeq) menu = next
     } catch (e) {
       lastError = 'ERROR al abrir el proyecto: ' + (e as Error).message
     }
@@ -459,14 +468,19 @@
     if (i !== workspace.active) workspace = { ...workspace, active: i }
     const first = tabForProject(workspace.projects[i]?.path ?? '')
     activeKey = first ? first.key : null
-    const menuP = getMenu()
     workspace = await selectProject(i)
+    // El menu se pide DESPUES de confirmar el proyecto: getMenu lo construye
+    // con el proyecto activo del backend, y pedirlo antes devolvia las cards
+    // del proyecto anterior (se veian las de A al entrar en B).
+    const seq = ++menuSeq
+    const menuP = getMenu()
     // El backend confirma el proyecto activo; la pestaña se revalida por si
     // cambio el indice.
     const confirmed = tabForProject(workspace.projects[workspace.active]?.path ?? '')
     if (confirmed) await activate(confirmed.key)
     else activeKey = null
-    menu = await menuP
+    const next = await menuP
+    if (seq === menuSeq) menu = next
   }
 
   async function dropProject(i: number) {
