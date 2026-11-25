@@ -595,12 +595,16 @@
   }
 
   // fitTerm ajusta el xterm al host sin proponer nunca un tamano que no quepa.
-  // FitAddon mide el host, pero el ancho util de verdad lo marca el viewport
-  // (descuenta su barra de scroll). Antes se llamaba a `fit()` y luego se
-  // recortaban columnas: eso redimensionaba DOS veces (ancho y luego menos
-  // ancho) en cada cambio de pestaña, y cada reflow desplazaba el contenido.
-  // Ahora se calcula el tamano final y solo se llama a `resize()` si de verdad
-  // cambia, de modo que cambiar de proyecto no toca la geometria del terminal.
+  // FitAddon mide el host y resta una barra de scroll supuesta (15 px cuando no
+  // la puede medir), asi que su ancho se queda corto. El ancho util real es el
+  // del viewport, que ya descuenta la barra de 10 px del CSS global. Se usa
+  // entero: reservar una celda extra dejaba una franja muerta a la derecha y
+  // las TUI (el chat de Codebuddy, por ejemplo) truncaban su marco y su texto
+  // una columna antes del borde. Antes se llamaba a `fit()` y luego se
+  // recortaban columnas: eso redimensionaba DOS veces en cada cambio de
+  // pestaña, y cada reflow desplazaba el contenido. Ahora se calcula el tamano
+  // final y solo se llama a `resize()` si de verdad cambia, de modo que cambiar
+  // de proyecto no toca la geometria del terminal.
   function fitTerm(key: number) {
     const entry = terms.get(key)
     if (!entry) return
@@ -612,10 +616,9 @@
     if (!dims) return
     // Ancho de celda tal como lo pinta el renderer (ya redondeado al DPR).
     const cell = screen.offsetWidth / entry.term.cols
-    if (!cell) return
-    // Reserva una celda al borde derecho: con el redondeo de Windows/DPI algunas
-    // TUI pintaban la ultima columna fuera del viewport y quedaba recortada.
-    const cols = Math.max(2, Math.min(dims.cols, Math.floor((viewport.clientWidth - cell - 1) / cell)))
+    const usable = viewport.clientWidth
+    if (!cell || !usable) return
+    const cols = Math.max(2, Math.floor(usable / cell))
     const rows = Math.max(1, dims.rows)
     if (cols === entry.term.cols && rows === entry.term.rows) return
     // Guarda la posicion del historial: `resize()` refluye y xterm puede saltar
