@@ -83,10 +83,11 @@ goto wait
 echo.
 echo [OK] Vite listo en http://127.0.0.1:5173
 echo [INFO] Compilando y abriendo Compass Go...
-echo        Los cambios en la UI se recargan solos; los de Go requieren
-echo        cerrar esta ventana y volver a ejecutar dev.bat.
+echo        Los cambios en la UI se recargan solos y los de Go recompilan
+echo        y reinician la ventana automaticamente al guardar.
+echo        R = reiniciar ahora   ^|   Q = salir
 echo.
-go run ./cmd/compass-web --dev %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-run.ps1" %*
 
 echo.
 echo [INFO] Compass Go cerrado. Vite sigue vivo en segundo plano: al cerrar

@@ -65,7 +65,8 @@ Compass Go/
 │  ├─ make_icons.ps1          #   convierte un .png en .ico multi-tamano (16..256)
 │  └─ make_header.ps1         #   cabecera 150x57 BMP a partir de assets/icon/CompassGo.ico
 ├─ dist/                      # GENERADO por dist.bat (payload/ + CompassGo-Setup.exe); desechable
-├─ dev.bat                    # Vite en 2º plano (HMR de UI) + go run --dev
+├─ dev.bat                    # Vite en 2º plano (HMR de UI) + dev-run.ps1 (Go)
+├─ dev-run.ps1                # compila/arranca el backend y reinicia al guardar Go (R/Q)
 ├─ frontend/dev-vite.bat      # arranca Vite con salida a %LOCALAPPDATA%\compass\vite-dev.log
 ├─ dev-reset.ps1              # cierra la sesión de desarrollo anterior al relanzar dev.bat
 ├─ install.bat                # dist.bat + instalación silenciosa con el Setup
@@ -803,18 +804,32 @@ COMPASS_E2E=1 go test ./...   # tests e2e (requieren Windows + ejecutar el binar
 
 `dev.bat` levanta Vite **en segundo plano dentro de la misma consola**
 (`start /b` sobre `frontend/dev-vite.bat`, puerto 5173, `strictPort`) y luego
-`go run ./cmd/compass-web --dev`. No se abre una segunda ventana: la salida de
+deja el backend en manos de `dev-run.ps1`, que compila y arranca
+`build\dev\compass-web.exe --dev`. No se abre una segunda ventana: la salida de
 Vite se escribe en `%LOCALAPPDATA%\compass\vite-dev.log` para no mezclarse con
-la de `go run`, y al cerrar la consola Vite muere con ella (sin huérfanos). El
+la del backend, y al cerrar la consola Vite muere con ella (sin huérfanos). El
 flag `--dev` exporta
 `FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173`; con ese valor Wails v3 sirve la
 UI desde Vite en lugar del bundle embebido (rama `!production` de
 `internal/assetserver`), de modo que los cambios de Svelte/CSS/TS se aplican en
-caliente. **Solo hay HMR del frontend**: los cambios de Go requieren cerrar y
-volver a ejecutar `dev.bat`.
+caliente.
+
+**Backend sin cerrar la consola**: Go es un binario compilado, así que no hay
+hot reload real. `dev-run.ps1` vigila `*.go`, `go.mod` y `go.sum` con un
+`FileSystemWatcher` y, tras 600 ms de silencio (para agrupar varios guardados),
+recompila y reinicia la ventana. También acepta teclas en la consola: `R`
+reinicia en el acto y `Q` cierra Compass. La compilación va a
+`build\dev\compass-web.next.exe` y solo si termina bien se cierra la instancia
+actual y se renombra a `compass-web.exe`; así un error de Go deja el Compass
+abierto (solo se ven los errores) y el siguiente guardado lo reintenta. El
+`.exe` en ejecución no se puede sobrescribir en Windows, de ahí el nombre
+intermedio. El cierre es ordenado (`CloseMainWindow`) para que Wails termine
+sus ConPTY; a los 5 s se mata el árbol con `taskkill /T /F`. Los eventos del
+watcher se encolan en un hashtable sincronizado, de modo que un guardado
+durante un rebuild no se pierde: se aplica en la vuelta siguiente.
 
 ```bat
-dev.bat              # Vite (HMR de UI) + go run --dev
+dev.bat              # Vite (HMR de UI) + backend con R = recompilar/reiniciar
 ```
 
 - **Reinicio limpio** (`dev-reset.ps1`): antes de arrancar, `dev.bat` cierra la
