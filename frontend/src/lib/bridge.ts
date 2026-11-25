@@ -192,3 +192,12 @@ export interface CommitDetail {
   files: CommitFile[]
 }
 export const commitDetail = (hash: string) => call<CommitDetail>(M('CommitDetail'), hash)
+
+// Estado del equipo para el panel derecho (se refresca en segundo plano).
+export interface SystemInfo {
+  cpu: { name: string; cores: number; usage: number }
+  ram: { total: number; used: number }
+  gpu: string[]
+  disks: { letter: string; label: string; total: number; free: number }[]
+}
+export const getSystemInfo = () => call<SystemInfo>(M('GetSystemInfo'))

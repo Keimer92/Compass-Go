@@ -16,6 +16,7 @@
   import Explorer from './components/Explorer.svelte'
   import Git from './components/Git.svelte'
   import History from './components/History.svelte'
+  import System from './components/System.svelte'
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
@@ -43,12 +44,6 @@
   let running = $derived(tabs.some((t) => !t.exited && !!t.ptyId))
   let mood = $derived<'idle' | 'working' | 'success' | 'error'>(
     moodFlash ?? (running ? 'working' : 'idle')
-  )
-  let moodText = $derived(
-    mood === 'working' ? 'Trabajando…'
-      : mood === 'success' ? 'Terminó sin errores'
-      : mood === 'error' ? 'Algo falló'
-      : 'En reposo'
   )
   function flashMood(next: 'success' | 'error') {
     moodFlash = next
@@ -1078,17 +1073,7 @@
             {/key}
           {/if}
         </div>
-        <div class="right-foot" title={moodText}>
-          <div class="right-foot-label {mood}">
-            <span class="mood-dot"></span>
-            <span class="mascot-text">{moodText}</span>
-          </div>
-          <div class="mascot-track">
-            <span class="mascot-runner">
-              <Mascot size={40} {mood} walk />
-            </span>
-          </div>
-        </div>
+        <System />
       </aside>
     </section>
   </main>

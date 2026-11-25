@@ -36,29 +36,6 @@
 /* Sin barra superior: Tema/Opciones viven al pie del sidebar para no robar
    alto a las cards ni al terminal. */
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding-top: 14px; }
-.right-foot { flex-shrink: 0; padding: 7px 10px 5px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 62%, var(--bg)); }
-.right-foot-label { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 500; color: var(--muted); transition: color .2s ease; }
-.right-foot-label.working { color: var(--accent); }
-.right-foot-label.success { color: var(--green); }
-.right-foot-label.error { color: var(--red); }
-.mood-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-.mascot-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Pista de paseo: la mascota se mueve en horizontal y gira en los extremos.
-   El recorrido usa cqw para no depender del ancho fijo del panel. */
-.mascot-track { position: relative; height: 42px; margin-top: 2px; overflow: hidden; container-type: inline-size; }
-.mascot-track::before { content: ''; position: absolute; left: 10px; right: 10px; bottom: 4px; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--border) 80%, transparent), transparent); }
-.mascot-runner { position: absolute; left: 0; bottom: 0; width: 40px; height: 40px; color: var(--accent); animation: patrol 15s ease-in-out infinite; will-change: transform; }
-@keyframes patrol {
-  0%, 7% { transform: translateX(10px) scaleX(1); }
-  45% { transform: translateX(calc(100cqw - 100% - 10px)) scaleX(1); }
-  50% { transform: translateX(calc(100cqw - 100% - 10px)) scaleX(-1); }
-  52% { transform: translateX(calc(100cqw - 100% - 10px)) scaleX(-1); }
-  90% { transform: translateX(10px) scaleX(-1); }
-  95%, 100% { transform: translateX(10px) scaleX(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mascot-runner { animation: none !important; transform: translateX(10px); }
-}
 .theme-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; transition: color .15s ease, background .15s ease, border-color .15s ease; }
 .theme-btn:hover { color: var(--text); background: color-mix(in srgb, var(--border) 70%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .theme-btn-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
