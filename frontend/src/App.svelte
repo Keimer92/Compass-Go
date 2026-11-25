@@ -8,6 +8,7 @@
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
     listCleanupCandidates, purgeCleanupCandidates, getSoundCatalog, previewSound,
+    getVibeTools,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -18,7 +19,7 @@
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo } from './lib/bridge'
+  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo, VibeToolInfo } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -72,6 +73,7 @@
     copilot_model: '',
     sound_presets: {},
     terminal_panel_pct: 60,
+    vibe_disabled: [],
   })
   // Reparto cards/terminal en % del area central. Se cambia arrastrando el
   // separador y se guarda en settings; al no depender del numero de cards, el
@@ -80,6 +82,9 @@
   let splitDrag = $state(false)
   // Catalogo de eventos/presets de sonido para la seccion "Sonidos" de Opciones.
   let soundCatalog = $state<SoundCatalog | null>(null)
+  // CLIs de Vibe Coding con su interruptor para la seccion "Vibe Coding" de
+  // Opciones. La card solo muestra las que quedan habilitadas.
+  let vibeTools = $state<VibeToolInfo[]>([])
   let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
 
   // Modal "Elegir que borrar" de la card Clean. cleanupSelected usa el path
@@ -195,6 +200,15 @@
     } catch {
       /* la seccion Sonidos no se muestra */
     }
+    try {
+      vibeTools = await getVibeTools()
+    } catch {
+      /* la seccion Vibe Coding no se muestra */
+    }
+  }
+
+  function toggleVibeTool(key: string, enabled: boolean) {
+    vibeTools = vibeTools.map((t) => (t.key === key ? { ...t, enabled } : t))
   }
 
   // Preset elegido para un evento (si aun no hay valor guardado, el de fabrica).
@@ -220,6 +234,11 @@
         open_output_dir: settings.open_output_dir,
         close_tab_on_build_end: settings.close_tab_on_build_end,
         sound_presets: settings.sound_presets,
+        // Si el catalogo no llego (backend antiguo o fallo), se conserva la
+        // lista guardada en vez de habilitar todo por accidente.
+        vibe_disabled: vibeTools.length
+          ? vibeTools.filter((t) => !t.enabled).map((t) => t.key)
+          : cur.vibe_disabled,
       })
       optionsOpen = false
     } catch (e) {
@@ -1087,6 +1106,31 @@
             <span>Cerrar la pestaña del terminal al terminar un build</span>
           </label>
         </section>
+
+        {#if vibeTools.length}
+          <section class="opt-card opt-vibe">
+            <h3 class="opt-card-title">Vibe Coding</h3>
+            <p class="opt-hint">
+              Elige qué CLIs aparecen en la card. Las desactivadas se ocultan del menú.
+            </p>
+            <div class="vibe-list">
+              {#each vibeTools as tool}
+                <label class="vibe-row">
+                  <span class="vibe-text">
+                    <span class="sound-label">{tool.title}</span>
+                    <span class="sound-desc">{tool.found ? tool.path : 'No instalada'}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={tool.enabled}
+                    onchange={(e) => toggleVibeTool(tool.key, e.currentTarget.checked)}
+                    aria-label={`Mostrar ${tool.title} en la card Vibe Coding`}
+                  />
+                </label>
+              {/each}
+            </div>
+          </section>
+        {/if}
 
         {#if soundCatalog}
           <section class="opt-card opt-sounds">

@@ -2,10 +2,12 @@ package webui
 
 import (
 	"fmt"
+	"strings"
 
-	"compass/internal/project"
-	"compass/internal/tasks"
 	"compass/internal/menu"
+	"compass/internal/project"
+	"compass/internal/settings"
+	"compass/internal/tasks"
 )
 
 // menuItems es el orden canónico de cards (mismo que la TUI/GUI anterior).
@@ -124,19 +126,65 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"env-do-open", "Abrir respaldos", "Carpeta de respaldos de Compass", "git"},
 		}
 	case menu.VibeCoding:
-		return vibeSubcards()
+		return vibeSubcards(disabledVibeSet(settings.Load().VibeDisabled))
 	}
 	return nil
 }
 
+// disabledVibeSet convierte la lista guardada de CLIs deshabilitadas en un
+// conjunto con claves en minusculas para comparar sin depender de mayusculas.
+func disabledVibeSet(keys []string) map[string]bool {
+	if len(keys) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[strings.ToLower(strings.TrimSpace(k))] = true
+	}
+	return set
+}
+
+// VibeToolOption describe una CLI de Vibe Coding para el modal de Opciones:
+// si esta instalada y si el usuario la tiene habilitada en la card.
+type VibeToolOption struct {
+	Key     string `json:"key"`
+	Title   string `json:"title"`
+	Path    string `json:"path"`
+	Found   bool   `json:"found"`
+	Enabled bool   `json:"enabled"`
+}
+
+// GetVibeTools devuelve el catalogo completo de CLIs (incluidas las ocultas)
+// para que Opciones pueda listarlas con su interruptor. La card solo muestra
+// las habilitadas.
+func (b *Bridge) GetVibeTools() []VibeToolOption {
+	disabled := disabledVibeSet(settings.Load().VibeDisabled)
+	tools := tasks.VibeTools()
+	out := make([]VibeToolOption, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, VibeToolOption{
+			Key:     t.Key,
+			Title:   t.Title,
+			Path:    t.Path,
+			Found:   t.Found,
+			Enabled: !disabled[strings.ToLower(t.Key)],
+		})
+	}
+	return out
+}
+
 // vibeSubcards lista las CLIs de Vibe Coding detectadas en la maquina, una
-// subcard por herramienta, mas las acciones de mantenimiento. Las que no estan
-// instaladas se muestran igual (para que se vea que existen) pero su tarea
-// avisa en la pestana en vez de lanzar nada.
-func vibeSubcards() []Subcard {
+// subcard por herramienta, mas las acciones de mantenimiento. Las que el
+// usuario deshabilito en Opciones no se muestran; las que no estan instaladas
+// se muestran igual (para que se vea que existen) pero su tarea avisa en la
+// pestana en vez de lanzar nada.
+func vibeSubcards(disabled map[string]bool) []Subcard {
 	tools := tasks.VibeTools()
 	out := make([]Subcard, 0, len(tools)+2)
 	for _, t := range tools {
+		if disabled[strings.ToLower(t.Key)] {
+			continue
+		}
 		desc := "No instalada · usa 'Instalar faltantes'"
 		if t.Found {
 			desc = t.Path

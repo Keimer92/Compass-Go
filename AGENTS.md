@@ -939,6 +939,13 @@ dev.bat              # Vite (HMR de UI) + go run --dev
   `sound_presets` de `settings.json`; `sound.Normalize` rellena claves
   ausentes o desconocidas. Los eventos de terminal llegan en `none` porque un
   build ya suena desde su propio proceso y encender ambos duplicaria el aviso.
+- **CLIs de Vibe Coding habilitables**: la seccion "Vibe Coding" de Opciones
+  lista todas las CLIs (`GetVibeTools`, incluidas las no instaladas) con un
+  interruptor. `vibeSubcards` omite las que estan en `vibe_disabled` de
+  `settings.json`, asi la card solo muestra las habilitadas. Se guarda la lista
+  de deshabilitadas (no la de habilitadas) para que una CLI nueva aparezca
+  activa sin migrar el fichero; `settings.NormalizeVibeDisabled` recorta
+  espacios y duplica sin distinguir mayusculas.
 - **Instancia única por proyecto**: `internal/lock` con
   `x/sys/windows.LockFileEx` sobre un fichero por proyecto en
   `%LOCALAPPDATA%\compass\instances` (no se escribe nada en la carpeta del

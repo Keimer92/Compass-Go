@@ -458,6 +458,7 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	cur.SoundPresets = sound.Normalize(s.SoundPresets)
 	// 0 lo descarta Load al normalizar; el rango util lo acota settings.Load.
 	cur.TerminalPanelPct = s.TerminalPanelPct
+	cur.VibeDisabled = settings.NormalizeVibeDisabled(s.VibeDisabled)
 	if s.AutoCommitIdleMin > 0 {
 		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
 	}

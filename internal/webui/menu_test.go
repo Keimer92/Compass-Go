@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"compass/internal/settings"
 )
 
 // Un proyecto Go puro no tiene tareas de Android: esas cards no deben
@@ -54,14 +56,14 @@ func TestMenuSetsPlatformBadge(t *testing.T) {
 		got[it.Label] = it.Platform
 	}
 
-        want := map[string]string{
-                "Run":         "go",
-                "Win Release": "go",
-                "HMR":         "go",
-                "Test":        "go",
-                "Version":     "general",
-                "Clean":       "general",
-        }
+	want := map[string]string{
+		"Run":         "go",
+		"Win Release": "go",
+		"HMR":         "go",
+		"Test":        "go",
+		"Version":     "general",
+		"Clean":       "general",
+	}
 	for label, platform := range want {
 		if got[label] != platform {
 			t.Errorf("card %q: platform = %q, queria %q", label, got[label], platform)
@@ -72,6 +74,9 @@ func TestMenuSetsPlatformBadge(t *testing.T) {
 // La card Vibe Coding esta en todos los proyectos y abre el modal de subcards
 // con una entrada por CLI mas las dos acciones de mantenimiento.
 func TestVibeCardAndSubcards(t *testing.T) {
+	// Aislar settings.json: la lista de CLIs deshabilitadas es del usuario y
+	// no debe alterar el conteo esperado de subcards.
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	dir := initRepo(t)
 	b := NewBridge(dir)
 
@@ -105,6 +110,44 @@ func TestVibeCardAndSubcards(t *testing.T) {
 	}
 	if subs[len(subs)-1].Task != "opencode-configure" {
 		t.Errorf("ultima subcard = %q, queria opencode-configure", subs[len(subs)-1].Task)
+	}
+}
+
+// Las CLIs deshabilitadas en Opciones no deben aparecer en la card, pero si
+// siguen en el catalogo que usa el modal (para poder volver a activarlas).
+func TestVibeDisabledHidesSubcards(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := initRepo(t)
+	b := NewBridge(dir)
+
+	var id string
+	for _, it := range b.GetMenu() {
+		if it.Label == "Vibe Coding" {
+			id = it.ID
+		}
+	}
+	if id == "" {
+		t.Fatal("falta la card 'Vibe Coding'")
+	}
+
+	tools := b.GetVibeTools()
+	if len(tools) < 2 {
+		t.Fatalf("catalogo de CLIs = %d, queria al menos 2", len(tools))
+	}
+	hidden := tools[0].Key
+	// La comparacion debe ignorar mayusculas, como la lista guardada.
+	settings.Save(settings.Settings{VibeDisabled: []string{strings.ToLower(hidden)}})
+
+	for _, s := range b.Subcards(id) {
+		if s.Task == "vibe-run-"+hidden {
+			t.Errorf("la CLI deshabilitada %q sigue en la card", hidden)
+		}
+	}
+	for _, opt := range b.GetVibeTools() {
+		want := opt.Key != hidden
+		if opt.Enabled != want {
+			t.Errorf("%s: enabled = %v, queria %v", opt.Key, opt.Enabled, want)
+		}
 	}
 }
 
@@ -157,25 +200,25 @@ func TestWailsWithAndroidModuleShowsAndroidCards(t *testing.T) {
 // (Clean, Version, Entorno, Vibe Coding) no depende del CLI de Wails. Git ya
 // no es una card: vive en la pestana Git del panel derecho.
 func TestWailsWithoutTaskfileHidesDesktopCards(t *testing.T) {
-        b := newWailsProject(t, false, false)
+	b := newWailsProject(t, false, false)
 
-        got := map[string]bool{}
-        for _, it := range b.GetMenu() {
-                got[it.Label] = true
-        }
-        for _, label := range []string{"Windows", "Win Release"} {
-                if got[label] {
-                        t.Errorf("la card %q no deberia aparecer sin Taskfile.yml", label)
-                }
-        }
-        for _, label := range []string{"Clean", "Version", "Entorno", "Vibe Coding"} {
-                if !got[label] {
-                        t.Errorf("falta la card %q, que no depende del CLI de Wails", label)
-                }
-        }
-        if got["Git"] {
-                t.Error("la card Git ya no deberia aparecer: se gestiona en la pestana Git")
-        }
+	got := map[string]bool{}
+	for _, it := range b.GetMenu() {
+		got[it.Label] = true
+	}
+	for _, label := range []string{"Windows", "Win Release"} {
+		if got[label] {
+			t.Errorf("la card %q no deberia aparecer sin Taskfile.yml", label)
+		}
+	}
+	for _, label := range []string{"Clean", "Version", "Entorno", "Vibe Coding"} {
+		if !got[label] {
+			t.Errorf("falta la card %q, que no depende del CLI de Wails", label)
+		}
+	}
+	if got["Git"] {
+		t.Error("la card Git ya no deberia aparecer: se gestiona en la pestana Git")
+	}
 }
 
 // newWailsProject crea un proyecto Go+Wails minimo (go.mod con la dependencia

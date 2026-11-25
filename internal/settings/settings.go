@@ -57,6 +57,11 @@ type Settings struct {
 	// terminal; se acota a un rango util para que ninguno de los dos quede
 	// inutilizable.
 	TerminalPanelPct int `json:"terminal_panel_pct"`
+
+	// VibeDisabled son las CLIs de Vibe Coding que el usuario oculto de la
+	// card. Se guarda la lista de deshabilitadas (y no la de habilitadas)
+	// para que cualquier CLI nueva aparezca activa sin migrar el fichero.
+	VibeDisabled []string `json:"vibe_disabled"`
 }
 
 // Default devuelve los valores de fabrica.
@@ -159,7 +164,27 @@ func Load() Settings {
 		}
 		s.AutoCommitProjects = clean
 	}
+	s.VibeDisabled = NormalizeVibeDisabled(s.VibeDisabled)
 	return s
+}
+
+// NormalizeVibeDisabled limpia la lista de CLIs de Vibe Coding deshabilitadas:
+// recorta espacios, descarta vacios y duplicados (sin distinguir mayusculas).
+func NormalizeVibeDisabled(keys []string) []string {
+	if len(keys) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	clean := make([]string, 0, len(keys))
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" || seen[strings.ToLower(k)] {
+			continue
+		}
+		seen[strings.ToLower(k)] = true
+		clean = append(clean, k)
+	}
+	return clean
 }
 
 // Save persiste las opciones. Un fallo de escritura no es fatal.

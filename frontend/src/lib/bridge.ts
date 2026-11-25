@@ -71,6 +71,7 @@ export interface Settings {
   copilot_model: string
   sound_presets: Record<string, string>
   terminal_panel_pct: number
+  vibe_disabled: string[]
 }
 
 export const getSettings = () => call<Settings>(M('GetSettings'))
@@ -88,6 +89,15 @@ export interface SoundCatalog { events: SoundEventInfo[]; presets: SoundPresetIn
 export const getSoundCatalog = () => call<SoundCatalog>(M('GetSoundCatalog'))
 export const previewSound = (event: string, preset: string) =>
   call<void>(M('PreviewSound'), event, preset)
+
+export interface VibeToolInfo {
+  key: string
+  title: string
+  path: string
+  found: boolean
+  enabled: boolean
+}
+export const getVibeTools = () => call<VibeToolInfo[]>(M('GetVibeTools'))
 
 export interface ModelOption { id: string; name: string; context: number }
 export const listModels = () => call<ModelOption[]>(M('ListModels'))
