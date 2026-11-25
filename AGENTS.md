@@ -338,6 +338,10 @@ proyecto concreto:
     terminal; `SelectProject`/`AddProject` arman el vigilante fsnotify fuera del
     lock (`go b.ensureWatch(dir)`), porque recorrer el árbol bloqueaba la
     respuesta en proyectos grandes.
+  - **Pestaña recordada por proyecto**: `lastTabByProject` guarda la última
+    pestaña activa de cada proyecto (se actualiza en `activate`) y
+    `tabForProject` la devuelve al volver; si se cerró, cae en la primera del
+    proyecto. Evita que cambiar de proyecto siempre reabra la primera consola.
 - **API del puente** (`internal/webui/git.go`): `Bridge.GitInfo()` devuelve un
   DTO con `isRepo`, `hasCommits`, `branch`, `upstream`, `remoteUrl`, `webUrl`,
   `isGitHub`, `ahead`, `behind`, `changes`. Nunca falla: lo que no se puede

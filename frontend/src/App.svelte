@@ -111,6 +111,10 @@
   // sigue escribiendo y `baseY` crece, asi que una linea absoluta apuntaria a
   // otro contenido y la consola "saltaria" al volver al proyecto.
   const scrollMemo = new Map<number, { fromBottom: number; bottom: boolean }>()
+  // Ultima pestana activa de cada proyecto. Al volver a un proyecto se
+  // reabre esa (y no siempre la primera), que es lo que el usuario dejo
+  // seleccionado antes de cambiar.
+  const lastTabByProject = new Map<string, number>()
   // Mientras se activa una pestana se ignoran los `onScroll`: son producto del
   // re-sync de xterm, no del usuario.
   let activating = false
@@ -361,7 +365,7 @@
       }
     }
 
-    const first = tabs.find((t) => t.project === projectPath)
+    const first = tabForProject(projectPath)
     if (first) await activate(first.key)
   }
 
@@ -388,7 +392,7 @@
       workspace = await pickProjectDialog()
       // El menu y la primera terminal no bloquean el repintado del proyecto.
       const menuP = getMenu()
-      const first = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
+      const first = tabForProject(workspace.projects[workspace.active]?.path ?? '')
       if (first) await activate(first.key)
       else activeKey = null
       menu = await menuP
@@ -408,13 +412,13 @@
     // el terminal, y luego vuelven a pintarse (el "doble render" al cambiar
     // de proyecto).
     if (i !== workspace.active) workspace = { ...workspace, active: i }
-    const first = tabs.find((t) => t.project === (workspace.projects[i]?.path ?? ''))
+    const first = tabForProject(workspace.projects[i]?.path ?? '')
     activeKey = first ? first.key : null
     const menuP = getMenu()
     workspace = await selectProject(i)
     // El backend confirma el proyecto activo; la pestaña se revalida por si
     // cambio el indice.
-    const confirmed = tabs.find((t) => t.project === (workspace.projects[workspace.active]?.path ?? ''))
+    const confirmed = tabForProject(workspace.projects[workspace.active]?.path ?? '')
     if (confirmed) await activate(confirmed.key)
     else activeKey = null
     menu = await menuP
@@ -584,6 +588,17 @@
     })
   }
 
+  // Pestana a mostrar al entrar en un proyecto: la ultima que estuvo activa
+  // alli y siga existiendo; si no, la primera del proyecto.
+  function tabForProject(path: string): Tab | undefined {
+    const remembered = lastTabByProject.get(path)
+    if (remembered != null) {
+      const t = tabs.find((x) => x.key === remembered && x.project === path)
+      if (t) return t
+    }
+    return tabs.find((t) => t.project === path)
+  }
+
   async function activate(key: number) {
     // La posicion se lee ANTES de tocar `activeKey`: al mostrar el host oculto
     // xterm puede re-sincronizar su viewport y disparar `onScroll`, que
@@ -591,6 +606,10 @@
     const memo = scrollMemo.get(key)
     activating = true
     activeKey = key
+    // Se recuerda por proyecto: al volver se reabre esta pestana y no la
+    // primera, aunque se haya cambiado de proyecto con otra activa.
+    const current = tabs.find((t) => t.key === key)
+    if (current) lastTabByProject.set(current.project, key)
     await tick()
     const entry = terms.get(key)
     if (!entry) {
@@ -826,6 +845,9 @@
     lastPtySize.delete(key)
     scrollMemo.delete(key)
     tabs = tabs.filter((t) => t.key !== key)
+    // Si la pestana cerrada era la recordada del proyecto, se olvida para que
+    // al volver se elija otra en vez de un key inexistente.
+    if (tab && lastTabByProject.get(tab.project) === key) lastTabByProject.delete(tab.project)
     if (activeKey === key) {
       // Siguiente pestaña del MISMO proyecto (no salta a otro proyecto).
       const sameProject = tabs.filter((t) => t.project === tab?.project)
