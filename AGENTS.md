@@ -316,20 +316,27 @@ proyecto concreto:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
+- **Panel Sistema** (`frontend/src/components/System.svelte` +
+  `internal/sysinfo`): sustituye al pie de la mascota en el panel derecho y
+  muestra CPU (uso + nombre), RAM, GPU y discos con barras. `Bridge.GetSystemInfo`
+  devuelve `sysinfo.Snapshot()`: `GetSystemTimes` y `GlobalMemoryStatusEx` por
+  `kernel32` (sin dependencias nuevas), nombre de CPU por registro,
+  `GetLogicalDrives` + `GetDiskFreeSpaceEx` para unidades fijas/extraíbles, y la
+  GPU con una consulta CIM a PowerShell **en segundo plano** y cacheada (tarda
+  ~1 s; el primer poll sale sin GPU y el siguiente la trae). El uso de CPU se
+  calcula con el delta entre lecturas y se reutiliza 1 s; la primera llamada
+  toma dos muestras separadas 200 ms para no informar el promedio desde el
+  arranque. El componente refresca cada 2 s y conserva el último valor si una
+  lectura falla. `sysinfo_other.go` mantiene `go build` fuera de Windows.
 - **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula 3D con brazos en SVG
   puro (sin assets, hereda `currentColor` del tema). El bisel metalico se logra
   con una base `currentColor` y capas de brillo/sombra; la esfera es oscura y
-  la aguja roja. Vive en el badge de la marca (40 px en un tile de 46 px) y en
-  el pie del panel derecho (40 px, caminando de lado a lado y girando en los
-  extremos, con el estado en texto). Estados `idle` / `working` / `success` /
-  `error`: la aguja se balancea o gira, los brazos saludan o caminan, los ojos
-  parpadean y miran alrededor, y hay saltos/destellos o tambaleo con gota de
-  sudor. `App.svelte` destella `success` o `error` 2.6 s al recibir `pty:exit`
-  con `code` 0 o >0 (un código negativo es un cierre forzado y no cuenta).
-  Respeta `prefers-reduced-motion`.
-  - **Paseo**: el recorrido horizontal va en `.mascot-runner` (transform con
-    `100cqw` sobre un track con `container-type: inline-size`) y el paso en la
-    prop `walk` del SVG; el giro en los extremos se hace con `scaleX(-1)`.
+  la aguja roja. Vive en el badge de la marca (40 px en un tile de 46 px).
+  Estados `idle` / `working` / `success` / `error`: la aguja se balancea o gira,
+  los brazos saludan, los ojos parpadean y miran alrededor, y hay saltos o
+  tambaleo con gota de sudor. `App.svelte` destella `success` o `error` 2.6 s al
+  recibir `pty:exit` con `code` 0 o >0 (un código negativo es un cierre forzado
+  y no cuenta). Respeta `prefers-reduced-motion`.
   - **Rendimiento**: el flotado/bote se anima en la envoltura HTML `.float`
     (transform compuesto, `will-change`) y no en grupos SVG; dentro del SVG solo
     se mueven piezas pequeñas (aguja, brazos, ojos). Así la mascota no repinta
