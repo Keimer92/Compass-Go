@@ -774,9 +774,12 @@ func (b *Bridge) GitPush() (string, error) {
 	}
 	if err != nil {
 		// Un 403 suele ser otra cuenta guardada en el credential helper: se
-		// explica con los comandos para cambiarla en vez de volcar el error.
-		if hint := gitmsg.ExplainPush(out); hint != "" {
-			return "", errors.New(hint)
+		// explica y se remite al modal que tiene login/logout como botones.
+		if d, ok := gitmsg.ParseDenied(out); ok {
+			return "", fmt.Errorf("GitHub autenticó como %q, que no tiene permiso de escritura sobre %q.\n\nCámbiala en Ajustes de Git → Cuenta de GitHub.", d.Account, d.Repo)
+		}
+		if gitmsg.IsForbidden(out) {
+			return "", errors.New("GitHub rechazó el push (403): la credencial guardada no tiene permiso de escritura sobre este repositorio.\n\nRevisa la cuenta en Ajustes de Git → Cuenta de GitHub.")
 		}
 		return "", fmt.Errorf("git push: %s", out)
 	}

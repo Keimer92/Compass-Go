@@ -309,13 +309,21 @@ proyecto concreto:
   pestaña "Commit": el generador de commit con IA queda siempre desplegado y,
   si la carpeta aún no es un repo, ofrece **Inicializar repositorio** (rama
   `main` + primer commit). Toda la configuración (commit automático, proveedor
-  de mensajes, modelo de Copilot y OpenRouter) vive en el desplegable **Ajustes
-  de Git** del propio panel. Las pestañas del panel derecho son ahora
+  de mensajes, modelo de Copilot y OpenRouter) vive en el modal **Ajustes de
+  Git**, que se abre desde un botón del pie del sidebar justo debajo de
+  "Opciones" (`GitSettings.svelte`). Las pestañas del panel derecho son ahora
   **Explorador / Git / Historial**. No hay barra superior (topbar): el título lo
   aporta el sidebar y los botones "Tema" y "Opciones" viven en un pie
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
+- **Cuenta de GitHub en la UI** (`internal/webui/github_auth.go`): el modal
+  Ajustes de Git lista las cuentas de Git Credential Manager
+  (`GitHubAccounts`), permite añadir una (`GitHubLogin`, abre el navegador,
+  plazo 180 s) y borrarla (`GitHubLogout`, con confirmación de dos clics). Son
+  las mismas acciones que `git credential-manager github login/logout`, pero
+  sin consola; Compass no guarda tokens. Los nombres se validan contra
+  `[A-Za-z0-9][A-Za-z0-9-]{0,38}` antes de pasarlos como argumento.
 - **Panel Sistema** (`frontend/src/components/System.svelte` +
   `internal/sysinfo`): sustituye al pie de la mascota en el panel derecho y
   muestra CPU (uso + nombre), RAM, GPU y discos con barras. `Bridge.GetSystemInfo`
@@ -362,12 +370,12 @@ proyecto concreto:
   `runGitTimeout` (90 s) para no congelar la promesa Wails si git espera
   credenciales. `@{u}` es revisión fija de git, no texto del usuario.
 - **403 al hacer push** (`internal/gitmsg`): cuando `git push` falla por
-  permisos, `gitmsg.ExplainPush` reconoce el `Permission to <repo>.git denied to
-  <cuenta>` de GitHub y el 403 genérico, y devuelve un mensaje que nombra la
-  cuenta con la que se autenticó y los comandos de Git Credential Manager para
-  cambiarla (`github login --username`, `github logout`). Lo usan el panel Git
-  (`Bridge.GitPush`) y la tarea CLI (`pushCurrentBranch`). La cuenta la elige el
-  credential helper del sistema, no Compass: el backend solo ejecuta `git push`.
+  permisos, `gitmsg.ParseDenied` extrae cuenta y repo del
+  `Permission to <repo>.git denied to <cuenta>` de GitHub (y `IsForbidden` el
+  403 genérico). El panel Git muestra el aviso y remite a **Ajustes de Git →
+  Cuenta de GitHub**; la tarea CLI (`pushCurrentBranch`) sigue imprimiendo los
+  comandos de `git credential-manager`. La cuenta la elige el credential helper
+  del sistema, no Compass: el backend solo ejecuta `git push`.
 - **Remoto caído y asistente de re-vinculación** (`internal/webui/git_remote.go`):
   `Bridge.GitRemoteStatus(url)` comprueba el remoto con `git ls-remote
   --exit-code` (25 s) y devuelve `state` = `ok` / `empty` / `missing` / `auth` /

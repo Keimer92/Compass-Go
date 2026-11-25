@@ -201,3 +201,9 @@ export interface SystemInfo {
   disks: { letter: string; label: string; total: number; free: number }[]
 }
 export const getSystemInfo = () => call<SystemInfo>(M('GetSystemInfo'))
+
+// Cuenta de GitHub usada por git (Git Credential Manager). Compass no guarda
+// tokens: solo lanza las mismas acciones que `git credential-manager github`.
+export const githubAccounts = () => call<string[]>(M('GitHubAccounts'))
+export const githubLogin = (username: string) => call<string>(M('GitHubLogin'), username)
+export const githubLogout = (account: string) => call<string>(M('GitHubLogout'), account)

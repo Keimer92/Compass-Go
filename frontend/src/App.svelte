@@ -17,6 +17,7 @@
   import Git from './components/Git.svelte'
   import History from './components/History.svelte'
   import System from './components/System.svelte'
+  import GitSettings from './components/GitSettings.svelte'
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
@@ -56,6 +57,7 @@
   let rightCollapsed = $state(false)
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
+  let gitSettingsOpen = $state(false)
   let lastError = $state('')
   let themes = $state<ThemeInfo[]>([])
   let theme = $state<ThemeInfo | null>(null)
@@ -980,6 +982,9 @@
       <button class="theme-btn" onclick={openOptions}>
         <span>⚙</span><span class="theme-btn-text">Opciones</span>
       </button>
+      <button class="theme-btn" onclick={() => (gitSettingsOpen = true)}>
+        <span>⎇</span><span class="theme-btn-text">Ajustes de Git</span>
+      </button>
     </div>
   </aside>
 
@@ -1161,6 +1166,10 @@
       <div class="theme-hint">Pasa el cursor para previsualizar · clic para aplicar</div>
     </div>
   </div>
+{/if}
+
+{#if gitSettingsOpen}
+  <GitSettings onClose={() => (gitSettingsOpen = false)} />
 {/if}
 
 {#if optionsOpen}
