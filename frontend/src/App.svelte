@@ -215,6 +215,23 @@
     vibeTools = vibeTools.map((t) => (t.key === key ? { ...t, enabled } : t))
   }
 
+  // Acciones de mantenimiento de Vibe Coding, que antes vivian en el submenu
+  // de su card: se lanzan como cualquier tarea, en una pestana del proyecto.
+  async function runVibeTask(task: string, label: string) {
+    optionsOpen = false
+    try {
+      const t = await runTask(task)
+      if (!t) {
+        lastError = `Sin tarea para ${label}`
+        return
+      }
+      lastError = ''
+      await runNamedTask(label, t)
+    } catch (e) {
+      lastError = 'ERROR: ' + (e as Error).message
+    }
+  }
+
   // Preset elegido para un evento (si aun no hay valor guardado, el de fabrica).
   function presetFor(ev: SoundEventInfo): string {
     return settings.sound_presets?.[ev.id] || ev.default_preset
@@ -1150,6 +1167,32 @@
                   />
                 </label>
               {/each}
+            </div>
+            <div class="vibe-actions">
+              <button
+                class="opt-tool"
+                onclick={() => runVibeTask('vibe-setup', 'Instalar CLIs')}
+                title="Detecta e instala las CLIs de Vibe Coding que falten"
+              >
+                <span class="opt-tool-ico">{@html svg('install', 17)}</span>
+                <span class="opt-tool-text">
+                  <span class="opt-tool-label">Instalar faltantes</span>
+                  <span class="opt-tool-desc">Detecta e instala las CLIs que falten</span>
+                </span>
+                <span class="opt-tool-arrow">›</span>
+              </button>
+              <button
+                class="opt-tool"
+                onclick={() => runVibeTask('opencode-configure', 'OpenCode')}
+                title="Configura el proveedor y el plugin de OpenCode"
+              >
+                <span class="opt-tool-ico">{@html svg('environment', 17)}</span>
+                <span class="opt-tool-text">
+                  <span class="opt-tool-label">Configurar OpenCode</span>
+                  <span class="opt-tool-desc">Proveedor InferX y plugin de la TUI</span>
+                </span>
+                <span class="opt-tool-arrow">›</span>
+              </button>
             </div>
           </section>
         {/if}

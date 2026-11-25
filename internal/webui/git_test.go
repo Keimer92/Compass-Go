@@ -138,8 +138,12 @@ func TestSubcards(t *testing.T) {
 	if got := b.Subcards("14"); len(got) != 0 {
 		t.Fatalf("la card Git ya no deberia tener subcards: %+v", got)
 	}
-	if got := b.Subcards("17"); len(got) == 0 { // Environment
+	if got := b.Subcards("16"); len(got) == 0 { // Environment
 		t.Fatal("la card Environment deberia tener subcards")
+	}
+	// Vibe Coding ya no tiene subcards: cada CLI es una card propia.
+	if got := b.Subcards("17"); len(got) != 0 {
+		t.Fatalf("la card Vibe Coding ya no deberia tener subcards: %+v", got)
 	}
 }
 

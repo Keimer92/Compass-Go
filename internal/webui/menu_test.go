@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"compass/internal/settings"
+	"compass/internal/tasks"
 )
 
 // Un proyecto Go puro no tiene tareas de Android: esas cards no deben
@@ -71,64 +72,34 @@ func TestMenuSetsPlatformBadge(t *testing.T) {
 	}
 }
 
-// La card Vibe Coding esta en todos los proyectos y abre el modal de subcards
-// con una entrada por CLI mas las dos acciones de mantenimiento.
-func TestVibeCardAndSubcards(t *testing.T) {
-	// Aislar settings.json: la lista de CLIs deshabilitadas es del usuario y
-	// no debe alterar el conteo esperado de subcards.
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	dir := initRepo(t)
-	b := NewBridge(dir)
-
-	id := ""
-	section := ""
-	for _, it := range b.GetMenu() {
-		if it.Label == "Vibe Coding" {
-			id = it.ID
-			section = it.Section
-		}
+// Vibe Coding ya no es una card con submenu: cada CLI habilitada e instalada
+// se convierte en una card propia al final de DEV. Las no instaladas y las
+// deshabilitadas en Opciones se quedan fuera del menu.
+func TestVibeMenuCards(t *testing.T) {
+	tools := []tasks.VibeToolInfo{
+		{Key: "01OpenCode", Title: "OpenCode", Path: `C:\bin\opencode.cmd`, Found: true},
+		{Key: "02CodeBuddy", Title: "CodeBuddy", Found: false},
+		{Key: "03KiloCode", Title: "Kilo Code", Path: `C:\bin\kilo.cmd`, Found: true},
 	}
-	if id == "" {
-		t.Fatal("falta la card 'Vibe Coding'")
+	cards := vibeMenuCards(tools, map[string]bool{"03kilocode": true})
+	if len(cards) != 1 {
+		t.Fatalf("cards = %d, queria 1", len(cards))
 	}
-	// Debe verse en la pestana principal: si cae en CFG solo aparece en Config.
-	if section == "CFG" {
-		t.Error("la card 'Vibe Coding' no deberia quedar solo en la pestana Config")
+	card := cards[0]
+	if card.ID != "vibe-run-01OpenCode" || card.Label != "OpenCode" {
+		t.Errorf("card = %+v, queria OpenCode con id vibe-run-01OpenCode", card)
 	}
-
-	subs := b.Subcards(id)
-	if len(subs) < 3 {
-		t.Fatalf("subcards = %d, queria al menos 3", len(subs))
-	}
-	for _, s := range subs {
-		if s.Label == "" || s.Task == "" || s.Icon == "" {
-			t.Errorf("subcard incompleta: %+v", s)
-		}
-	}
-	if subs[len(subs)-2].Task != "vibe-setup" {
-		t.Errorf("penultima subcard = %q, queria vibe-setup", subs[len(subs)-2].Task)
-	}
-	if subs[len(subs)-1].Task != "opencode-configure" {
-		t.Errorf("ultima subcard = %q, queria opencode-configure", subs[len(subs)-1].Task)
+	if card.Section != "DEV" || card.Icon != "vibe" || card.Color != "vibe" {
+		t.Errorf("card fuera de DEV o sin icono de vibe: %+v", card)
 	}
 }
 
-// Las CLIs deshabilitadas en Opciones no deben aparecer en la card, pero si
-// siguen en el catalogo que usa el modal (para poder volver a activarlas).
-func TestVibeDisabledHidesSubcards(t *testing.T) {
+// El catalogo de Opciones sigue incluyendo todas las CLIs (instaladas o no)
+// con su estado, para poder activarlas aunque no esten en el menu.
+func TestVibeToolsCatalogKeepsDisabled(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	dir := initRepo(t)
 	b := NewBridge(dir)
-
-	var id string
-	for _, it := range b.GetMenu() {
-		if it.Label == "Vibe Coding" {
-			id = it.ID
-		}
-	}
-	if id == "" {
-		t.Fatal("falta la card 'Vibe Coding'")
-	}
 
 	tools := b.GetVibeTools()
 	if len(tools) < 2 {
@@ -138,15 +109,15 @@ func TestVibeDisabledHidesSubcards(t *testing.T) {
 	// La comparacion debe ignorar mayusculas, como la lista guardada.
 	settings.Save(settings.Settings{VibeDisabled: []string{strings.ToLower(hidden)}})
 
-	for _, s := range b.Subcards(id) {
-		if s.Task == "vibe-run-"+hidden {
-			t.Errorf("la CLI deshabilitada %q sigue en la card", hidden)
-		}
-	}
 	for _, opt := range b.GetVibeTools() {
 		want := opt.Key != hidden
 		if opt.Enabled != want {
 			t.Errorf("%s: enabled = %v, queria %v", opt.Key, opt.Enabled, want)
+		}
+	}
+	for _, it := range b.GetMenu() {
+		if it.ID == "vibe-run-"+hidden {
+			t.Errorf("la CLI deshabilitada %q sigue en el menu", hidden)
 		}
 	}
 }
@@ -197,7 +168,7 @@ func TestWailsWithAndroidModuleShowsAndroidCards(t *testing.T) {
 
 // Sin Taskfile.yml, `wails3 task dev|build|package` aborta con "No Taskfile
 // found": las cards de escritorio de Wails no deben ofrecerse. El resto
-// (Clean, Version, Entorno, Vibe Coding) no depende del CLI de Wails. Git ya
+// (Clean, Version, Entorno) no depende del CLI de Wails. Git ya
 // no es una card: vive en la pestana Git del panel derecho.
 func TestWailsWithoutTaskfileHidesDesktopCards(t *testing.T) {
 	b := newWailsProject(t, false, false)
@@ -211,7 +182,7 @@ func TestWailsWithoutTaskfileHidesDesktopCards(t *testing.T) {
 			t.Errorf("la card %q no deberia aparecer sin Taskfile.yml", label)
 		}
 	}
-	for _, label := range []string{"Clean", "Version", "Entorno", "Vibe Coding"} {
+	for _, label := range []string{"Clean", "Version", "Entorno"} {
 		if !got[label] {
 			t.Errorf("falta la card %q, que no depende del CLI de Wails", label)
 		}

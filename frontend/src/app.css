@@ -161,6 +161,7 @@ body, .app, .sidebar, .cards-area, .card, .right, .terminal-panel, .modal {
 .vibe-row:hover { border-color: var(--accent); }
 .vibe-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
 .vibe-row input { flex: 0 0 auto; accent-color: var(--accent); cursor: pointer; }
+.vibe-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .sound-list { display: flex; flex-direction: column; gap: 7px; }
 .sound-row { display: grid; grid-template-columns: minmax(0, 1fr) 148px 34px; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 60%, var(--bg)); }
 .sound-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

@@ -30,6 +30,10 @@ var hiddenMenuItems = map[menu.MenuItem]bool{
 	// Git se gestiona entero en la pestana Git del panel derecho (estado,
 	// init, remoto, commits): ya no tiene card ni subcards en el menu.
 	menu.Git: true,
+	// Vibe Coding deja de ser una card con submenu: cada CLI habilitada e
+	// instalada es su propia card (ver GetMenu). El item se conserva para no
+	// desplazar los indices del enum.
+	menu.VibeCoding: true,
 }
 
 // menuItem devuelve la card del indice. WindowsDev vale 0, asi que el valor
@@ -125,8 +129,6 @@ func (b *Bridge) Subcards(taskID string) []Subcard {
 			{"env-do-validate", "Validar backup", "Diff sin modificar nada", "debug"},
 			{"env-do-open", "Abrir respaldos", "Carpeta de respaldos de Compass", "git"},
 		}
-	case menu.VibeCoding:
-		return vibeSubcards(disabledVibeSet(settings.Load().VibeDisabled))
 	}
 	return nil
 }
@@ -155,8 +157,8 @@ type VibeToolOption struct {
 }
 
 // GetVibeTools devuelve el catalogo completo de CLIs (incluidas las ocultas)
-// para que Opciones pueda listarlas con su interruptor. La card solo muestra
-// las habilitadas.
+// para que Opciones pueda listarlas con su interruptor. El menu solo muestra
+// las habilitadas e instaladas.
 func (b *Bridge) GetVibeTools() []VibeToolOption {
 	disabled := disabledVibeSet(settings.Load().VibeDisabled)
 	tools := tasks.VibeTools()
@@ -171,35 +173,6 @@ func (b *Bridge) GetVibeTools() []VibeToolOption {
 		})
 	}
 	return out
-}
-
-// vibeSubcards lista las CLIs de Vibe Coding detectadas en la maquina, una
-// subcard por herramienta, mas las acciones de mantenimiento. Las que el
-// usuario deshabilito en Opciones no se muestran; las que no estan instaladas
-// se muestran igual (para que se vea que existen) pero su tarea avisa en la
-// pestana en vez de lanzar nada.
-func vibeSubcards(disabled map[string]bool) []Subcard {
-	tools := tasks.VibeTools()
-	out := make([]Subcard, 0, len(tools)+2)
-	for _, t := range tools {
-		if disabled[strings.ToLower(t.Key)] {
-			continue
-		}
-		desc := "No instalada · usa 'Instalar faltantes'"
-		if t.Found {
-			desc = t.Path
-		}
-		out = append(out, Subcard{
-			Task:        "vibe-run-" + t.Key,
-			Label:       t.Title,
-			Description: desc,
-			Icon:        "vibe",
-		})
-	}
-	return append(out,
-		Subcard{"vibe-setup", "Instalar faltantes", "Detecta e instala las CLIs que falten", "install"},
-		Subcard{"opencode-configure", "Configurar OpenCode", "Proveedor InferX y plugin de la TUI", "environment"},
-	)
 }
 
 // taskFor mapea una card a su tarea CLI segun el tipo de proyecto.

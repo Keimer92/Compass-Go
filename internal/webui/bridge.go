@@ -317,6 +317,32 @@ func (b *Bridge) GetMenu() []MenuItemInfo {
 			Platform:    item.Platform(ctx.ProjectType),
 		})
 	}
+	// Vibe Coding: cada CLI habilitada e instalada es su propia card al final
+	// de DEV. Las no instaladas se quedan solo en Opciones (con su estado) para
+	// no llenar el menu de cards que unicamente muestran un aviso.
+	out = append(out, vibeMenuCards(tasks.VibeTools(), disabledVibeSet(settings.Load().VibeDisabled))...)
+	return out
+}
+
+// vibeMenuCards convierte las CLIs detectadas en cards individuales del menu.
+// Se separa de GetMenu para poder probar el filtro sin depender de que la
+// maquina tenga las CLIs instaladas.
+func vibeMenuCards(tools []tasks.VibeToolInfo, disabled map[string]bool) []MenuItemInfo {
+	out := make([]MenuItemInfo, 0, len(tools))
+	for _, t := range tools {
+		if !t.Found || disabled[strings.ToLower(t.Key)] {
+			continue
+		}
+		out = append(out, MenuItemInfo{
+			ID:          "vibe-run-" + t.Key,
+			Label:       t.Title,
+			Description: t.Path,
+			Icon:        "vibe",
+			Color:       "vibe",
+			Section:     "DEV",
+			Platform:    "general",
+		})
+	}
 	return out
 }
 
@@ -327,6 +353,13 @@ func (b *Bridge) RunTask(taskID string) string {
 	b.mu.Unlock()
 	if ctx == nil {
 		return ""
+	}
+	// Las cards de Vibe Coding no tienen indice de menu: su id ya es la tarea
+	// (vibe-run-<cli>). Las acciones de mantenimiento se lanzan igual desde
+	// Opciones con su nombre de tarea.
+	if strings.HasPrefix(taskID, "vibe-run-") || taskID == "vibe-setup" ||
+		taskID == "opencode-configure" {
+		return taskID
 	}
 	idx := 0
 	if _, err := fmt.Sscanf(taskID, "%d", &idx); err != nil {

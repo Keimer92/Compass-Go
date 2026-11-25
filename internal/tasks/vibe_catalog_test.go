@@ -6,8 +6,8 @@ import (
 	"compass/internal/project"
 )
 
-// VibeTools es la fuente de las subcards de la card "Vibe Coding": debe
-// exponer exactamente el catalogo, con claves unicas y estables.
+// VibeTools es la fuente de las cards de Vibe Coding y de la cascada del
+// Explorador: debe exponer exactamente el catalogo, con claves unicas y estables.
 func TestVibeToolsCatalog(t *testing.T) {
 	tools := VibeTools()
 	if len(tools) != len(vibeTools) {
