@@ -323,7 +323,6 @@ var vibeTools = []vibeTool{
 	{"08Freebuff", "Freebuff", "freebuff", "npm install -g freebuff", nil, viaCmd},
 	{"09CommandCode", "Command Code", "cmdc --yolo", "npm install -g command-code", nil, viaCmd},
 	{"10QoderCli", "Qoder CLI", "qodercli --yolo", "irm https://qoder.com/install.ps1 | iex", []string{"HOME/.qoder/bin/qodercli/qodercli.exe", "HOME/.qoder/bin/qodercli.exe"}, viaPowerShell},
-	{"11Hermes", "Hermes", "hermes", "iex (irm https://hermes-agent.nousresearch.com/install.ps1)", []string{"LOCALAPPDATA/hermes/bin/hermes.exe", "LOCALAPPDATA/hermes/bin/hermes.cmd"}, viaPowerShell},
 }
 
 func resolveToolCommand(t vibeTool) (string, string) {
