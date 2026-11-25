@@ -467,6 +467,7 @@
     // de proyecto).
     if (i !== workspace.active) workspace = { ...workspace, active: i }
     const first = tabForProject(workspace.projects[i]?.path ?? '')
+    if (first) activating = true
     activeKey = first ? first.key : null
     workspace = await selectProject(i)
     // El menu se pide DESPUES de confirmar el proyecto: getMenu lo construye
@@ -478,7 +479,10 @@
     // cambio el indice.
     const confirmed = tabForProject(workspace.projects[workspace.active]?.path ?? '')
     if (confirmed) await activate(confirmed.key)
-    else activeKey = null
+    else {
+      activeKey = null
+      activating = false
+    }
     const next = await menuP
     if (seq === menuSeq) menu = next
   }
@@ -627,23 +631,21 @@
     resizeTerminal(tab.ptyId, entry.term.cols, entry.term.rows)
   }
 
-  // Reajusta TODAS las pestanas montadas al nuevo tamano del panel. Todas
-  // comparten el mismo `.term-stage`, asi que cuando su tamano cambia se
-  // ajustan todas: al activar una pestana ya tiene el tamano correcto y el
-  // cambio de proyecto no necesita tocar la geometria (ni provocar un reflow
-  // que desplace la consola).
+  // Reajusta solo la pestaña activa al nuevo tamaño del panel. Si otro
+  // proyecto no tiene pestañas y oculta `.term-tabs`, las terminales ocultas
+  // de otros proyectos no se redimensionan ni reciben SIGWINCH al ir y volver.
   function scheduleFit() {
     if (fitRaf) return
     fitRaf = requestAnimationFrame(() => {
       fitRaf = 0
       // Durante el arrastre del separador se ignora: el fit se hace al soltar.
       if (splitDrag) return
-      for (const [key, entry] of terms) {
-        if (!mounted.has(key)) continue
-        fitTerm(key)
-        const tab = tabs.find((t) => t.key === key)
-        if (tab) resizePty(tab, entry)
-      }
+      if (activeKey == null || !mounted.has(activeKey)) return
+      const entry = terms.get(activeKey)
+      if (!entry) return
+      fitTerm(activeKey)
+      const tab = tabs.find((t) => t.key === activeKey)
+      if (tab) resizePty(tab, entry)
     })
   }
 
@@ -675,8 +677,12 @@
       activating = false
       return
     }
-    // El tamano ya lo mantiene el ResizeObserver; aqui solo se enfoca y se
-    // recupera la posicion de lectura.
+    // Si la ventana o el separador cambiaron mientras la pestaña estaba oculta,
+    // se ajusta ahora (no-op si el tamaño no cambió).
+    if (mounted.has(key)) {
+      fitTerm(key)
+      if (current) resizePty(current, entry)
+    }
     const buf = entry.term.buffer.active
     const wasAtBottom = memo ? memo.bottom : buf.viewportY >= buf.baseY
     const fromBottom = memo ? memo.fromBottom : buf.baseY - buf.viewportY
