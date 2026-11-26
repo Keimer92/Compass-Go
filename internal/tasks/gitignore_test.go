@@ -36,7 +36,8 @@ func TestGitignoreGoIgnoresFrontendArtifacts(t *testing.T) {
 }
 
 func TestGitignoreContentIgnoresWhatsappStagedEngine(t *testing.T) {
-	for _, pt := range allTypes() {
+	// Solo las apps consumen el motor etajado; los corekits no lo necesitan.
+	for _, pt := range appTypes() {
 		content := gitignoreContent(pt)
 		for _, rule := range whatsappStagedRules {
 			if !strings.Contains(content, "\n"+rule+"\n") {
@@ -86,5 +87,29 @@ func TestMergeGitignoreAddsOnlyMissingRules(t *testing.T) {
 	}
 	if !strings.HasPrefix(merged, "# mio\n") {
 		t.Fatalf("se perdio el contenido original:\n%s", merged)
+	}
+}
+
+// El kit D1 guarda credenciales y estado de Wrangler que nunca deben subirse.
+func TestGitignoreKitD1IgnoresCloudflareSecrets(t *testing.T) {
+	content := gitignoreContent(project.TypeKitD1)
+	for _, rule := range []string{"\n.wrangler/\n", "\n.dev.vars\n", "\nsync-keys.json\n", "\n*.key\n", "\n*.db\n"} {
+		if !strings.Contains(content, rule) {
+			t.Errorf("el .gitignore del Kit D1 no incluye %q", strings.TrimSpace(rule))
+		}
+	}
+	// Las reglas del motor WhatsApp etajado solo aplican a proyectos que lo
+	// consumen; en el kit serian ruido.
+	if strings.Contains(content, "resources/whatsapp-engine-bundle/") {
+		t.Error("el .gitignore del Kit D1 no debe incluir el staging de WhatsApp")
+	}
+}
+
+func TestGitignoreWhatsappKitIgnoresBundleAndAuth(t *testing.T) {
+	content := gitignoreContent(project.TypeWhatsappKit)
+	for _, rule := range []string{"\nwhatsapp-engine-bundle/\n", "\nsingle/\n", "\nnode.exe\n", "\nwhatsapp_auth/\n"} {
+		if !strings.Contains(content, rule) {
+			t.Errorf("el .gitignore del kit WhatsApp no incluye %q", strings.TrimSpace(rule))
+		}
 	}
 }

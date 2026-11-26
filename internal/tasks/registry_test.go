@@ -12,14 +12,16 @@ import (
 // las cards pueden disparar.
 func TestMenuTasksAreRegisteredForEveryType(t *testing.T) {
 	all := allTypes()
+	// Los corekits no tienen build, release ni version propio.
+	apps := appTypes()
 	required := map[string][]project.ProjectType{
-		"windows-dev":     all,
-		"windows-build":   all,
-		"windows-release": all,
-		"android-release": all,
+		"windows-dev":     apps,
+		"windows-build":   apps,
+		"windows-release": apps,
+		"android-release": apps,
 		"clean":           all,
 		"signing":         all,
-		"version":         all,
+		"version":         apps,
 		"git":             all,
 		"terminal":        all,
 		"environment":     all,
@@ -38,6 +40,24 @@ func TestMenuTasksAreRegisteredForEveryType(t *testing.T) {
 			key := fmt.Sprintf("%s|%d", task, pt)
 			if _, ok := registry[key]; !ok {
 				t.Errorf("falta registrar %q para %s", task, pt.Label())
+			}
+		}
+	}
+}
+
+// TestKitTypesOnlyHaveGenericTasks fija el contrato de los corekits: se abren
+// para versionarlos (git, terminal, entorno, limpieza), pero no deben ofrecer
+// build, release, firma ni version, que no aplican a una libreria.
+func TestKitTypesOnlyHaveGenericTasks(t *testing.T) {
+	for _, pt := range []project.ProjectType{project.TypeWhatsappKit, project.TypeKitD1} {
+		for _, task := range []string{"windows-dev", "windows-build", "windows-release", "version", "go-test"} {
+			if _, ok := registry[fmt.Sprintf("%s|%d", task, pt)]; ok {
+				t.Errorf("%s no deberia tener la tarea %q", pt.Label(), task)
+			}
+		}
+		for _, task := range []string{"clean", "git", "terminal", "environment"} {
+			if _, ok := registry[fmt.Sprintf("%s|%d", task, pt)]; !ok {
+				t.Errorf("%s deberia tener la tarea %q", pt.Label(), task)
 			}
 		}
 	}

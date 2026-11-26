@@ -22,6 +22,13 @@ const (
 	TypeGo
 	// TypeGoWails es Go + Wails v3 (go.mod con wailsapp/wails + Taskfile.yml).
 	TypeGoWails
+	// TypeWhatsappKit es el corekit del motor de WhatsApp: un paquete Node
+	// (engine.js) que se compila con ncc (bundle.mjs). No es una app; Compass
+	// lo abre para versionarlo y editarlo.
+	TypeWhatsappKit
+	// TypeKitD1 es el kit Cloudflare D1: motor Go + worker + scripts de
+	// aprovisionamiento en un mismo repo.
+	TypeKitD1
 )
 
 func (t ProjectType) Label() string {
@@ -36,9 +43,19 @@ func (t ProjectType) Label() string {
 		return "Go"
 	case TypeGoWails:
 		return "Go + Wails"
+	case TypeWhatsappKit:
+		return "Kit WhatsApp"
+	case TypeKitD1:
+		return "Kit D1"
 	default:
 		return "Desconocido"
 	}
+}
+
+// IsKit indica si el tipo es un corekit (libreria compartida) y no una app.
+// Los kits no tienen build/release propios: solo se versionan y se editan.
+func (t ProjectType) IsKit() bool {
+	return t == TypeWhatsappKit || t == TypeKitD1
 }
 
 // WhatsappPath devuelve la ruta del motor de WhatsApp segun el tipo de proyecto.
@@ -184,10 +201,33 @@ func ClassifyDir(d string) (ProjectType, bool) {
 	if isPythonProject(d) {
 		return TypePython, true
 	}
+	if isWhatsappKit(d) {
+		return TypeWhatsappKit, true
+	}
+	if isKitD1(d) {
+		return TypeKitD1, true
+	}
 	if fileExists(filepath.Join(d, "go.mod")) {
 		return TypeGo, true
 	}
 	return 0, false
+}
+
+// isWhatsappKit reconoce el corekit del motor de WhatsApp: paquete Node con la
+// fuente (engine.js) y su script de empaquetado (bundle.mjs).
+func isWhatsappKit(d string) bool {
+	return fileExists(filepath.Join(d, "engine.js")) &&
+		fileExists(filepath.Join(d, "bundle.mjs")) &&
+		fileExists(filepath.Join(d, "package.json"))
+}
+
+// isKitD1 reconoce el kit Cloudflare D1 por su layout completo: modulo Go del
+// motor, plantilla del worker y scripts de aprovisionamiento. Se piden los tres
+// para no confundir con un proyecto que solo tenga un worker de Cloudflare.
+func isKitD1(d string) bool {
+	return fileExists(filepath.Join(d, "go", "syncengine", "go.mod")) &&
+		dirExists(filepath.Join(d, "worker", "template")) &&
+		fileExists(filepath.Join(d, "scripts", "provision.mjs"))
 }
 
 // isWailsV3 reconoce Go + Wails v3 (dependencia wailsapp/wails en go.mod más
@@ -237,7 +277,8 @@ func detectProjectRoot(start string) (string, ProjectType, error) {
 		dir = parent
 	}
 	return "", 0, &DetectError{Msg: "No se encontró un proyecto Flutter/Dart, " +
-		"Kotlin Multiplatform, Go, Python o Go + Wails en este directorio ni en sus padres.\n" +
+		"Kotlin Multiplatform, Go, Python, Go + Wails ni un corekit (WhatsApp / Kit D1) " +
+		"en este directorio ni en sus padres.\n" +
 		"   Usa el selector con 'compass --pick' para elegir la carpeta del proyecto."}
 }
 

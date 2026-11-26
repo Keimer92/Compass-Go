@@ -253,9 +253,9 @@ func (m MenuItem) Label(pt project.ProjectType) string {
 	case DebugAndroid:
 		return "Debug Andr"
 	case Signing:
-		// Solo hay firma Android en Flutter/Kotlin/Go+Wails; en Go puro y
-		// Python la tarea solo respondia "No aplicable".
-		if pt == project.TypeGo || pt == project.TypePython {
+		// Solo hay firma Android en Flutter/Kotlin/Go+Wails; en Go puro,
+		// Python y los corekits la tarea solo respondia "No aplicable".
+		if pt == project.TypeGo || pt == project.TypePython || pt.IsKit() {
 			return ""
 		}
 		return "Signing"

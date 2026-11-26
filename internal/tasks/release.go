@@ -17,7 +17,8 @@ import (
 )
 
 func init() {
-	for _, pt := range allTypes() {
+	// Solo las apps producen release; los corekits no se publican.
+	for _, pt := range appTypes() {
 		Register("windows-release", pt, ReleaseWindows)
 		Register("android-release", pt, ReleaseAndroid)
 		// Variantes por arquitectura: la GUI las ofrece como subcards clicables

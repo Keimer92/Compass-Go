@@ -76,3 +76,60 @@ func TestHasWhatsAppEngineRequiresLocalSource(t *testing.T) {
 		t.Fatal("whatsapp_engine/engine.js debería marcar un motor local")
 	}
 }
+
+// writeFiles crea los archivos indicados (rutas relativas) dentro de root.
+func writeFiles(t *testing.T, root string, files ...string) {
+	t.Helper()
+	for _, f := range files {
+		p := filepath.Join(root, f)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestClassifyKitD1(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root,
+		filepath.Join("go", "syncengine", "go.mod"),
+		filepath.Join("worker", "template", "package.json"),
+		filepath.Join("scripts", "provision.mjs"),
+	)
+	pt, ok := ClassifyDir(root)
+	if !ok || pt != TypeKitD1 {
+		t.Fatalf("ClassifyDir = %v, %v; queria Kit D1", pt, ok)
+	}
+	if !pt.IsKit() {
+		t.Fatal("TypeKitD1 deberia ser un kit")
+	}
+}
+
+// Un worker de Cloudflare suelto (sin el motor Go ni los scripts) no es el kit.
+func TestClassifyKitD1NeedsFullLayout(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, filepath.Join("worker", "template", "package.json"))
+	if pt, ok := ClassifyDir(root); ok {
+		t.Fatalf("ClassifyDir = %v; no queria un kit", pt)
+	}
+}
+
+func TestClassifyWhatsappKit(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, "engine.js", "bundle.mjs", "package.json")
+	pt, ok := ClassifyDir(root)
+	if !ok || pt != TypeWhatsappKit {
+		t.Fatalf("ClassifyDir = %v, %v; queria Kit WhatsApp", pt, ok)
+	}
+}
+
+// Un paquete Node cualquiera (sin engine.js/bundle.mjs) no es el corekit.
+func TestClassifyWhatsappKitNeedsEngineSource(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, "package.json")
+	if pt, ok := ClassifyDir(root); ok {
+		t.Fatalf("ClassifyDir = %v; no queria un kit", pt)
+	}
+}

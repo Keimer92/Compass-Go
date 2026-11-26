@@ -215,8 +215,9 @@ func commandPath(name string) string {
 	return path
 }
 
-// allTypes devuelve los 5 tipos de proyecto reconocidos (para registrar tareas
-// globales por tipo).
+// allTypes devuelve los tipos de proyecto reconocidos (para registrar tareas
+// globales por tipo). Incluye los corekits: comparten las tareas genericas
+// (limpieza, entorno, terminal) aunque no tengan build ni release propios.
 func allTypes() []project.ProjectType {
 	return []project.ProjectType{
 		project.TypeFlutter,
@@ -224,7 +225,22 @@ func allTypes() []project.ProjectType {
 		project.TypePython,
 		project.TypeGo,
 		project.TypeGoWails,
+		project.TypeWhatsappKit,
+		project.TypeKitD1,
 	}
+}
+
+// appTypes devuelve solo los tipos que producen un ejecutable (build, release,
+// firma, version). Los corekits quedan fuera: no se compilan ni se publican,
+// solo se versionan.
+func appTypes() []project.ProjectType {
+	out := make([]project.ProjectType, 0, len(allTypes()))
+	for _, pt := range allTypes() {
+		if !pt.IsKit() {
+			out = append(out, pt)
+		}
+	}
+	return out
 }
 
 // copyDir copia recursivamente src en dst (sobrescribiendo).

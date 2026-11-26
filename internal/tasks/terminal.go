@@ -18,6 +18,8 @@ func init() {
 	Register("terminal", project.TypePython, TerminalConfigure)
 	Register("terminal", project.TypeGo, TerminalConfigure)
 	Register("terminal", project.TypeGoWails, TerminalConfigure)
+	Register("terminal", project.TypeWhatsappKit, TerminalConfigure)
+	Register("terminal", project.TypeKitD1, TerminalConfigure)
 }
 
 const profilePredictive = `# --- compass: autocompletado (PSReadLine >= 2.2.0) ---

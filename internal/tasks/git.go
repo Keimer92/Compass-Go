@@ -655,6 +655,89 @@ node_modules/
 Thumbs.db
 *.log
 `
+
+	gitignoreWhatsappKit = `# ============================================
+# .gitignore para el kit del motor de WhatsApp
+# ============================================
+
+# --- Dependencias Node ---
+node_modules/
+dist/
+npm-debug.log*
+yarn-error.log*
+
+# --- Bundle compilado por ncc (bundle.mjs lo regenera) ---
+whatsapp-engine-bundle/
+single/
+out/
+
+# --- Runtime ---
+# El motor usa el Node 20+ del sistema: nunca se versiona un node.exe.
+node.exe
+
+# --- Sesiones y credenciales de WhatsApp ---
+whatsapp_auth/
+.auth/
+auth_info*/
+*.session
+
+# --- Config local ---
+.env
+.env.*
+!.env.example
+
+# --- Logs ---
+*.log
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+`
+
+	gitignoreKitD1 = `# ============================================
+# .gitignore para el kit Cloudflare D1
+# ============================================
+
+# --- Dependencias Node (worker y scripts) ---
+node_modules/
+**/node_modules/
+dist/
+
+# --- Wrangler / Cloudflare ---
+.wrangler/
+**/.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+
+# --- Credenciales del kit (NUNCA subir) ---
+sync-keys.json
+*-keys.json
+*.key
+
+# --- Bases de datos locales ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Go (motor de sync) ---
+*.exe
+*.test
+*.out
+coverage.out
+go.work
+go.work.sum
+
+# --- Logs / IDE / OS ---
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+`
 )
 
 func gitignoreContent(pt project.ProjectType) string {
@@ -670,8 +753,17 @@ func gitignoreContent(pt project.ProjectType) string {
 		content = gitignoreGo
 	case project.TypePython:
 		content = gitignorePython
+	case project.TypeWhatsappKit:
+		content = gitignoreWhatsappKit
+	case project.TypeKitD1:
+		content = gitignoreKitD1
 	default:
 		content = gitignoreGo
+	}
+	// Los corekits no etajan el motor de WhatsApp de otros proyectos: esas
+	// reglas solo generarian ruido (resources/whatsapp-engine-bundle/).
+	if pt.IsKit() {
+		return withCommonRules(withTaskCacheRules(content))
 	}
 	return withWhatsappRules(withCommonRules(withTaskCacheRules(content)))
 }

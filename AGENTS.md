@@ -5,8 +5,10 @@
 `Compass Go` es el **port a Go** de *Compass* (originalmente en Rust): una
 **GUI de escritorio para Windows** (Wails v3 + Svelte 5) que automatiza tareas
 de desarrollo, compilación y configuración para proyectos **Flutter (Dart)**,
-**Kotlin Multiplatform (Compose)**, **Go + Wails v3**, **Go puro** y
-**Python**. Detecta el tipo de proyecto y adapta comandos, rutas y menús.
+**Kotlin Multiplatform (Compose)**, **Go + Wails v3**, **Go puro**,
+**Python** y los **corekits** compartidos (**motor de WhatsApp** y
+**Cloudflare D1**). Detecta el tipo de proyecto y adapta comandos, rutas y
+menús.
 
 Además del menú, es un **contenedor de terminal propio**: cada card abre una
 pestaña **ConPTY** (PowerShell) dentro de la misma ventana de Compass en lugar
@@ -980,6 +982,25 @@ dev.bat              # Vite (HMR de UI) + backend con R = recompilar/reiniciar
   Wails (en Go puro las mismas usan `go run`/`go build` y no se ocultan). En
   Compass Go, que se compila con `go build` + `dist.bat` y no trae Taskfile,
   desaparecen; en un proyecto Wails de plantilla siguen funcionando.
+- **Corekits como proyecto (`TypeWhatsappKit`, `TypeKitD1`)**: los repos de los
+  kits compartidos se abren en Compass igual que una app, para editarlos y
+  versionarlos (auto-commit incluido), aunque no se compilan ni se publican.
+  - `ClassifyDir` reconoce el **motor de WhatsApp** con `engine.js` +
+    `bundle.mjs` + `package.json` en la raíz, y el **Kit D1** con
+    `go/syncengine/go.mod` + `worker/template/` + `scripts/provision.mjs`
+    (los tres, para no confundirlo con un worker suelto de Cloudflare).
+  - `ProjectType.IsKit()` centraliza la distinción. Los kits solo reciben las
+    tareas genéricas (`clean`, `git`, `terminal`, `environment`); `appTypes()`
+    es la lista sin kits que usan release y firma. `GetMenu` oculta además la
+    card Signing para ellos.
+  - `.gitignore`: `gitignoreContent` tiene plantillas propias. La de WhatsApp
+    ignora `node_modules/`, `dist/`, el bundle de ncc (`whatsapp-engine-bundle/`,
+    `single/`, `node.exe`) y las sesiones (`whatsapp_auth/`, `.auth/`,
+    `auth_info*/`). La de Kit D1 ignora `.wrangler/`, `.dev.vars`, las
+    credenciales (`sync-keys.json`, `*-keys.json`, `*.key`), bases locales
+    (`*.db`, `*.sqlite*`) y artefactos de Go. Los kits **no** reciben las reglas
+    del motor WhatsApp etajado (`resources/whatsapp-engine-bundle/`): esas solo
+    aplican a las apps que lo consumen.
 - **Terminal embebida**: `go-pty` (ConPTY) + `vt10x` (parser VT) en Go, y
   xterm.js en el frontend. La salida se reparte con `container.SpawnTap` entre
   el parser y el evento `pty:data` (nunca dos lectores sobre la misma ConPTY).
