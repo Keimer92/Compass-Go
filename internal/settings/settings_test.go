@@ -78,8 +78,8 @@ func TestAutoCommitIdleMinClamped(t *testing.T) {
 		in   string
 		want int
 	}{
-		{`{"auto_commit_idle_min":0}`, 5},
-		{`{"auto_commit_idle_min":-3}`, 5},
+		{`{"auto_commit_idle_min":0}`, 2},
+		{`{"auto_commit_idle_min":-3}`, 2},
 		{`{"auto_commit_idle_min":999}`, 240},
 		{`{"auto_commit_idle_min":12}`, 12},
 	} {

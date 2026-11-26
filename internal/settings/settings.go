@@ -35,7 +35,7 @@ type Settings struct {
 	OpenRouterAPIKey string `json:"openrouter_api_key"`
 	// AutoCommitIdleMin son los minutos que el arbol debe quedarse quieto
 	// antes de que el boton "Auto" del panel Git commitee. 0 o negativo se
-	// normaliza al valor por defecto (5).
+	// normaliza al valor por defecto (2).
 	AutoCommitIdleMin int `json:"auto_commit_idle_min"`
 	// AutoCommitProjects guarda las carpetas con el boton "Auto" activado,
 	// para que al reiniciar Compass el vigilante se rearme solo en ellas.
@@ -73,7 +73,7 @@ func Default() Settings {
 		// Vacio: GenerateCommit elige el gratuito mas rapido disponible si el
 		// usuario no ha seleccionado uno en Opciones.
 		OpenRouterModel:   "",
-		AutoCommitIdleMin: 5,
+		AutoCommitIdleMin: 2,
 		TerminalPanelPct:  60,
 		// Los avisos de terminal llegan apagados: un build ya suena desde su
 		// propio proceso y encender ambos duplicaria el aviso.

@@ -18,7 +18,7 @@ import (
 // instantanea (watch.go escucha el sistema de archivos); este sondeo es la red
 // de seguridad por si se pierde un evento. Mientras la firma del
 // estado no cambie, corre un reloj; cuando pasan los minutos configurados en
-// Opciones (settings.AutoCommitIdleMin, 5 por defecto) sin ningun cambio nuevo,
+// Opciones (settings.AutoCommitIdleMin, 2 por defecto) sin ningun cambio nuevo,
 // genera el mensaje (OpenRouter si hay API key; si no, un mensaje generico) y
 // commitea. Nunca hace push: subir sigue siendo manual.
 const autoTickEvery = 15 * time.Second
@@ -28,7 +28,7 @@ const autoTickEvery = 15 * time.Second
 func autoIdle() time.Duration {
 	m := settings.Load().AutoCommitIdleMin
 	if m < 1 {
-		m = 5
+		m = 2
 	}
 	return time.Duration(m) * time.Minute
 }
