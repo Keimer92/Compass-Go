@@ -3,8 +3,10 @@ package webui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"compass/internal/workspace"
 )
@@ -108,6 +110,31 @@ func TestKitD1ScriptValidaAcciones(t *testing.T) {
 	}
 	if s := b.KitD1Script("tag", "alpha", "v0.1.0"); !strings.Contains(s, "no válida") {
 		t.Fatalf("accion tag retirada todavia aceptada: %s", s)
+	}
+}
+
+func TestWranglerWhoamiLeeSalida(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("cmd.exe requiere Windows")
+	}
+	if got := whoamiWithCommand(t.TempDir(), "echo sesion-falsa", 5*time.Second); got != "sesion-falsa" {
+		t.Fatalf("whoami = %q, queria sesion-falsa", got)
+	}
+}
+
+// El hijo que hereda el pipe es lo que colgaba el modal: con salida a archivo,
+// el plazo tiene que devolver aunque el comando siga corriendo.
+func TestWranglerWhoamiCaducaSinColgar(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("cmd.exe requiere Windows")
+	}
+	start := time.Now()
+	got := whoamiWithCommand(t.TempDir(), "for /l %i in (1,1,999999) do @rem", 400*time.Millisecond)
+	if got != "Wrangler tardó demasiado en responder" {
+		t.Fatalf("whoami = %q, queria aviso de timeout", got)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("whoami tardó %s pese al plazo de 400ms", time.Since(start))
 	}
 }
 

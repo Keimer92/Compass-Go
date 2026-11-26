@@ -199,17 +199,51 @@ func (b *Bridge) KitD1Whoami() string {
 	if dir == "" {
 		dir = root
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	return wranglerWhoami(dir, 12*time.Second)
+}
+
+// wranglerWhoami corre `npx wrangler whoami` con la salida en un archivo.
+//
+// Con CombinedOutput en Windows se cuelga: al vencer el plazo Go mata cmd.exe,
+// pero el node.exe nieto hereda el pipe y el lector nunca ve EOF, así que el
+// modal se queda en "consultando…" para siempre. Con un archivo, Run vuelve
+// en cuanto termina el proceso. --yes, CI=1 y el stdin nulo evitan que npx
+// espere una confirmación interactiva sin consola.
+func wranglerWhoami(dir string, timeout time.Duration) string {
+	return whoamiWithCommand(dir, "npx --yes wrangler whoami", timeout)
+}
+
+// whoamiWithCommand separa el comando para poder probar el plazo sin red.
+func whoamiWithCommand(dir, command string, timeout time.Duration) string {
+	f, err := os.CreateTemp("", "compass-wrangler-*.txt")
+	if err != nil {
+		return "No se pudo consultar Wrangler: " + err.Error()
+	}
+	name := f.Name()
+	defer os.Remove(name)
+	defer f.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "cmd", "/c", "npx wrangler whoami")
+	cmd := exec.CommandContext(ctx, "cmd", "/c", command)
 	windialog.NoWindow(cmd)
 	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	cmd.Stdout = f
+	cmd.Stderr = f
+	if devNull, err := os.OpenFile(os.DevNull, os.O_RDONLY, 0); err == nil {
+		defer devNull.Close()
+		cmd.Stdin = devNull
+	}
+	cmd.Env = append(os.Environ(), "CI=1")
+	runErr := cmd.Run()
+	timedOut := ctx.Err() != nil
+
+	out, _ := os.ReadFile(name)
 	text := strings.TrimSpace(string(out))
-	if ctx.Err() != nil {
+	if timedOut {
 		return "Wrangler tardó demasiado en responder"
 	}
-	if err != nil && text == "" {
+	if runErr != nil && text == "" {
 		return "Sin sesión de Wrangler (ejecuta Wrangler login)"
 	}
 	if text == "" {

@@ -894,11 +894,13 @@
 
   // runKitD1 abre una pestana de terminal con un script ya armado por el
   // backend (KitD1Script), sin pasar por taskScript (que solo conoce tareas del
-  // menu). Cada accion del panel Kit D1 crea su propia pestana.
+  // menu). Cada accion del panel Kit D1 crea su propia pestana. La pestana se
+  // asocia al proyecto activo: visibleTabs solo muestra las de ese proyecto,
+  // asi que con project='' la accion corria oculta y parecia no hacer nada.
   async function runKitD1(label: string, script: string) {
     kitD1Open = false
     const key = ++seq
-    const tab: Tab = { key, label, ptyId: null, exited: false, project: '' }
+    const tab: Tab = { key, label, ptyId: null, exited: false, project: projectPath }
     tabs.push(tab)
     mountTerm(key)
     await tick()
