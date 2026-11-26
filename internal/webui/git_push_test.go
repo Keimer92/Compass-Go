@@ -41,6 +41,50 @@ func TestParsePushLine(t *testing.T) {
 	}
 }
 
+func TestPushNotice(t *testing.T) {
+	raw := `Enumerating objects: 15, done.
+Counting objects: 100% (15/15), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (8/8), done.
+Writing objects: 100% (9/9), 1.23 KiB | 1.23 MiB/s, done.
+Total 9 (delta 3), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (3/3), completed with 3 local objects.
+To https://github.com/Keimer92/Compass-Go
+   abc1234..def5678  master -> master`
+	cases := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{"push real", raw, "Push completado · master"},
+		{"nada que subir", "Everything up-to-date\n", "Push: todo al día"},
+		{"rama nueva", "To .../repo\n * [new branch]      feature -> feature\n", "Push completado · feature"},
+		{"solo progreso", "Counting objects: 100% (3/3), done.\n", "Push completado"},
+	}
+	for _, c := range cases {
+		if got := pushNotice(c.out); got != c.want {
+			t.Errorf("%s: %q, queria %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestPullNotice(t *testing.T) {
+	cases := []struct {
+		out  string
+		want string
+	}{
+		{"Already up to date.\n", "Pull: ya estabas al día"},
+		{"Successfully rebased and updated refs/heads/master.\n", "Pull: rebase aplicado"},
+		{"Updating abc1234..def5678\nFast-forward\n a.txt | 2 +-\n", "Pull: cambios incorporados"},
+		{"Counting objects: 100% (3/3), done.\n", "Pull completado"},
+	}
+	for _, c := range cases {
+		if got := pullNotice(c.out); got != c.want {
+			t.Errorf("%q: %q, queria %q", c.out, got, c.want)
+		}
+	}
+}
+
 func TestSplitProgressLines(t *testing.T) {
 	data := []byte("Writing objects:  10% (1/10)\rWriting objects:  20% (2/10)\nDone\n")
 	var got []string

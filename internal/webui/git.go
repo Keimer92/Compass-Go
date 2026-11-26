@@ -770,7 +770,7 @@ func (b *Bridge) GitPush() (string, error) {
 	if err != nil {
 		return "", pushError(out)
 	}
-	return out, nil
+	return pushNotice(out), nil
 }
 
 // pushBranch lanza el push informando del avance por "git:pushprogress". El
@@ -782,6 +782,42 @@ func pushBranch(dir string, info GitInfo) (string, error) {
 		return runGitPushProgress(dir, total, "push", "--progress", "-u", "origin", "HEAD")
 	}
 	return runGitPushProgress(dir, total, "push", "--progress")
+}
+
+// pushNotice condensa la salida de un push correcto a una sola línea para el
+// panel. El log crudo se sigue usando para clasificar errores, pero pintarlo
+// entero en la GUI llenaba el modal con todas las fases de compresión.
+func pushNotice(out string) string {
+	for _, raw := range strings.Split(out, "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "Everything up-to-date") {
+			return "Push: todo al día"
+		}
+		// git imprime "  <old>..<new>  rama -> rama" (o "* [new branch] ...").
+		if strings.Contains(line, " -> ") && !strings.HasPrefix(line, "remote:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return "Push completado · " + parts[len(parts)-1]
+			}
+		}
+	}
+	return "Push completado"
+}
+
+// pullNotice hace lo mismo para el `pull --rebase` previo a un sync.
+func pullNotice(out string) string {
+	for _, raw := range strings.Split(out, "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(line, "Already up to date."):
+			return "Pull: ya estabas al día"
+		case strings.HasPrefix(line, "Successfully rebased and updated refs/heads/"):
+			return "Pull: rebase aplicado"
+		case strings.HasPrefix(line, "Updating "):
+			return "Pull: cambios incorporados"
+		}
+	}
+	return "Pull completado"
 }
 
 // pushError traduce un push fallido. Un 403 suele ser otra cuenta guardada en
@@ -830,7 +866,7 @@ func (b *Bridge) GitSync() (string, error) {
 	if err != nil {
 		return "", pushError(pushed)
 	}
-	return strings.TrimSpace(strings.TrimSpace(pulled) + "\n" + strings.TrimSpace(pushed)), nil
+	return pullNotice(pulled) + " · " + pushNotice(pushed), nil
 }
 
 // GitPull trae cambios del upstream con rebase. Lo compone el frontend con
