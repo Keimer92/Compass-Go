@@ -13,8 +13,8 @@ import (
 
 // Auto-commit por inactividad.
 //
-// El boton "Auto" del panel Git activa, para el proyecto activo, un vigilante
-// que mira `git status --porcelain` cada autoTickEvery. La deteccion normal es
+// El boton "Auto" de cada tarjeta de proyecto activa un vigilante que mira
+// `git status --porcelain` cada autoTickEvery. La deteccion normal es
 // instantanea (watch.go escucha el sistema de archivos); este sondeo es la red
 // de seguridad por si se pierde un evento. Mientras la firma del
 // estado no cambie, corre un reloj; cuando pasan los minutos configurados en
@@ -57,18 +57,43 @@ type autoTrack struct {
 }
 
 // SetAutoCommit activa o desactiva el commit automatico del proyecto activo.
+func (b *Bridge) SetAutoCommit(enabled bool) error {
+	return b.SetAutoCommitFor(b.projectDir(), enabled)
+}
+
+// SetAutoCommitFor activa o desactiva el commit automatico de un proyecto
+// cualquiera del workspace: el toggle vive en la tarjeta de cada proyecto, no
+// en el panel del proyecto activo.
 //
 // Al activarlo se siembra la firma actual, para que el reloj empiece a contar
 // desde ese momento: cambios viejos no se commitean de golpe al pulsar Auto.
 // El estado se persiste por proyecto: al reiniciar Compass el vigilante se
 // rearma solo (resumeAuto), que es lo que el usuario espera del boton.
-func (b *Bridge) SetAutoCommit(enabled bool) error {
-	dir := b.projectDir()
+func (b *Bridge) SetAutoCommitFor(dir string, enabled bool) error {
+	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return errors.New("no hay proyecto activo")
 	}
-	if enabled && !b.GitInfo().IsRepo {
-		return errors.New("esta carpeta no es un repositorio git")
+	if enabled {
+		// Solo se pueden vigilar proyectos del workspace; si no, un toggle
+		// dejaría un commit automático corriendo en una carpeta ajena.
+		known := false
+		b.mu.Lock()
+		for _, p := range b.ws.Projects {
+			if p != nil && commitKey(p.Path) == commitKey(dir) {
+				dir = p.Path
+				known = true
+				break
+			}
+		}
+		b.mu.Unlock()
+		if !known {
+			return errors.New("el directorio no está en el workspace")
+		}
+		out, err := runGit(dir, "rev-parse", "--is-inside-work-tree")
+		if err != nil || strings.TrimSpace(out) != "true" {
+			return errors.New("esta carpeta no es un repositorio git")
+		}
 	}
 
 	persistAuto(dir, enabled)
@@ -172,9 +197,14 @@ func (b *Bridge) stopAuto(dir string) {
 
 // AutoCommitStatus devuelve el estado del vigilante del proyecto activo.
 func (b *Bridge) AutoCommitStatus() AutoCommitState {
-	dir := b.projectDir()
+	return b.AutoCommitStatusFor(b.projectDir())
+}
+
+// AutoCommitStatusFor devuelve el estado del vigilante de un proyecto, aunque
+// no sea el activo. Lo consulta la barra lateral para pintar cada tarjeta.
+func (b *Bridge) AutoCommitStatusFor(dir string) AutoCommitState {
 	st := AutoCommitState{IdleMin: int(autoIdle() / time.Minute)}
-	if dir == "" {
+	if strings.TrimSpace(dir) == "" {
 		return st
 	}
 	b.autoMu.Lock()
@@ -312,9 +342,12 @@ func (b *Bridge) autoCommit(r *autoTrack) {
 	}
 	b.autoMu.Unlock()
 
-	if cerr == nil {
-		Emit("git:auto", map[string]any{"dir": r.dir, "message": firstLine(msg), "out": out})
-	}
+	// Un solo evento por intento: la UI muestra el toast de exito o de fallo
+	// con el mismo nombre, sin necesidad de un segundo evento de error.
+	Emit("git:auto", map[string]any{
+		"dir": r.dir, "ok": cerr == nil,
+		"message": firstLine(msg), "out": out, "error": r.lastErr,
+	})
 }
 
 // autoSig resume el estado del arbol para detectar actividad: codigos de

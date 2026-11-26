@@ -20,6 +20,10 @@ import (
 // el asistente de vincular repositorio pueda mostrar una barra con los MB
 // enviados y los que faltan.
 type PushProgress struct {
+	// Dir identifica el proyecto (ruta absoluta del workspace) al que
+	// pertenece el push, para que el frontend pueda enrutar el evento aunque
+	// el panel Git esté desmontado o el activo sea otro.
+	Dir string `json:"dir"`
 	// Stage: counting | compressing | writing | resolving | done.
 	Stage string `json:"stage"`
 	// Percent es el avance global 0-100, ponderado por fase (no es el tanto por
@@ -206,6 +210,7 @@ func runGitPushProgress(dir string, total int64, args ...string) (string, error)
 		}
 		p.Uploaded = uploaded
 		p.Total = total
+		p.Dir = dir
 		Emit("git:pushprogress", p)
 	}
 
@@ -223,6 +228,6 @@ func runGitPushProgress(dir string, total int64, args ...string) (string, error)
 	if waitErr != nil {
 		return out, waitErr
 	}
-	Emit("git:pushprogress", PushProgress{Stage: "done", Percent: 100, Uploaded: uploaded, Total: total})
+	Emit("git:pushprogress", PushProgress{Dir: dir, Stage: "done", Percent: 100, Uploaded: uploaded, Total: total})
 	return out, nil
 }

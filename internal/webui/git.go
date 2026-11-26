@@ -46,6 +46,16 @@ type GitInfo struct {
 	Changes    int    `json:"changes"` // len(GitStatus())
 }
 
+// ProjectRepo es el resumen de Git de una tarjeta de proyecto. No incluye
+// estado de red: solo dice si la carpeta es repo y qué remote tiene configurado.
+type ProjectRepo struct {
+	Path      string `json:"path"`
+	IsRepo    bool   `json:"isRepo"`
+	IsGitHub  bool   `json:"isGitHub"`
+	WebURL    string `json:"webUrl"`
+	RemoteURL string `json:"remoteUrl"`
+}
+
 // FileNode es un nodo del arbol de archivos del explorador.
 type FileNode struct {
 	Name string `json:"name"`
@@ -743,6 +753,42 @@ func (b *Bridge) GitInfo() GitInfo {
 	}
 	info.Changes = len(b.GitStatus())
 	return info
+}
+
+// ProjectRepos devuelve el estado de Git de todos los proyectos del workspace
+// para pintar la insignia "solo local / GitHub" de cada tarjeta.
+//
+// No usa GitInfo (muchos procesos por proyecto) ni GitRemoteStatus (consulta
+// de red): solo dos comandos git locales por proyecto, sin depender de cuál
+// sea el activo.
+func (b *Bridge) ProjectRepos() []ProjectRepo {
+	b.mu.Lock()
+	paths := make([]string, 0, len(b.ws.Projects))
+	for _, p := range b.ws.Projects {
+		if p != nil {
+			paths = append(paths, p.Path)
+		}
+	}
+	b.mu.Unlock()
+
+	out := make([]ProjectRepo, 0, len(paths))
+	for _, dir := range paths {
+		r := ProjectRepo{Path: dir}
+		if v, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err == nil && strings.TrimSpace(v) == "true" {
+			r.IsRepo = true
+		}
+		if !r.IsRepo {
+			out = append(out, r)
+			continue
+		}
+		if remote, err := runGit(dir, "remote", "get-url", "origin"); err == nil {
+			r.RemoteURL = remote
+		}
+		r.WebURL = gitWebURL(r.RemoteURL)
+		r.IsGitHub = gitHostIsGitHub(gitHost(r.RemoteURL))
+		out = append(out, r)
+	}
+	return out
 }
 
 // GitPush sube la rama actual. Con upstream, hace `git push` (como VSCode); sin

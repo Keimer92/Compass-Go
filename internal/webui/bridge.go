@@ -36,7 +36,7 @@ type Bridge struct {
 	commitCancels map[string]*commitRun
 	commitSeq     uint64
 
-	// Auto-commit por inactividad (boton "Auto" del panel Git). Vive en el
+	// Auto-commit por inactividad (boton "Auto" de cada tarjeta de proyecto). Vive en el
 	// backend y no en la pestana para que siga vigilando aunque el usuario
 	// cambie a Explorador o Historial.
 	autoMu   sync.Mutex

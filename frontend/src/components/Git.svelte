@@ -1,26 +1,21 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import {
-    gitPush,
-    gitSync,
     gitSetRemote,
     gitInitRepo,
     gitRemoteStatus,
     gitGhInfo,
     gitCreateRemote,
     openExternal,
-    setAutoCommit,
-    autoCommitStatus,
-    onAutoCommit,
     onGitChanged,
     onPushProgress,
     type GitInfo,
-    type AutoCommitState,
     type RemoteStatus,
     type GhInfo,
     type PushProgress,
   } from '../lib/bridge'
   import { draftFor, runFor, setMessage, generateFor, cancelFor, commitFor } from '../lib/commitStore.svelte'
+  import { taskFor as gitTaskFor, runPush } from '../lib/gitTaskStore.svelte'
   import { onRepoChanged, notifyRepoChanged } from '../lib/repoChanged'
   import { emptyGitInfo, peekGitInfo, loadGitInfo } from '../lib/gitCache'
   import { svg } from '../lib/icons'
@@ -36,17 +31,14 @@
   // `loaded` solo pasa a true con una respuesta real de Go: mientras tanto no
   // se puede afirmar que la carpeta no sea un repo.
   let loaded = $state(cached !== null)
+  // `busy` es solo para iniciar/vincular el repo. Push y sync viven en el
+  // store, para que su estado siga visible aunque este panel se desmonte.
   let busy = $state(false)
-  // Que accion esta en curso, para poner el spinner solo en su boton.
-  let action = $state<'' | 'push' | 'sync'>('')
   let error = $state('')
   let notice = $state('')
   let connectOpen = $state(false)
   let remoteInput = $state('')
-  let auto = $state<AutoCommitState>({
-    enabled: false, idleMin: 10, pending: false, idleSec: 0, busy: false, lastMsg: '', lastError: ''
-  })
-  let autoBusy = $state(false)
+  let task = $derived(gitTaskFor(projectPath))
 
   // Estado del remoto: se comprueba con `git ls-remote` (una sola vez por
   // proyecto+URL cada pocos minutos) para detectar repositorios borrados.
@@ -153,7 +145,7 @@
       if (wizPush) {
         wizStatus = 'Preparando la subida…'
         try {
-          msg += '\n' + (await gitPush())
+          msg += '\n' + (await runPush(projectPath, 'push', { silent: true }))
         } catch (e) {
           msg += '\nNo se pudo subir todavía: ' + (e as Error).message
         }
@@ -189,7 +181,7 @@
       if (wizPush) {
         wizStatus = 'Preparando la subida…'
         try {
-          msg += '\n' + (await gitPush())
+          msg += '\n' + (await runPush(projectPath, 'push', { silent: true }))
         } catch (e) {
           msg += '\nNo se pudo subir todavía: ' + (e as Error).message
         }
@@ -204,34 +196,6 @@
     }
   }
 
-  async function loadAuto() {
-    try {
-      auto = await autoCommitStatus()
-    } catch {
-      // El estado del vigilante es informativo: un fallo aqui no rompe el panel.
-    }
-  }
-
-  async function toggleAuto() {
-    autoBusy = true
-    try {
-      await setAutoCommit(!auto.enabled)
-      await loadAuto()
-      error = ''
-    } catch (e) {
-      fail(e)
-    } finally {
-      autoBusy = false
-    }
-  }
-
-  function fmtSecs(s: number) {
-    if (s < 60) return `${s} s`
-    const m = Math.floor(s / 60)
-    if (m < 60) return `${m} min ${s % 60} s`
-    return `${Math.floor(m / 60)} h ${m % 60} min`
-  }
-
   // Rutas de Windows: comparar sin distinguir mayusculas ni el tipo de barra.
   function samePath(a: string, b: string) {
     if (!a || !b) return false
@@ -240,32 +204,23 @@
 
   onMount(() => {
     refresh()
-    loadAuto()
     const offRepo = onRepoChanged(refresh)
-    const offAuto = onAutoCommit(() => {
-      refresh()
-      loadAuto()
-    })
     // Aviso instantaneo del vigilante de archivos: el panel se repinta en
-    // cuanto se guarda algo, sin esperar al sondeo de 5 s.
+    // cuanto se guarda algo, sin esperar al sondeo.
     const offChanged = onGitChanged((e) => {
       if (!samePath(e.dir, projectPath)) return
       refresh()
-      loadAuto()
     })
-    // Progreso del push: solo interesa mientras el asistente esta abierto
-    // (los push del panel se lanzan desde ahi mismo o desde Sincronizar).
+    // El store global ya enruta el avance por proyecto; acá solo se pinta la
+    // barra del asistente, y solo del proyecto que muestra este panel.
     const offPush = onPushProgress((p) => {
-      if (!wizardOpen) return
+      if (!wizardOpen || !samePath(p.dir, projectPath)) return
       pushProg = p
     })
-    const timer = setInterval(loadAuto, 5000)
     return () => {
       offRepo()
-      offAuto()
       offChanged()
       offPush()
-      clearInterval(timer)
     }
   })
 
@@ -294,19 +249,13 @@
   }
 
   async function push() {
-    busy = true
-    action = 'push'
-    try { done(await gitPush()) } catch (e) { fail(e) } finally { busy = false; action = '' }
+    await runPush(projectPath, 'push')
   }
 
   async function sync() {
-    busy = true
-    action = 'sync'
-    try {
-      // Pull --rebase + push en una sola llamada al backend: comparte la
-      // deteccion de GitInfo y evita un viaje extra por la red de Wails.
-      done(await gitSync())
-    } catch (e) { fail(e) } finally { busy = false; action = '' }
+    // Pull --rebase + push en una sola llamada al backend: comparte la
+    // deteccion de GitInfo y evita un viaje extra por la red de Wails.
+    await runPush(projectPath, 'sync')
   }
 
   function openWeb() {
@@ -316,7 +265,7 @@
 
   let canPush = $derived(
     info.isRepo && info.hasCommits && !!info.remoteUrl && remote.state !== 'missing' &&
-    !info.branch.startsWith('detached') && !busy
+    !info.branch.startsWith('detached') && !busy && !task.busy
   )
   let canSync = $derived(canPush && !!info.upstream)
 
@@ -352,15 +301,6 @@
   <span>GIT</span>
   <div class="head-actions">
     <button
-      class="auto-btn"
-      class:on={auto.enabled}
-      onclick={toggleAuto}
-      disabled={autoBusy || !info.isRepo}
-      title={auto.enabled
-        ? `Commit automático activo: commitea tras ${auto.idleMin} min sin cambios`
-        : 'Commit automático tras un rato sin cambios'}
-    >Auto</button>
-    <button
       class="refresh"
       class:spin={refreshing}
       onclick={refresh}
@@ -372,19 +312,8 @@
 </div>
 {#if error}<div class="msg error">{error}</div>{/if}
 {#if notice}<div class="msg ok">{notice}</div>{/if}
-{#if auto.enabled}
-  <div class="auto-line">
-    {#if auto.busy}
-      Commiteando cambios…
-    {:else if auto.pending}
-      Quieto hace {fmtSecs(auto.idleSec)} · commitea a los {auto.idleMin} min
-    {:else}
-      Vigilando cambios…
-    {/if}
-  </div>
-  {#if auto.lastMsg}<div class="auto-last">Último automático: {auto.lastMsg}</div>{/if}
-  {#if auto.lastError}<div class="auto-err">{auto.lastError}</div>{/if}
-{/if}
+{#if task.error}<div class="msg error">{task.error}</div>{/if}
+{#if task.notice}<div class="msg ok">{task.notice}</div>{/if}
 
 {#if !loaded}
   <div class="loading">
@@ -465,18 +394,20 @@
     </div>
     <div class="actions">
       <button class="pill primary" onclick={push} disabled={!canPush} title={remote.state === 'missing' ? 'El remoto ya no existe: vincula otro repositorio' : info.remoteUrl ? 'Subir rama actual' : 'Configura un remoto primero'}>
-        {#if action === 'push'}<span class="spin" aria-hidden="true"></span>{/if}
-        {action === 'push' ? 'Subiendo…' : 'Push'}
+        {#if task.action === 'push'}<span class="spin" aria-hidden="true"></span>{/if}
+        {task.action === 'push' ? 'Subiendo…' : 'Push'}
       </button>
       <button class="pill ghost" onclick={sync} disabled={!canSync} title={info.upstream ? 'Pull --rebase + Push' : 'La rama no tiene upstream'}>
-        {#if action === 'sync'}<span class="spin" aria-hidden="true"></span>{/if}
-        {action === 'sync' ? 'Sincronizando…' : 'Sincronizar'}
+        {#if task.action === 'sync'}<span class="spin" aria-hidden="true"></span>{/if}
+        {task.action === 'sync' ? 'Sincronizando…' : 'Sincronizar'}
       </button>
     </div>
-    {#if action === 'sync'}
+    {#if task.action === 'sync'}
       <div class="sync-line">Pull --rebase y push con {info.upstream || 'el remoto'}…</div>
-    {:else if action === 'push'}
+    {:else if task.action === 'push'}
       <div class="sync-line">Subiendo {info.branch || 'la rama'} a {info.upstream || 'origin'}…</div>
+    {:else if task.progress && task.progress.stage !== 'done'}
+      <div class="sync-line">Subiendo… {task.progress.percent}%</div>
     {/if}
   {/if}
 
@@ -641,13 +572,6 @@
 <style>
   .head { display:flex; align-items:center; justify-content:space-between; padding:14px 14px 8px; color:var(--accent); font-weight:700; font-size:11px; letter-spacing:.08em; }
   .head-actions { display:flex; align-items:center; gap:6px; }
-  .auto-btn { padding:0 10px; height:26px; border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb, var(--panel) 50%, transparent); color:var(--muted); font:inherit; font-size:10px; font-weight:700; letter-spacing:.06em; cursor:pointer; transition:color .15s ease, border-color .15s ease, background .15s ease; }
-  .auto-btn:hover:not(:disabled) { color:var(--text); border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); }
-  .auto-btn.on { color:var(--text); background:color-mix(in srgb, var(--green) 30%, var(--bg)); border-color:color-mix(in srgb, var(--green) 55%, var(--border)); }
-  .auto-btn:disabled { opacity:.45; cursor:default; }
-  .auto-line { margin:0 14px 4px; font-size:10px; color:var(--green); font-variant-numeric:tabular-nums; }
-  .auto-last, .auto-err { margin:0 14px 4px; font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .auto-err { color:var(--yellow); }
   .loading { padding:26px 18px; text-align:center; color:var(--muted); font-size:11px; }
   .loading p { margin:0 0 8px; }
   .refresh { display:grid; place-items:center; width:26px; height:26px; padding:0; border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb, var(--panel) 50%, transparent); color:var(--muted); cursor:pointer; }

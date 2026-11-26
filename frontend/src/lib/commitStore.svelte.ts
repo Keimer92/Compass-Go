@@ -3,6 +3,7 @@
 // mensaje generado ni cancelar una generación en curso.
 import { generateCommit, cancelCommit, commit } from './bridge'
 import { notifyRepoChanged } from './repoChanged'
+import { pushToast } from './toast.svelte'
 
 const STORAGE_KEY = 'compass.go.commit.drafts.v1'
 
@@ -140,8 +141,10 @@ export async function commitFor(path: string) {
     drafts[path] = { message: '', lastMs: draft.lastMs }
     persist()
     notifyRepoChanged()
+    pushToast({ kind: 'success', title: 'Commit realizado', detail: message })
   } catch (e) {
     state.error = (e as Error).message
+    pushToast({ kind: 'error', title: 'No se pudo commitear', detail: state.error })
   } finally {
     state.committing = false
   }

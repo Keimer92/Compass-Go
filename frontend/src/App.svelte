@@ -8,7 +8,8 @@
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
     listCleanupCandidates, purgeCleanupCandidates, getSoundCatalog, previewSound,
-    getVibeTools, setReleasePortable,
+    getVibeTools, setReleasePortable, projectRepos, onAutoCommit, onGitChanged,
+    autoCommitStatusFor, setAutoCommitFor, openExternal,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -18,10 +19,13 @@
   import History from './components/History.svelte'
   import GitSettings from './components/GitSettings.svelte'
   import KitD1Panel from './components/KitD1Panel.svelte'
+  import ToastHost from './components/ToastHost.svelte'
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
-  import type { ProjectInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo, VibeToolInfo } from './lib/bridge'
+  import { pushToast } from './lib/toast.svelte'
+  import { initTaskProgress } from './lib/gitTaskStore.svelte'
+  import type { ProjectInfo, ProjectRepo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, AutoCommitState, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo, VibeToolInfo } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -32,6 +36,51 @@
   }
 
   let workspace = $state<WorkspaceInfo>({ projects: [], active: 0 })
+  // Insignias de repo y estado de auto-commit por proyecto: las cards viven
+  // acá, así que el estado no se pierde al cambiar de pestaña lateral.
+  let repoBadges = $state<Record<string, ProjectRepo>>({})
+  let autoStates = $state<Record<string, AutoCommitState>>({})
+  const changeToastAt = new Map<string, number>()
+  let autoPoll: ReturnType<typeof setInterval> | undefined
+
+  // Rutas de Windows: comparar sin distinguir mayusculas ni el tipo de barra.
+  function samePath(a: string, b: string) {
+    if (!a || !b) return false
+    return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+  }
+
+  async function loadRepoBadges() {
+    try {
+      const list = await projectRepos()
+      for (const r of list) repoBadges[r.path] = r
+    } catch {
+      // Sin workspace no hay insignias; no interrumpe el arranque.
+    }
+  }
+
+  async function loadAutoStates() {
+    await Promise.all(workspace.projects.map(async (p) => {
+      try { autoStates[p.path] = await autoCommitStatusFor(p.path) } catch { /* proyecto cerrado */ }
+    }))
+  }
+
+  async function toggleAutoFor(dir: string) {
+    const current = autoStates[dir]
+    if (!current || current.busy) return
+    current.busy = true
+    try {
+      await setAutoCommitFor(dir, !current.enabled)
+      await loadAutoStates()
+    } catch (e) {
+      pushToast({
+        kind: 'error',
+        title: 'No se pudo cambiar el auto-commit',
+        detail: e instanceof Error ? e.message : String(e)
+      })
+      await loadAutoStates()
+    }
+  }
+
   let menu = $state<MenuItemInfo[]>([])
   // Numero de la ultima peticion de menu: si dos cambios de proyecto se
   // solapan, solo la respuesta mas reciente puede pintar las cards.
@@ -349,8 +398,18 @@
       // La mascota celebra o se lamenta. Un codigo negativo es un cierre
       // forzado (cerrar la pestana): no es un fallo de la tarea.
       if (typeof d.code === 'number') {
-        if (d.code === 0) flashMood('success')
-        else if (d.code > 0) flashMood('error')
+        if (d.code === 0) {
+          flashMood('success')
+          // Las terminales manuales no son tareas: no merecen un toast.
+          if (tab && tab.label !== 'Terminal') {
+            pushToast({ kind: 'success', title: tab.label, detail: 'Tarea completada sin errores' })
+          }
+        } else if (d.code > 0) {
+          flashMood('error')
+          if (tab && tab.label !== 'Terminal') {
+            pushToast({ kind: 'error', title: tab.label, detail: `Terminó con código ${d.code}` })
+          }
+        }
       }
       // El comando/tarea pudo tocar el repo (git, builds, generacion de
       // codigo): que el explorador vuelva a leer el estado.
@@ -373,18 +432,44 @@
     loadVibeTools()
     // El reparto elegido con el separador se restaura al arrancar.
     getSettings().then((s) => { termPct = s.terminal_panel_pct }).catch(() => {})
+    initTaskProgress()
+    onAutoCommit((d) => {
+      changeToastAt.set(d.dir, Date.now())
+      pushToast({
+        kind: d.ok ? 'success' : 'error',
+        title: d.ok ? 'Commit automático' : 'Commit automático fallido',
+        detail: d.ok ? d.message : (d.error || 'No se pudo commitear')
+      })
+    })
+    onGitChanged((d) => {
+      if (!samePath(d.dir, projectPath)) return
+      const now = Date.now()
+      if (now - (changeToastAt.get(d.dir) ?? 0) < 30_000) return
+      changeToastAt.set(d.dir, now)
+      pushToast({
+        kind: 'info',
+        title: 'Cambios detectados',
+        detail: `${d.changes} archivo(s)${d.conflict ? ' · hay conflictos' : ''}`
+      })
+    })
     onWorkspaceChanged(() => {
       refresh()
+      loadRepoBadges()
+      loadAutoStates()
       notifyRepoChanged()
     })
     // Las ConPTY sobreviven a la recarga: se reconstruyen sus pestanas con la
     // salida reciente. Se hace despues de refresh() porque hay que conocer el
     // proyecto activo para decidir cual queda seleccionada.
     refresh().then(restoreTerminals).catch(() => {})
+    loadRepoBadges()
+    loadAutoStates()
+    autoPoll = setInterval(loadAutoStates, 15_000)
     return () => {
       ro.disconnect()
       vpRo.disconnect()
       if (fitRaf) cancelAnimationFrame(fitRaf)
+      if (autoPoll) clearInterval(autoPoll)
     }
   })
 
@@ -1032,6 +1117,25 @@
             <span class="dot" style="background:{colors[i % colors.length]}"></span>
             <span class="pname">{p.name}</span>
           </button>
+          <button
+            class="project-repo"
+            class:github={repoBadges[p.path]?.isGitHub}
+            title={repoBadges[p.path]?.webUrl ? `Abrir ${repoBadges[p.path].webUrl}` : (repoBadges[p.path]?.remoteUrl || 'Solo local, sin repositorio remoto')}
+            aria-label="Estado del repositorio"
+            onclick={(e) => {
+              e.stopPropagation()
+              if (repoBadges[p.path]?.webUrl) openExternal(repoBadges[p.path].webUrl).catch(() => {})
+            }}
+          >{repoBadges[p.path]?.isGitHub ? 'GitHub' : repoBadges[p.path]?.isRepo ? 'Remoto' : 'Local'}</button>
+          <button
+            class="project-auto"
+            class:on={autoStates[p.path]?.enabled}
+            disabled={autoStates[p.path]?.busy}
+            aria-pressed={!!autoStates[p.path]?.enabled}
+            title={autoStates[p.path]?.enabled ? 'Auto-commit activo: desactivar' : 'Activar auto-commit al estar inactivo'}
+            aria-label="Auto-commit"
+            onclick={(e) => { e.stopPropagation(); toggleAutoFor(p.path) }}
+          >A</button>
           <button class="project-close" onclick={() => dropProject(i)} aria-label="Cerrar proyecto" title="Cerrar proyecto">×</button>
         </div>
       {/each}
@@ -1165,6 +1269,8 @@
     </section>
   </main>
 </div>
+
+<ToastHost />
 
 {#if subMenu}
   <div class="modal-backdrop" onclick={() => (subMenu = null)} role="presentation">

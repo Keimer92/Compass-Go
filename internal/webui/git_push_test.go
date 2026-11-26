@@ -187,6 +187,11 @@ func TestGitPushEmitsProgress(t *testing.T) {
 		t.Fatalf("ultimo evento %+v, queria done/100", last)
 	}
 	for _, e := range events {
+		// El frontend enruta el avance por proyecto: todos los eventos
+		// deben traer la ruta del repo que hizo el push.
+		if e.Dir != dir {
+			t.Fatalf("evento con dir %q, queria %q: %+v", e.Dir, dir, e)
+		}
 		if e.Percent < 0 || e.Percent > 100 {
 			t.Fatalf("porcentaje fuera de rango: %+v", e)
 		}

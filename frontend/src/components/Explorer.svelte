@@ -344,7 +344,7 @@
     <div
       class="row node"
       class:selected={selected?.path === row.node.path}
-      style="padding-left:{8 + row.depth * 14}px"
+      style="padding-left:{8 + Math.min(row.depth, 8) * 14}px"
       role="treeitem"
       aria-selected={selected?.path === row.node.path}
       title={row.node.rel}
@@ -466,16 +466,16 @@
   .branch-ico { display:grid; place-items:center; color:var(--brand); flex-shrink:0; }
   .branch-name { font-family:'Cascadia Mono', Consolas, monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .working { color:var(--accent); }
-  .row { display:flex; align-items:center; gap:7px; padding:4px 12px; font-size:12px; }
+  .row { display:flex; align-items:center; gap:7px; min-width:0; padding:4px 12px; font-size:12px; }
   .changes .row { padding:4px 14px; }
-  .tree { outline:none; padding-bottom:10px; }
+  .tree { outline:none; padding-bottom:10px; overflow-x:hidden; }
   .tree:focus-visible { box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
   .row.node { cursor:default; border-radius:6px; margin:0 6px; padding-top:3px; padding-bottom:3px; }
   .row.node:hover { background:color-mix(in srgb, var(--border) 45%, transparent); }
   .row.node.selected { background:color-mix(in srgb, var(--accent) 24%, transparent); }
   .badge { width:17px; height:17px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:10px; flex-shrink:0; }
-  .file { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .name { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .file { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .name { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .name.dir { color:var(--brand); }
   .status { font-size:10px; }
   .chev { display:grid; place-items:center; width:14px; height:14px; padding:0; border:none; background:none; color:var(--muted); cursor:pointer; transition:transform .14s ease, color .14s ease; }

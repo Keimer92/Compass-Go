@@ -11,6 +11,14 @@ export interface MenuItemInfo {
   platform: 'windows' | 'android' | 'general'
 }
 export interface WorkspaceInfo { projects: ProjectInfo[]; active: number }
+export interface ProjectRepo {
+  path: string
+  isRepo: boolean
+  isGitHub: boolean
+  webUrl: string
+  remoteUrl: string
+}
+export const projectRepos = () => call<ProjectRepo[]>(M('ProjectRepos'))
 
 const call = <T>(method: string, ...args: any[]): Promise<T> =>
   Call.ByName(method, ...args) as unknown as Promise<T>
@@ -173,12 +181,16 @@ export interface AutoCommitState {
 }
 export const setAutoCommit = (enabled: boolean) => call<void>(M('SetAutoCommit'), enabled)
 export const autoCommitStatus = () => call<AutoCommitState>(M('AutoCommitStatus'))
+export const setAutoCommitFor = (dir: string, enabled: boolean) =>
+  call<void>(M('SetAutoCommitFor'), dir, enabled)
+export const autoCommitStatusFor = (dir: string) => call<AutoCommitState>(M('AutoCommitStatusFor'), dir)
 export const copilotAvailable = () => call<boolean>(M('CopilotAvailable'))
 
 export interface CopilotModelOption { id: string; label: string; hint: string }
 export const copilotModels = () => call<CopilotModelOption[]>(M('CopilotModels'))
-export const onAutoCommit = (cb: (d: { dir: string; message: string }) => void) =>
-  Events.On('git:auto', (e: any) => cb(e.data))
+export const onAutoCommit = (
+  cb: (d: { dir: string; message: string; out: string; ok: boolean; error: string }) => void
+) => Events.On('git:auto', (e: any) => cb(e.data))
 // Cambio en el arbol de trabajo detectado por fsnotify (al instante).
 export interface GitChangedEvent { dir: string; changes: number; conflict: boolean }
 export const onGitChanged = (cb: (d: GitChangedEvent) => void) =>
@@ -187,6 +199,7 @@ export const onGitChanged = (cb: (d: GitChangedEvent) => void) =>
 // Avance de un push: lo emite Go mientras `git push --progress` escribe en
 // stderr. `uploaded`/`total` van en bytes (0 si no se pudo calcular el total).
 export interface PushProgress {
+  dir: string
   stage: 'counting' | 'compressing' | 'writing' | 'resolving' | 'done'
   percent: number
   uploaded: number
