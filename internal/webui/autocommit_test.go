@@ -107,7 +107,7 @@ func TestSetAutoCommitToggle(t *testing.T) {
 		t.Fatalf("activar Auto: %v", err)
 	}
 	st := b.AutoCommitStatus()
-	if !st.Enabled || st.IdleMin != 5 {
+	if !st.Enabled || st.IdleMin != 2 {
 		t.Fatalf("estado inesperado: %+v", st)
 	}
 	if err := b.SetAutoCommit(false); err != nil {

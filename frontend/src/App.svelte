@@ -118,7 +118,7 @@
     openrouter_endpoint: 'https://openrouter.ai/api/v1',
     openrouter_model: '',
     openrouter_api_key: '',
-    auto_commit_idle_min: 5,
+    auto_commit_idle_min: 2,
     sound_presets: {},
     terminal_panel_pct: 60,
     vibe_disabled: [],
@@ -1139,7 +1139,7 @@
             title={autoStates[p.path]?.enabled ? 'Auto-commit activo: desactivar' : 'Activar auto-commit al estar inactivo'}
             aria-label="Auto-commit"
             onclick={(e) => { e.stopPropagation(); toggleAutoFor(p.path) }}
-          >A</button>
+          >Auto</button>
           <button class="project-close" onclick={() => dropProject(i)} aria-label="Cerrar proyecto" title="Cerrar proyecto">×</button>
         </div>
       {/each}

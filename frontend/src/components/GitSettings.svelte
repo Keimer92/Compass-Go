@@ -25,7 +25,7 @@
     openrouter_endpoint: 'https://openrouter.ai/api/v1',
     openrouter_model: '',
     openrouter_api_key: '',
-    auto_commit_idle_min: 5,
+    auto_commit_idle_min: 2,
     sound_presets: {},
     terminal_panel_pct: 60,
     vibe_disabled: [],
@@ -96,7 +96,7 @@
     error = ''
     try {
       const min = Math.round(Number(cfg.auto_commit_idle_min))
-      cfg.auto_commit_idle_min = Number.isFinite(min) ? Math.min(240, Math.max(1, min)) : 5
+      cfg.auto_commit_idle_min = Number.isFinite(min) ? Math.min(240, Math.max(1, min)) : 2
       const key = newApiKey.trim()
       await setSettings({ ...cfg, openrouter_api_key: key })
       if (key) {
