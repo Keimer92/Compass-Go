@@ -63,9 +63,10 @@ type Settings struct {
 	// para que cualquier CLI nueva aparezca activa sin migrar el fichero.
 	VibeDisabled []string `json:"vibe_disabled"`
 
-	// KitD1Path es la raiz del checkout de Kit D1 (contiene worker/instances y
-	// scripts/). Vacio = autodetectar junto al proyecto activo / exe. El panel
-	// de Kit D1 permite fijarlo explícitamente.
+	// KitD1Path es la raiz de Kit D1 (contiene worker/instances y scripts/).
+	// El kit vive dentro de Compass como "Kit D1/" (subtree); vacio = autodetectar
+	// junto al proyecto activo o al exe, con fallback al checkout antiguo
+	// "Core Station/Kit D1". El panel permite fijarlo explícitamente.
 	KitD1Path string `json:"kit_d1_path"`
 }
 

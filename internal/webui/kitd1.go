@@ -89,11 +89,13 @@ var kitD1Actions = []KitD1ActionDef{
 	{ID: "admin-list", Label: "Listar cuentas", Description: "Lista tenants registrados (requiere SYNC_ADMIN_ID_TOKEN).", NeedsInstance: true, Group: "claves"},
 	{ID: "key-export", Label: "Exportar clave", Description: "Re-emite el archivo .key de un tenant existente.", NeedsInstance: true, Group: "claves"},
 	{ID: "key-rotate", Label: "Rotar clave", Description: "Crea y registra una clave nueva (la vieja sigue activa).", NeedsInstance: true, Dangerous: true, Group: "claves"},
-	{ID: "tag", Label: "Crear tag del módulo", Description: "Etiqueta el módulo Go con una versión semver.", Dangerous: true, Group: "kit"},
+	{ID: "bootstrap", Label: "Instalar dependencias", Description: "npm install en la instancia (necesario en la copia del instalador).", NeedsInstance: true, Group: "kit"},
 }
 
-// kitD1Root resuelve la raíz del kit. Orden: setting explícito, variable de
-// entorno, hermano "Core Station/Kit D1" del proyecto activo y del exe.
+// kitD1Root resuelve la raíz del kit. El kit vive DENTRO de Compass como
+// "Kit D1/" (subtree), así que se busca junto al proyecto activo y junto al
+// exe. Se conservan los candidatos viejos "Core Station/Kit D1" como fallback
+// para checkout anteriores que aún no se han migrado.
 func (b *Bridge) kitD1Root() string {
 	s := settings.Load()
 	cands := []string{}
@@ -105,12 +107,22 @@ func (b *Bridge) kitD1Root() string {
 	}
 	base := b.projectDir()
 	if base != "" {
-		cands = append(cands, filepath.Join(filepath.Dir(base), "Core Station", "Kit D1"))
+		parent := filepath.Dir(base)
+		cands = append(cands, filepath.Join(base, "Kit D1"))
+		cands = append(cands, filepath.Join(parent, "Kit D1"))
+		// Si el proyecto activo es un hermano de Compass (GymPro, School
+		// Tracker), el kit esta en <padre>/Compass Go UX/Kit D1.
+		cands = append(cands, filepath.Join(parent, "Compass Go UX", "Kit D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(parent), "Kit D1"))
+		cands = append(cands, filepath.Join(parent, "Core Station", "Kit D1"))
 		cands = append(cands, filepath.Join(base, "Core Station", "Kit D1"))
 	}
 	if exe, err := os.Executable(); err == nil {
-		cands = append(cands, filepath.Join(filepath.Dir(filepath.Dir(exe)), "Core Station", "Kit D1"))
-		cands = append(cands, filepath.Join(filepath.Dir(exe), "Core Station", "Kit D1"))
+		exeDir := filepath.Dir(exe)
+		cands = append(cands, filepath.Join(exeDir, "Kit D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Core Station", "Kit D1"))
+		cands = append(cands, filepath.Join(exeDir, "Core Station", "Kit D1"))
 	}
 	for _, c := range cands {
 		if c == "" {
@@ -154,7 +166,9 @@ func (b *Bridge) KitD1Info() KitD1Info {
 	if out, err := runGit(root, "status", "--porcelain"); err == nil && strings.TrimSpace(out) != "" {
 		info.GitDirty = true
 	}
-	if out, err := runGit(root, "describe", "--tags", "--abbrev=0"); err == nil {
+	// El kit vive dentro del repo de Compass: sin --match, git describe tomaria
+	// un tag de Compass como si fuera la version del módulo syncengine.
+	if out, err := runGit(root, "describe", "--tags", "--match", "go/syncengine/v*", "--abbrev=0"); err == nil {
 		info.LastTag = out
 	}
 	info.Instances = kitD1Instances(root)
@@ -236,9 +250,6 @@ func (b *Bridge) KitD1Script(action, instance, arg string) string {
 			break
 		}
 	}
-	if action == "tag" {
-		valid = true
-	}
 	if !valid {
 		return "Write-Host 'Acción no válida' -ForegroundColor Red"
 	}
@@ -246,10 +257,8 @@ func (b *Bridge) KitD1Script(action, instance, arg string) string {
 	if root == "" {
 		return "Write-Host 'Kit D1 no encontrado' -ForegroundColor Red"
 	}
-	if action != "tag" {
-		if !kitD1ValidInstance(root, instance) {
-			return "Write-Host 'Instancia no válida' -ForegroundColor Red"
-		}
+	if !kitD1ValidInstance(root, instance) {
+		return "Write-Host 'Instancia no válida' -ForegroundColor Red"
 	}
 	kit := psQuote(root)
 	instDir := filepath.Join(root, "worker", "instances", instance)
@@ -279,15 +288,8 @@ func (b *Bridge) KitD1Script(action, instance, arg string) string {
 		cmd = fmt.Sprintf("Set-Location -LiteralPath %s; node scripts/generate-key.mjs --dir %s", kit, dir)
 	case "key-rotate":
 		cmd = fmt.Sprintf("Set-Location -LiteralPath %s; node scripts/generate-key.mjs --dir %s --nueva", kit, dir)
-	case "tag":
-		ver := strings.TrimSpace(arg)
-		if !regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`).MatchString(ver) {
-			return "Write-Host 'Versión no válida (usa v0.1.0)' -ForegroundColor Red"
-		}
-		if !strings.HasPrefix(ver, "v") {
-			ver = "v" + ver
-		}
-		cmd = fmt.Sprintf("git -C %s tag -a %s -m %s; git -C %s push origin %s", kit, psQuote(ver), psQuote("Release "+ver), kit, psQuote(ver))
+	case "bootstrap":
+		cmd = fmt.Sprintf("Set-Location -LiteralPath %s; npm install", dir)
 	}
 	return cmd + fmt.Sprintf("; Write-Host '--- fin (%s) ---' -ForegroundColor Cyan", action)
 }

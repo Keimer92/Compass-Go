@@ -163,6 +163,25 @@ if exist "Kit Whatsapp" (
 ) else (
     echo [SKIP] No se encontro la carpeta "Kit Whatsapp"; se omite.
 )
+
+REM Kit D1: viaja dentro del repo (subtree) y se copia al payload sin los
+REM artefactos que se generan con npm install. Las acciones del panel que
+REM usan npm (bootstrap/typecheck/dev/deploy) necesitan el "Instalar
+REM dependencias" previo en la maquina de destino.
+set "RC_ERR="
+if exist "Kit D1" (
+    echo [INFO] Copiando Kit D1 a dist\payload sin node_modules...
+    if exist "dist\payload\Kit D1" rmdir /s /q "dist\payload\Kit D1"
+    robocopy "Kit D1" "dist\payload\Kit D1" /E /XD node_modules .wrangler dist out .git /NFL /NDL /NJH /NJS /NP >nul
+    if errorlevel 8 set "RC_ERR=1"
+    if defined RC_ERR (
+        echo [WARN] robocopy devolvio un error al copiar Kit D1; revisa dist\payload\Kit D1.
+    ) else (
+        echo [OK] Kit D1 copiado ^(sin node_modules: usa "Instalar dependencias" en el panel^).
+    )
+) else (
+    echo [SKIP] No se encontro la carpeta "Kit D1"; se omite.
+)
 echo.
 
 if "%MAKE_INSTALLER%"=="0" (

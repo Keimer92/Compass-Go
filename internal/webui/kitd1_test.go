@@ -92,6 +92,9 @@ func TestKitD1ScriptValidaAcciones(t *testing.T) {
 	if s := b.KitD1Script("key-rotate", "alpha", ""); !strings.Contains(s, "--nueva") {
 		t.Fatalf("rotate sin --nueva: %s", s)
 	}
+	if s := b.KitD1Script("bootstrap", "alpha", ""); !strings.Contains(s, "npm install") {
+		t.Fatalf("bootstrap sin npm install: %s", s)
+	}
 	// Instancia inexistente o con traversal: se rechaza.
 	if s := b.KitD1Script("dev", "no-existe", ""); !strings.Contains(s, "no válida") {
 		t.Fatalf("instancia inexistente aceptada: %s", s)
@@ -99,16 +102,12 @@ func TestKitD1ScriptValidaAcciones(t *testing.T) {
 	if s := b.KitD1Script("dev", "../alpha", ""); !strings.Contains(s, "no válida") {
 		t.Fatalf("traversal aceptado: %s", s)
 	}
-	// Accion desconocida: se rechaza.
+	// Accion desconocida (incluida la antigua 'tag'): se rechaza.
 	if s := b.KitD1Script("borrar-todo", "alpha", ""); !strings.Contains(s, "no válida") {
 		t.Fatalf("accion desconocida aceptada: %s", s)
 	}
-	// Tag exige semver.
-	if s := b.KitD1Script("tag", "", "drop-table"); !strings.Contains(s, "no válida") {
-		t.Fatalf("version no semver aceptada: %s", s)
-	}
-	if s := b.KitD1Script("tag", "", "1.2.3"); !strings.Contains(s, "v1.2.3") {
-		t.Fatalf("tag sin v: %s", s)
+	if s := b.KitD1Script("tag", "alpha", "v0.1.0"); !strings.Contains(s, "no válida") {
+		t.Fatalf("accion tag retirada todavia aceptada: %s", s)
 	}
 }
 
@@ -119,13 +118,38 @@ func TestKitD1AccionesCatalogo(t *testing.T) {
 			t.Fatalf("accion duplicada: %s", a.ID)
 		}
 		ids[a.ID] = true
-		if a.ID != "tag" && !a.NeedsInstance {
+		if !a.NeedsInstance {
 			t.Fatalf("accion %s deberia needing instance", a.ID)
 		}
 	}
-	for _, want := range []string{"assemble", "typecheck", "dev", "deploy", "provision-dry", "provision", "whoami", "login", "admin-list", "key-export", "key-rotate", "tag"} {
+	for _, want := range []string{"assemble", "typecheck", "dev", "deploy", "provision-dry", "provision", "whoami", "login", "admin-list", "key-export", "key-rotate", "bootstrap"} {
 		if !ids[want] {
 			t.Fatalf("falta accion %s", want)
 		}
+	}
+	if ids["tag"] {
+		t.Fatal("la accion tag no debe estar en el catalogo (repo remoto archivado)")
+	}
+}
+
+// TestKitD1RootDentroDeCompass comprueba que el kit se autodetecta cuando vive
+// como subcarpeta "Kit D1/" del proyecto activo (layout del subtree).
+func TestKitD1RootDentroDeCompass(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv(kitD1Env, "")
+	compass := filepath.Join(t.TempDir(), "Compass Go UX")
+	kit := filepath.Join(compass, "Kit D1")
+	if err := os.MkdirAll(filepath.Join(kit, "worker", "instances"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b := &Bridge{dir: compass, ws: &workspace.Workspace{Projects: []*workspace.Project{}, Active: -1}}
+	if got := b.kitD1Root(); got != kit {
+		t.Fatalf("kitD1Root = %q, queria %q", got, kit)
+	}
+	// La deteccion del proyecto activo tambien debe encontrarlo subiendo un nivel.
+	sub := filepath.Join(compass, "internal", "webui")
+	b.dir = sub
+	if got := b.kitD1Root(); got != kit {
+		t.Fatalf("desde subdirectorio kitD1Root = %q, queria %q", got, kit)
 	}
 }

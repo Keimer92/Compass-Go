@@ -345,18 +345,30 @@ proyecto concreto:
 - **Panel de Kit D1** (`frontend/src/components/KitD1Panel.svelte` +
   `internal/webui/kitd1.go`): botón "Kit D1" en el pie del sidebar, al lado de
   "Ajustes de Git". El kit es **global**, no por proyecto (como Git), y el panel
-  muestra: ruta (fijada en `settings.kit_d1_path` o autodetectada en
-  `<padre del proyecto>/Core Station/Kit D1`, también vía `COMPASS_KIT_D1`),
-  versión del módulo Go, rama/tag/working tree, sesión de Wrangler (`whoami`),
-  instancias de `worker/instances/*` y consumidores del workspace (módulo Go
-  con `go.work` local, o Flutter). Las acciones (ensamblar, typecheck, dev,
-  deploy, provision dry-run/real, whoami/login, listar tenants, exportar/rotar
-  clave, crear tag) se arman en `KitD1Script` con **whitelist** de acción +
-  validación de instancia contra el disco (sin interpolación libre) y se ejecutan
-  en una pestaña propia del terminal de Compass (`runKitD1` en `App.svelte`).
-  Deploy, provision real, rotar clave y crear tag piden **confirmación de dos
-  pasos**. La detección de consumidores/instancias está cubierta por
-  `kitd1_test.go` (fixture) y verificada contra el checkout real del kit.
+  muestra: ruta (fijada en `settings.kit_d1_path` o autodetectada; también vía
+  `COMPASS_KIT_D1`), versión del módulo Go, rama/tag/working tree, sesión de
+  Wrangler (`whoami`), instancias de `worker/instances/*` y consumidores del
+  workspace (módulo Go con `go.work` local, o Flutter). Las acciones (ensamblar,
+  typecheck, dev, deploy, provision dry-run/real, whoami/login, listar tenants,
+  exportar/rotar clave, instalar dependencias) se arman en `KitD1Script` con
+  **whitelist** de acción + validación de instancia contra el disco (sin
+  interpolación libre) y se ejecutan en una pestaña propia del terminal de
+  Compass (`runKitD1` en `App.svelte`). Deploy, provision real y rotar clave
+  piden **confirmación de dos pasos**.
+- **Kit D1 vive DENTRO de Compass** en `Kit D1/` (raíz del repo), incorporado con
+  `git subtree add --prefix="Kit D1" ../Core Station/Kit D1 main --squash`. Ya no
+  es un checkout separado: el remoto `Keimer92/Kit-D1` queda como archivo
+  histórico (intacto, sin push). La ruta se resuelve en `kitD1Root()`: junto al
+  proyecto activo (`Kit D1/`, o `<padre>/Compass Go UX/Kit D1` si el activo es
+  GymPro/School Tracker), junto al exe (instalador), con fallback al checkout
+  viejo `Core Station/Kit D1`. `dist.bat` copia `Kit D1/` al payload del
+  instalador excluyendo `node_modules`, `.wrangler`, `dist`, `out` y `.git`;
+  por eso la acción **Instalar dependencias** (`npm install`) precede a
+  typecheck/dev/deploy en una máquina nueva. Los `go.work` de GymPro y School
+  Tracker apuntan con ruta relativa a `../Compass Go UX/Kit D1/go/syncengine`.
+  La action `tag` se retiró: con subtree un tag iría al repo de Compass, no al
+  del módulo. `git describe` filtra por `--match go/syncengine/v*`. Cobertura en
+  `kitd1_test.go` (fixture + detección dentro de Compass).
 - **Fecha y hora en el Historial**: `GitLog` y `CommitDetail` usan
   `--date=format:%Y-%m-%d %H:%M`, así que cada commit muestra el día y la hora
   exacta (sin segundos ni zona horaria, que solo alargaban la fila). El formato
@@ -995,6 +1007,11 @@ dev.bat              # Vite (HMR de UI) + backend con R = recompilar/reiniciar
     tareas genéricas (`clean`, `git`, `terminal`, `environment`); `appTypes()`
     es la lista sin kits que usan release y firma. `GetMenu` oculta además la
     card Signing para ellos.
+  - El Kit D1 ya no necesita abrirse como proyecto externo: vive en `Kit D1/`
+    dentro de este repo (subtree) y se gestiona desde el panel. `ClassifyDir`
+    sigue reconociéndolo (por si se abre esa carpeta directamente), pero
+    `isWailsV3` se evalúa antes, así que abrir la raíz de Compass NO lo clasifica
+    como kit.
   - `.gitignore`: `gitignoreContent` tiene plantillas propias. La de WhatsApp
     ignora `node_modules/`, `dist/`, el bundle de ncc (`whatsapp-engine-bundle/`,
     `single/`, `node.exe`) y las sesiones (`whatsapp_auth/`, `.auth/`,
