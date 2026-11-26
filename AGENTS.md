@@ -950,11 +950,13 @@ provisión y el `worker/template/` del que se ensamblan las instancias por
 proyecto.
 
 - **Resolución de ruta** (`kitD1Root()` en `internal/webui/kitd1.go`): se fija en
-  `settings.kit_d1_path`, o se autodetecta junto al proyecto activo (`Kit-D1/`,
-  o `<padre>/Compass Go UX/Kit-D1` si el activo es GymPro/School Tracker), junto
-  al exe (instalador). Se conservan como fallback los nombres anteriores
-  (`Kit D1/`, `Core Station/Kit D1`). También se puede forzar con
-  `COMPASS_KIT_D1`.
+  `settings.kit_d1_path` o `COMPASS_KIT_D1`; si no, **primero** la copia
+  empaquetada junto al exe (`<exe>/Kit-D1`, instalación) y **después** junto al
+  proyecto activo (`Kit-D1/`, o `<padre>/Compass Go UX/Kit-D1` si el activo es
+  GymPro/School Tracker). Así el binario instalado usa sus propios kits y basta
+  con reinstalar Compass Go cuando cambie el kit; en desarrollo (`go run`) el exe
+  vive en un temporal sin `Kit-D1` y se cae a las rutas del proyecto. Se conservan
+  como fallback los nombres anteriores (`Kit D1/`, `Core Station/Kit D1`).
 - **Panel de administración** (`frontend/src/components/KitD1Panel.svelte` +
   `internal/webui/kitd1.go`): botón "Kit D1" en el pie del sidebar, al lado de
   "Ajustes de Git". El kit es **global**, no por proyecto (como Git), y el panel

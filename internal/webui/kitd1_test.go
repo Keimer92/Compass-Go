@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"compass/internal/settings"
 	"compass/internal/workspace"
 )
 
@@ -178,5 +179,36 @@ func TestKitD1RootDentroDeCompass(t *testing.T) {
 	b.dir = sub
 	if got := b.kitD1Root(); got != kit {
 		t.Fatalf("desde subdirectorio kitD1Root = %q, queria %q", got, kit)
+	}
+}
+
+// La copia junto al exe (instalacion) debe tener prioridad sobre la del
+// proyecto: asi el binario instalado usa sus propios kits y basta con
+// reinstalar Compass Go cuando cambie el kit.
+func TestKitD1CandidatesExePrimero(t *testing.T) {
+	t.Setenv(kitD1Env, "")
+	exeDir := filepath.Join(t.TempDir(), "Programs", "Keimer")
+	base := filepath.Join(t.TempDir(), "Compass Go UX")
+	cands := kitD1Candidates(settings.Settings{}, exeDir, base)
+
+	wantExe := filepath.Join(exeDir, "Kit-D1")
+	wantProj := filepath.Join(base, "Kit-D1")
+	idxExe, idxProj := -1, -1
+	for i, c := range cands {
+		switch c {
+		case wantExe:
+			idxExe = i
+		case wantProj:
+			idxProj = i
+		}
+	}
+	if idxExe < 0 {
+		t.Fatalf("no se propuso la copia del exe %q: %v", wantExe, cands)
+	}
+	if idxProj < 0 {
+		t.Fatalf("no se propuso la copia del proyecto %q: %v", wantProj, cands)
+	}
+	if idxExe > idxProj {
+		t.Fatalf("la copia del exe (%d) debe ir antes que la del proyecto (%d)", idxExe, idxProj)
 	}
 }

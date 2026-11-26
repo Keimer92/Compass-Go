@@ -92,12 +92,40 @@ var kitD1Actions = []KitD1ActionDef{
 	{ID: "bootstrap", Label: "Instalar dependencias", Description: "npm install en la instancia (necesario en la copia del instalador).", NeedsInstance: true, Group: "kit"},
 }
 
-// kitD1Root resuelve la raíz del kit. El kit vive DENTRO de Compass como
-// "Kit-D1/" (subtree), así que se busca junto al proyecto activo y junto al
-// exe. Se conservan los candidatos viejos "Kit D1" / "Core Station/Kit D1"
-// como fallback para configuraciones anteriores que aún no se han migrado.
+// kitD1Root resuelve la raíz del kit. Prioriza la copia que viaja con el
+// binario (junto al exe): el instalador empaqueta "Kit-D1/" dentro de
+// %LOCALAPPDATA%\Programs\Keimer, asi que el binario instalado usa su propia
+// copia y no la del repo. Si hay cambios en el kit basta con reinstalar
+// Compass Go. En desarrollo (go run/dev.bat) el exe vive en un temporal sin
+// Kit-D1, por lo que se cae a las rutas junto al proyecto activo. Se conservan
+// los nombres viejos "Kit D1" / "Core Station/Kit D1" como fallback heredado.
 func (b *Bridge) kitD1Root() string {
 	s := settings.Load()
+	exeDir := ""
+	if exe, err := os.Executable(); err == nil {
+		exeDir = filepath.Dir(exe)
+	}
+	for _, c := range kitD1Candidates(s, exeDir, b.projectDir()) {
+		if c == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(c); err == nil {
+			c = abs
+		}
+		if fi, err := os.Stat(filepath.Join(c, "worker", "instances")); err == nil && fi.IsDir() {
+			return c
+		}
+	}
+	if strings.TrimSpace(s.KitD1Path) != "" {
+		return s.KitD1Path
+	}
+	return ""
+}
+
+// kitD1Candidates arma la lista ordenada de rutas candidatas para el kit.
+// Primero la copia empaquetada junto al binario (exeDir), luego las rutas junto
+// al proyecto activo (desarrollo). exeDir vacio o base vacio se omiten.
+func kitD1Candidates(s settings.Settings, exeDir, base string) []string {
 	cands := []string{}
 	if strings.TrimSpace(s.KitD1Path) != "" {
 		cands = append(cands, s.KitD1Path)
@@ -105,7 +133,16 @@ func (b *Bridge) kitD1Root() string {
 	if v := strings.TrimSpace(os.Getenv(kitD1Env)); v != "" {
 		cands = append(cands, v)
 	}
-	base := b.projectDir()
+	// 1) Copia empaquetada con el binario (instalacion).
+	if exeDir != "" {
+		cands = append(cands, filepath.Join(exeDir, "Kit-D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit-D1"))
+		cands = append(cands, filepath.Join(exeDir, "Kit D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Core Station", "Kit D1"))
+		cands = append(cands, filepath.Join(exeDir, "Core Station", "Kit D1"))
+	}
+	// 2) Fallback de desarrollo: junto al proyecto activo.
 	if base != "" {
 		parent := filepath.Dir(base)
 		cands = append(cands, filepath.Join(base, "Kit-D1"))
@@ -121,30 +158,7 @@ func (b *Bridge) kitD1Root() string {
 		cands = append(cands, filepath.Join(parent, "Core Station", "Kit D1"))
 		cands = append(cands, filepath.Join(base, "Core Station", "Kit D1"))
 	}
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		cands = append(cands, filepath.Join(exeDir, "Kit-D1"))
-		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit-D1"))
-		cands = append(cands, filepath.Join(exeDir, "Kit D1"))
-		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit D1"))
-		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Core Station", "Kit D1"))
-		cands = append(cands, filepath.Join(exeDir, "Core Station", "Kit D1"))
-	}
-	for _, c := range cands {
-		if c == "" {
-			continue
-		}
-		if abs, err := filepath.Abs(c); err == nil {
-			c = abs
-		}
-		if fi, err := os.Stat(filepath.Join(c, "worker", "instances")); err == nil && fi.IsDir() {
-			return c
-		}
-	}
-	if strings.TrimSpace(s.KitD1Path) != "" {
-		return s.KitD1Path
-	}
-	return ""
+	return cands
 }
 
 // KitD1Info devuelve el estado del kit: módulo, git, instancias y consumidores.
