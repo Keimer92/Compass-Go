@@ -13,10 +13,12 @@
     autoCommitStatus,
     onAutoCommit,
     onGitChanged,
+    onPushProgress,
     type GitInfo,
     type AutoCommitState,
     type RemoteStatus,
     type GhInfo,
+    type PushProgress,
   } from '../lib/bridge'
   import { draftFor, runFor, setMessage, generateFor, cancelFor, commitFor } from '../lib/commitStore.svelte'
   import { onRepoChanged, notifyRepoChanged } from '../lib/repoChanged'
@@ -62,6 +64,11 @@
   let newName = $state('')
   let newPrivate = $state(true)
   let linkUrl = $state('')
+  // Progreso del push del asistente. Lo emite Go mientras `git push
+  // --progress` trabaja; `wizStatus` cubre las fases que no reportan avance
+  // (crear el repositorio con gh).
+  let pushProg = $state<PushProgress | null>(null)
+  let wizStatus = $state('')
 
   // El borrador del commit vive en el store, como en la antigua pestaña:
   // sobrevive al cambio de pestaña y a los refrescos del panel.
@@ -120,6 +127,8 @@
     wizBusy = false
     wizPush = true
     newPrivate = true
+    pushProg = null
+    wizStatus = ''
     const base = projectPath.split(/[\\/]/).filter(Boolean).pop() ?? 'mi-repo'
     newName = base.replace(/[^A-Za-z0-9._-]+/g, '-')
     linkUrl = ''
@@ -130,14 +139,19 @@
   function closeWizard() {
     if (wizBusy) return
     wizardOpen = false
+    pushProg = null
+    wizStatus = ''
   }
 
   async function wizardCreate() {
     wizBusy = true
     wizError = ''
+    pushProg = null
     try {
+      wizStatus = 'Creando el repositorio en GitHub…'
       let msg = await gitCreateRemote(newName.trim(), newPrivate)
       if (wizPush) {
+        wizStatus = 'Preparando la subida…'
         try {
           msg += '\n' + (await gitPush())
         } catch (e) {
@@ -150,12 +164,14 @@
       wizError = (e as Error).message
     } finally {
       wizBusy = false
+      wizStatus = ''
     }
   }
 
   async function wizardLink() {
     wizBusy = true
     wizError = ''
+    pushProg = null
     try {
       const url = linkUrl.trim()
       if (!url) {
@@ -163,6 +179,7 @@
         return
       }
       // Verifica que el destino exista antes de tocar la configuracion.
+      wizStatus = 'Comprobando el repositorio…'
       const st = await gitRemoteStatus(url)
       if (st.state === 'missing' || st.state === 'none' || st.state === 'error') {
         wizError = st.detail || 'Ese repositorio no existe o no es accesible.'
@@ -170,6 +187,7 @@
       }
       let msg = await gitSetRemote(url)
       if (wizPush) {
+        wizStatus = 'Preparando la subida…'
         try {
           msg += '\n' + (await gitPush())
         } catch (e) {
@@ -182,6 +200,7 @@
       wizError = (e as Error).message
     } finally {
       wizBusy = false
+      wizStatus = ''
     }
   }
 
@@ -234,11 +253,18 @@
       refresh()
       loadAuto()
     })
+    // Progreso del push: solo interesa mientras el asistente esta abierto
+    // (los push del panel se lanzan desde ahi mismo o desde Sincronizar).
+    const offPush = onPushProgress((p) => {
+      if (!wizardOpen) return
+      pushProg = p
+    })
     const timer = setInterval(loadAuto, 5000)
     return () => {
       offRepo()
       offAuto()
       offChanged()
+      offPush()
       clearInterval(timer)
     }
   })
@@ -293,6 +319,33 @@
     !info.branch.startsWith('detached') && !busy
   )
   let canSync = $derived(canPush && !!info.upstream)
+
+  // ── Progreso del push del asistente ──
+  // En MB (la unidad que se pidio) cuando hay volumen suficiente; en KB/B para
+  // pushes diminutos, donde "0.0 MB de 0.0 MB" no diria nada.
+  function humanBytes(bytes: number) {
+    const n = Math.max(0, bytes)
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+    if (n >= 1024) return `${Math.round(n / 1024)} KB`
+    return `${Math.round(n)} B`
+  }
+  // Con total conocido la barra es determinada; si no, queda animada.
+  let pushKnown = $derived(!!pushProg && pushProg.total > 0)
+  let pushPct = $derived(pushProg ? Math.max(0, Math.min(100, pushProg.percent)) : 0)
+  let pushLeft = $derived(pushKnown ? Math.max(0, (pushProg as PushProgress).total - (pushProg as PushProgress).uploaded) : 0)
+  let pushLabel = $derived.by(() => {
+    if (!wizBusy) return ''
+    if (!pushProg) return wizStatus
+    switch (pushProg.stage) {
+      case 'counting': return 'Preparando los objetos…'
+      case 'compressing': return 'Comprimiendo…'
+      case 'writing':
+        return pushProg.speed > 0 ? `Subiendo · ${humanBytes(pushProg.speed)}/s` : 'Subiendo…'
+      case 'resolving': return 'Confirmando en GitHub…'
+      case 'done': return 'Subida completa'
+    }
+    return wizStatus
+  })
 </script>
 
 <div class="head">
@@ -549,6 +602,22 @@
 
       {#if wizError}<div class="wiz-err">{wizError}</div>{/if}
 
+      {#if wizBusy}
+        <div class="wiz-progress" aria-live="polite">
+          <div class="wiz-bar" class:indet={!pushKnown}>
+            <div class="wiz-fill" style={`width:${pushKnown ? pushPct : 35}%`}></div>
+          </div>
+          <div class="wiz-meta">
+            <span>{pushLabel}</span>
+            {#if pushProg && (pushProg.uploaded > 0 || pushKnown)}
+              <span class="wiz-bytes">
+                {humanBytes(pushProg.uploaded)} subidos{#if pushKnown} de {humanBytes(pushProg.total)}{/if}{#if pushLeft > 0} · faltan {humanBytes(pushLeft)}{/if}
+              </span>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
       <div class="wiz-actions">
         {#if wizStep === 'choose'}
           <button class="pill ghost" onclick={closeWizard} disabled={wizBusy}>Cancelar</button>
@@ -668,6 +737,16 @@
   .wiz-hint { margin:0 0 10px; color:var(--muted); font-size:10px; line-height:1.45; }
   .wiz-hint code { padding:1px 4px; border-radius:4px; background:color-mix(in srgb, var(--border) 55%, transparent); font-family:'Cascadia Mono', Consolas, monospace; }
   .wiz-err { margin-bottom:10px; padding:6px 9px; border-radius:8px; background:color-mix(in srgb, var(--red) 12%, transparent); color:var(--red); font-size:11px; white-space:pre-wrap; word-break:break-word; }
+  .wiz-progress { margin-bottom:10px; }
+  .wiz-bar { height:6px; border-radius:3px; background:color-mix(in srgb, var(--border) 60%, transparent); overflow:hidden; }
+  .wiz-fill { height:100%; border-radius:3px; background:var(--accent); transition:width .18s linear; }
+  .wiz-bar.indet .wiz-fill { animation:indeterminate 1.1s ease-in-out infinite; }
+  .wiz-meta { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-top:5px; font-size:10px; color:var(--muted); }
+  .wiz-bytes { color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  @media (prefers-reduced-motion: reduce) {
+    .wiz-fill { transition:none; }
+    .wiz-bar.indet .wiz-fill { animation-duration:2.4s; }
+  }
   .wiz-actions { display:flex; gap:8px; }
   .wiz-actions .pill { flex:1; }
 </style>

@@ -397,6 +397,18 @@ proyecto concreto:
   `^[A-Za-z0-9._-]{1,100}$`) o vincular uno existente validando la URL antes de
   `GitSetRemote`. `Bridge.GitGhInfo()` indica si `gh` está instalado y con qué
   cuenta. El asistente puede hacer push al terminar.
+- **Progreso del push** (`internal/webui/git_push.go`): `pushBranch` (usado por
+  `GitPush` y `GitSync`) ejecuta `git push --progress` y reenvía el avance por el
+  evento `git:pushprogress` (`PushProgress{stage, percent, uploaded, total,
+  speed}`). Antes del push, `pushTransferSize` suma el tamaño en disco de los
+  objetos que faltan en el upstream (`rev-list --objects --no-object-names` +
+  `cat-file --batch-check=%(objectsize:disk)`, 20 s) para poder decir cuántos MB
+  faltan; es una estimación (el pack real añade cabeceras y deltas). El
+  porcentaje global se pondera por fase (counting 0-10, compressing 10-30,
+  writing 30-95, resolving 95-100) porque git reinicia el tanto por ciento en
+  cada una. El proceso va con `LC_ALL=C`/`LANG=C`: las fases y los errores se
+  reconocen por texto en inglés. El asistente `wiz` pinta barra determinada
+  (o animada mientras no hay total) y «X subidos de Y · faltan Z».
 - **Seguridad**: `GitSetRemote` valida la URL (no empieza por guion, sin CRLF,
   formato https/git@/ssh) antes de pasarla a git; `OpenExternal` solo acepta
   http/https. Los helpers `gitHost`, `gitWebURL`, `gitLooksLikeURL` y

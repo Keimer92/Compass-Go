@@ -766,17 +766,22 @@ func (b *Bridge) GitPush() (string, error) {
 		return "", errors.New("HEAD desacoplado: no se puede hacer push")
 	}
 
-	var out string
-	var err error
-	if info.Upstream == "" {
-		out, err = runGitTimeout(dir, 90*time.Second, "push", "-u", "origin", "HEAD")
-	} else {
-		out, err = runGitTimeout(dir, 90*time.Second, "push")
-	}
+	out, err := pushBranch(dir, info)
 	if err != nil {
 		return "", pushError(out)
 	}
 	return out, nil
+}
+
+// pushBranch lanza el push informando del avance por "git:pushprogress". El
+// tamano a enviar se calcula antes para que la barra pueda decir cuantos MB
+// faltan, no solo cuantos van.
+func pushBranch(dir string, info GitInfo) (string, error) {
+	total := pushTransferSize(dir, info.Upstream)
+	if info.Upstream == "" {
+		return runGitPushProgress(dir, total, "push", "--progress", "-u", "origin", "HEAD")
+	}
+	return runGitPushProgress(dir, total, "push", "--progress")
 }
 
 // pushError traduce un push fallido. Un 403 suele ser otra cuenta guardada en
@@ -821,7 +826,7 @@ func (b *Bridge) GitSync() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("git pull: %s", pulled)
 	}
-	pushed, err := runGitTimeout(dir, 90*time.Second, "push")
+	pushed, err := pushBranch(dir, info)
 	if err != nil {
 		return "", pushError(pushed)
 	}

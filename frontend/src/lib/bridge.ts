@@ -181,6 +181,18 @@ export interface GitChangedEvent { dir: string; changes: number; conflict: boole
 export const onGitChanged = (cb: (d: GitChangedEvent) => void) =>
   Events.On('git:changed', (e: any) => cb(e.data))
 
+// Avance de un push: lo emite Go mientras `git push --progress` escribe en
+// stderr. `uploaded`/`total` van en bytes (0 si no se pudo calcular el total).
+export interface PushProgress {
+  stage: 'counting' | 'compressing' | 'writing' | 'resolving' | 'done'
+  percent: number
+  uploaded: number
+  total: number
+  speed: number
+}
+export const onPushProgress = (cb: (p: PushProgress) => void) =>
+  Events.On('git:pushprogress', (e: any) => cb(e.data))
+
 export interface CommitFile { path: string; status: string; added: number; removed: number; binary: boolean }
 export interface CommitDetail {
   hash: string
