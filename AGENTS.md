@@ -113,14 +113,16 @@ install.bat --vibe       # reconfigura Vibe Coding (detecta CLIs que falten)
 install.bat --with-node  # vuelve a empaquetar node.exe (sidecar)
 ```
 
-- Cierra `compass-go.exe` en ejecución antes de sobrescribir (Windows no
-  deja sobreescribir un `.exe` en uso).
-- **Si se lanza desde una pestaña de Compass** (las ConPTY exportan
-  `COMPASS_EMBEDDED=1`), `install.bat` no continúa ahí: se relanza a sí mismo
-  en una consola aparte (`--detached`, limpia la marca) y sale. De lo
-  contrario el `taskkill` de arriba cerraría la app, la consola y el agente
-  que la lanzó, abortando la instalación a medias. Esa consola aparte hace
-  `pause` al terminar (o al fallar) para que el resumen quede a la vista.
+- **No cierra `compass-go.exe`**: si hay una instancia en ejecución, `install.bat`
+  aborta con un aviso para que la cierres tú mismo. Así no se matan las pestañas
+  ni las CLIs abiertas dentro de Compass. La comprobación se hace dos veces (al
+  empezar y justo antes de instalar, porque `dist.bat` tarda minutos y puedes
+  abrir Compass mientras compila).
+- **Purga los kits antes de instalar**: `packaging\installer.nsi` hace
+  `RMDir /r` de `$INSTDIR\Kit-D1` y `$INSTDIR\Kit Whatsapp` justo antes de
+  `File /r "payload\*"`. NSIS sobrescribe pero no borra, así que sin esta purga
+  los archivos retirados del repo quedarían para siempre en la instalación.
+- Al terminar hace `pause` para que el resumen quede a la vista.
 - Borra el `dist\CompassGo-Setup.exe` anterior antes de compilar: si el
   empaquetado falla, no se instala un Setup viejo.
 - **Requiere NSIS** (si falta, `install.bat` aborta y sugiere

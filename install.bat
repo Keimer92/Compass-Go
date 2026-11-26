@@ -11,7 +11,6 @@ REM ---------------------------------------------------------------
 REM  Flags:  install.bat --force     rehace tambien la cascada Vibe Coding
 REM          install.bat --vibe      vuelve a configurar Vibe Coding
 REM          install.bat --with-node incluye node.exe (sidecar) en el payload
-REM          install.bat --detached  (interno) ya se relanzo fuera de Compass
 REM
 REM  Por defecto NO se empaqueta node.exe: los proyectos usan el Node 20+
 REM  instalado en el sistema (PATH). Usa --with-node para volver al sidecar.
@@ -23,7 +22,6 @@ REM ---------------------------------------------------------------
 set "FORCE=0"
 set "WITH_VIBE=0"
 set "NO_NODE=1"
-set "CG_DETACHED=0"
 :parse
 if "%~1"=="" goto parsed
 if /i "%~1"=="--force"     set "FORCE=1"
@@ -31,29 +29,16 @@ if /i "%~1"=="-f"          set "FORCE=1"
 if /i "%~1"=="--vibe"      set "WITH_VIBE=1"
 if /i "%~1"=="--no-node"   set "NO_NODE=1"
 if /i "%~1"=="--with-node" set "NO_NODE=0"
-if /i "%~1"=="--detached"  set "CG_DETACHED=1"
 shift
 goto parse
 :parsed
 
 REM ---------------------------------------------------------------
-REM  Guardia: si esto corre dentro de una pestana de Compass Go (las
-REM  ConPTY exportan COMPASS_EMBEDDED=1), el taskkill de mas abajo cerraria
-REM  la app y, con ella, esta consola y todos sus hijos: la instalacion
-REM  abortaria a medias y el agente que la lanzo perderia su tarea.
-REM  En ese caso se relanza en una consola aparte y se sale de inmediato.
+REM  Nota: install.bat YA NO cierra Compass Go. Windows no permite
+REM  sobrescribir un ejecutable en uso, asi que si Compass esta abierto se
+REM  aborta con un aviso para que lo cierres tu mismo. Asi no se matan las
+REM  pestanas ni las CLIs que tengas abiertas dentro de Compass.
 REM ---------------------------------------------------------------
-if "%COMPASS_EMBEDDED%"=="1" if not "%CG_DETACHED%"=="1" (
-    echo [INFO] Detectada una pestana de Compass Go.
-    echo        La instalacion cierra Compass, asi que continuara en una
-    echo        consola aparte para no cortar esta tarea.
-    echo.
-    REM La consola nueva es normal: se limpia la marca para que no herede
-    REM los ajustes de una pestana incrustada (titulo, cierre de pestana...).
-    set "COMPASS_EMBEDDED="
-    start "Compass Go - Instalacion" cmd /c call "%~f0" --detached %*
-    exit /b 0
-)
 
 set "BINDIR=%LOCALAPPDATA%\Programs\Keimer"
 set "SETUP=dist\CompassGo-Setup.exe"
@@ -78,21 +63,11 @@ if not exist "go.mod" (
     exit /b 1
 )
 
-REM Windows no deja sobrescribir un ejecutable en uso: se cierra primero.
-REM `%SystemRoot%\System32\find.exe` explicito: si el PATH trae el find de
-REM Git/MSYS antes que el de Windows, `find /i` falla y la deteccion miente.
-tasklist /fi "imagename eq compass-go.exe" 2>nul | "%SystemRoot%\System32\find.exe" /i "compass-go.exe" >nul
-if not errorlevel 1 (
-    echo [INFO] Cerrando compass-go.exe en ejecucion...
-    taskkill /f /im compass-go.exe >nul 2>nul
-    if errorlevel 1 (
-        echo [WARN] No se pudo cerrar compass-go.exe. Cierralo a mano y reintenta.
-    ) else (
-        echo [OK] compass-go.exe cerrado.
-    )
-    REM `timeout` protesta si el stdin esta redirigido; la pausa es opcional.
-    timeout /t 1 /nobreak >nul 2>nul
-)
+REM Windows no deja sobrescribir un ejecutable en uso. NO matamos Compass Go:
+REM si esta abierto se aborta para que lo cierres tu mismo y no pierdas tus
+REM pestanas ni las CLIs que tengas corriendo dentro.
+call :require_compass_closed
+if errorlevel 1 exit /b 1
 echo.
 
 REM ---------------------------------------------------------------
@@ -105,8 +80,7 @@ echo [INFO] Compilando y generando el instalador (dist.bat %DIST_FLAGS%)...
 call "%~dp0dist.bat" %DIST_FLAGS%
 if errorlevel 1 (
     echo [ERROR] dist.bat fallo; no se ha instalado nada.
-    REM En la consola desacoplada la ventana se cerraria sin dejar leer el error.
-    if "%CG_DETACHED%"=="1" pause
+    pause
     exit /b 1
 )
 if not exist "%SETUP%" (
@@ -120,6 +94,10 @@ if not exist "%SETUP%" (
 REM ---------------------------------------------------------------
 REM  2. Instalar en silencio con el instalador NSIS
 REM ---------------------------------------------------------------
+REM dist.bat tarda varios minutos: el usuario pudo abrir Compass mientras
+REM compilaba. Se vuelve a comprobar antes de tocar el directorio instalado.
+call :require_compass_closed
+if errorlevel 1 exit /b 1
 echo [INFO] Instalando en silencio con %SETUP%...
 start /wait "" "%SETUP%" /S
 if not exist "%BINDIR%\compass-go.exe" (
@@ -206,6 +184,22 @@ echo.
 echo Abre Compass Go desde el menu Inicio (o ejecuta compass-go).
 echo Si quieres anclarlo: menu Inicio ^> clic derecho ^> Anclar a la barra de tareas.
 echo.
-REM En la consola desacoplada se deja el resumen a la vista antes de cerrar.
-if "%CG_DETACHED%"=="1" pause
+pause
 exit /b 0
+
+REM ---------------------------------------------------------------
+REM  Comprueba si Compass Go esta en ejecucion. No lo cierra: solo avisa y
+REM  devuelve 1 para que install.bat se detenga. El usuario cierra Compass a
+REM  mano y conserva sus pestanas y las CLIs que tenga abiertas dentro.
+REM ---------------------------------------------------------------
+:require_compass_closed
+REM find devuelve 0 solo si encontro la linea con el proceso; 1 = no esta
+REM corriendo y se puede seguir.
+tasklist /fi "imagename eq compass-go.exe" 2>nul | "%SystemRoot%\System32\find.exe" /i "compass-go.exe" >nul
+if errorlevel 1 exit /b 0
+echo [ERROR] Compass Go esta en ejecucion.
+echo         Cierralo (guarda lo que necesites) y vuelve a ejecutar install.bat.
+echo         No se ha cerrado ni modificado nada.
+echo.
+pause
+exit /b 1

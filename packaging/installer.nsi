@@ -90,15 +90,13 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
 
   SetOutPath "$INSTDIR"
 
-  ; Limpieza de artefactos de build de versiones anteriores del motor de
-  ; WhatsApp. El runtime usa el Node 20+ del sistema y el bundle ya viaja
-  ; compilado; node_modules, out, examples y el sidecar node.exe ya no viajan.
-  RMDir /r "$INSTDIR\Kit Whatsapp\node_modules"
-  RMDir /r "$INSTDIR\Kit Whatsapp\out"
-  RMDir /r "$INSTDIR\Kit Whatsapp\examples"
-  ; Borra el sidecar de instalaciones anteriores para que no se prefiera sobre
-  ; el Node del PATH.
-  Delete "$INSTDIR\Kit Whatsapp\node.exe"
+  ; Purga los kits instalados antes de copiar el payload nuevo. NSIS con
+  ; "File /r" sobrescribe pero NO borra, asi que un archivo que desaparecio del
+  ; repo (o que cambio de nombre) se quedaria para siempre en la instalacion.
+  ; Vaciarlos primero garantiza que $INSTDIR tenga exactamente lo que trae el
+  ; binario recien compilado.
+  RMDir /r "$INSTDIR\Kit-D1"
+  RMDir /r "$INSTDIR\Kit Whatsapp"
   ; Restos del layout anterior (corekit\whatsapp).
   RMDir /r "$INSTDIR\corekit"
 
