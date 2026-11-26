@@ -19,11 +19,11 @@
 <style>
   .toast-host {
     position: fixed;
-    top: 14px;
-    right: 14px;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 80;
-    width: 320px;
-    max-width: calc(100vw - 28px);
+    width: min(360px, calc(100vw - 28px));
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -63,7 +63,7 @@
   }
   .toast-close:hover { color: var(--text); }
   @keyframes toast-in {
-    from { opacity: 0; transform: translateY(-6px); }
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
   @media (prefers-reduced-motion: reduce) {

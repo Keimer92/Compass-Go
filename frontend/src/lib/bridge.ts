@@ -78,8 +78,6 @@ export interface Settings {
   openrouter_model: string
   openrouter_api_key: string
   auto_commit_idle_min: number
-  commit_provider: 'openrouter' | 'copilot'
-  copilot_model: string
   sound_presets: Record<string, string>
   terminal_panel_pct: number
   vibe_disabled: string[]
@@ -112,6 +110,16 @@ export const getVibeTools = () => call<VibeToolInfo[]>(M('GetVibeTools'))
 
 export interface ModelOption { id: string; name: string; context: number }
 export const listModels = () => call<ModelOption[]>(M('ListModels'))
+export interface ModelSpeedResult {
+  id: string
+  name: string
+  ms: number
+  ok: boolean
+  error: string
+}
+export const testModelSpeeds = (models: ModelOption[], endpoint: string, apiKey: string) =>
+  call<ModelSpeedResult[]>(M('TestModelSpeeds'), models, endpoint, apiKey)
+export const openRouterKeyConfigured = () => call<boolean>(M('OpenRouterKeyConfigured'))
 
 export interface Change { code: string; path: string; status: string }
 export interface FileNode { name: string; path: string; rel: string; isDir: boolean; children?: FileNode[] }
@@ -184,10 +192,6 @@ export const autoCommitStatus = () => call<AutoCommitState>(M('AutoCommitStatus'
 export const setAutoCommitFor = (dir: string, enabled: boolean) =>
   call<void>(M('SetAutoCommitFor'), dir, enabled)
 export const autoCommitStatusFor = (dir: string) => call<AutoCommitState>(M('AutoCommitStatusFor'), dir)
-export const copilotAvailable = () => call<boolean>(M('CopilotAvailable'))
-
-export interface CopilotModelOption { id: string; label: string; hint: string }
-export const copilotModels = () => call<CopilotModelOption[]>(M('CopilotModels'))
 export const onAutoCommit = (
   cb: (d: { dir: string; message: string; out: string; ok: boolean; error: string }) => void
 ) => Events.On('git:auto', (e: any) => cb(e.data))

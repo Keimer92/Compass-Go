@@ -4,14 +4,14 @@
     getSettings,
     setSettings,
     listModels,
-    copilotAvailable,
-    copilotModels,
+    openRouterKeyConfigured,
+    testModelSpeeds,
     githubAccounts,
     githubLogin,
     githubLogout,
     type Settings,
     type ModelOption,
-    type CopilotModelOption,
+    type ModelSpeedResult,
   } from '../lib/bridge'
   import { notifyRepoChanged } from '../lib/repoChanged'
 
@@ -26,15 +26,17 @@
     openrouter_model: '',
     openrouter_api_key: '',
     auto_commit_idle_min: 5,
-    commit_provider: 'openrouter',
-    copilot_model: '',
     sound_presets: {},
     terminal_panel_pct: 60,
     vibe_disabled: [],
   })
   let models = $state<ModelOption[]>([])
-  let copilotOptions = $state<CopilotModelOption[]>([])
-  let copilotOk = $state(false)
+  let keyConfigured = $state(false)
+  let showKeyInput = $state(false)
+  let newApiKey = $state('')
+  let speeds = $state<ModelSpeedResult[]>([])
+  let speedTesting = $state(false)
+  let speedError = $state('')
   let loading = $state(true)
   let busy = $state(false)
   let saved = $state(false)
@@ -69,15 +71,12 @@
       /* se mantienen los valores por defecto */
     }
     try {
-      copilotOk = await copilotAvailable()
+      keyConfigured = await openRouterKeyConfigured()
     } catch {
-      copilotOk = false
+      keyConfigured = false
     }
-    try {
-      copilotOptions = await copilotModels()
-    } catch {
-      copilotOptions = []
-    }
+    showKeyInput = !keyConfigured
+    newApiKey = ''
     try {
       models = await listModels()
     } catch {
@@ -98,7 +97,13 @@
     try {
       const min = Math.round(Number(cfg.auto_commit_idle_min))
       cfg.auto_commit_idle_min = Number.isFinite(min) ? Math.min(240, Math.max(1, min)) : 5
-      await setSettings({ ...cfg })
+      const key = newApiKey.trim()
+      await setSettings({ ...cfg, openrouter_api_key: key })
+      if (key) {
+        keyConfigured = true
+        showKeyInput = false
+        newApiKey = ''
+      }
       saved = true
       setTimeout(() => (saved = false), 2500)
       // El panel Git relee el estado del commit automatico.
@@ -107,6 +112,30 @@
       error = (e as Error).message
     } finally {
       busy = false
+    }
+  }
+
+  // testSpeeds mide la respuesta real de cada modelo listado. La key recien
+  // escrita se pasa sin guardar para poder probarla antes de dar a Guardar.
+  async function testSpeeds() {
+    if (!models.length || speedTesting) return
+    if (!keyConfigured && !newApiKey.trim()) {
+      speedError = 'Introduce la API key y guarda los ajustes antes de probar.'
+      return
+    }
+    speedTesting = true
+    speedError = ''
+    speeds = []
+    try {
+      speeds = await testModelSpeeds(
+        models.map((m) => m.id),
+        cfg.openrouter_endpoint,
+        newApiKey.trim(),
+      )
+    } catch (e) {
+      speedError = (e as Error).message
+    } finally {
+      speedTesting = false
     }
   }
 
@@ -189,37 +218,7 @@
         <span class="set-unit">min sin cambios</span>
       </label>
 
-      <label class="set-col">
-        <span class="set-label">Proveedor de mensajes</span>
-        <select class="set-input" bind:value={cfg.commit_provider}>
-          <option value="openrouter">OpenRouter (API key)</option>
-          <option value="copilot">GitHub Copilot CLI (local)</option>
-        </select>
-      </label>
-
-      {#if cfg.commit_provider === 'copilot'}
-        <label class="set-col">
-          <span class="set-label">Modelo de Copilot <small>(los más rápidos y baratos primero)</small></span>
-          <select class="set-input" bind:value={cfg.copilot_model}>
-            {#each copilotOptions as opt}
-              <option value={opt.id}>{opt.label} — {opt.hint}</option>
-            {/each}
-          </select>
-        </label>
-        {#if !copilotOk}
-          <p class="set-warn">
-            No se encontró el CLI. Instálalo con <code>npm i -g @github/copilot</code>
-            y ejecuta <code>copilot login</code>.
-          </p>
-        {:else}
-          <p class="set-hint">
-            Usa tu suscripción de Copilot. La disponibilidad de cada modelo depende de tu plan;
-            si uno no aparece, elige Auto.
-          </p>
-        {/if}
-      {/if}
-
-      <div class:dim={cfg.commit_provider === 'copilot'}>
+      <div>
         <label class="set-col">
           <span class="set-label">Endpoint de OpenRouter</span>
           <input class="set-input" type="text" bind:value={cfg.openrouter_endpoint} placeholder="https://openrouter.ai/api/v1" />
@@ -238,15 +237,57 @@
             {/if}
           </select>
         </label>
-        <label class="set-col">
-          <span class="set-label">API key <small>{cfg.openrouter_api_key === '********'
-            ? '(guardada · escribe otra para cambiarla)'
-            : '(se guarda en settings.json)'}</small></span>
-          <input class="set-input" type="password" bind:value={cfg.openrouter_api_key} placeholder="********" autocomplete="off" />
-        </label>
-        {#if cfg.commit_provider === 'copilot'}
-          <p class="set-hint">No se usa mientras el proveedor sea Copilot.</p>
-        {/if}
+
+        <div class="speed-block">
+          <div class="speed-head">
+            <span class="set-label">Velocidad de modelos <small>(petición real · respuesta corta)</small></span>
+            <button class="pill" onclick={testSpeeds} disabled={speedTesting || !models.length}>
+              {speedTesting ? 'Probando…' : 'Probar velocidad'}
+            </button>
+          </div>
+          {#if speedTesting}<p class="set-hint">Midiendo {models.length} modelos…</p>{/if}
+          {#if speedError}<p class="set-warn">{speedError}</p>{/if}
+          {#if speeds.length}
+            <div class="speed-list">
+              {#each speeds as s, i (s.id)}
+                <div class="speed-row" class:best={i === 0 && s.ok}>
+                  <span class="speed-rank">{i + 1}</span>
+                  <span class="speed-name" title={s.id}>{s.name || s.id}</span>
+                  {#if s.ok}
+                    <span class="speed-ms">{s.ms} ms</span>
+                    <button class="lnk" onclick={() => (cfg.openrouter_model = s.id)} disabled={cfg.openrouter_model === s.id}>
+                      {cfg.openrouter_model === s.id ? 'activo' : 'usar'}
+                    </button>
+                  {:else}
+                    <span class="speed-err" title={s.error}>error</span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+            <p class="set-hint">Ordenado por tiempo de respuesta; el primero es el más rápido.</p>
+          {/if}
+        </div>
+
+        <div class="set-col">
+          <span class="set-label">API key de OpenRouter</span>
+          {#if keyConfigured && !showKeyInput}
+            <div class="key-ok">API configurada. La clave no se muestra por seguridad.</div>
+            <button class="lnk" onclick={() => (showKeyInput = true)}>Introducir nueva key</button>
+          {:else}
+            <input
+              class="set-input"
+              type="password"
+              bind:value={newApiKey}
+              placeholder="sk-or-v1-…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <p class="set-hint">Se guarda al pulsar «Guardar ajustes».</p>
+            {#if keyConfigured}
+              <button class="lnk" onclick={() => { showKeyInput = false; newApiKey = '' }}>Cancelar</button>
+            {/if}
+          {/if}
+        </div>
       </div>
 
       <section class="gh">
@@ -331,7 +372,30 @@
   .set-unit { color: var(--muted); font-size: 10px; }
   .set-hint, .set-warn { margin: 8px 0 0; font-size: 10px; line-height: 1.4; color: var(--muted); }
   .set-warn { color: var(--yellow); }
-  .dim { opacity: 0.55; }
+  .lnk {
+    align-self: flex-start; border: none; background: none; color: var(--accent);
+    font: inherit; font-size: 10px; cursor: pointer;
+  }
+  .lnk:hover { text-decoration: underline; }
+  .lnk:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+  .key-ok {
+    padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+    background: color-mix(in srgb, var(--green) 10%, transparent);
+    color: var(--green); font-size: 11px;
+  }
+  .speed-block { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .speed-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .speed-list { margin-top: 8px; max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 7px; }
+  .speed-row {
+    display: grid; grid-template-columns: 18px 1fr auto 34px; align-items: center; gap: 6px;
+    padding: 4px 7px; border-bottom: 1px solid var(--border); font-size: 10px;
+  }
+  .speed-row:last-child { border-bottom: none; }
+  .speed-row.best { background: color-mix(in srgb, var(--green) 10%, transparent); }
+  .speed-rank { color: var(--muted); }
+  .speed-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .speed-ms { color: var(--text); font-variant-numeric: tabular-nums; }
+  .speed-err { color: var(--red); }
   .msg { margin: 8px 0 0; padding: 6px 9px; border-radius: 8px; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
   .msg.error { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
   .msg.ok { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }

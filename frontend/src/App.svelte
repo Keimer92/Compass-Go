@@ -119,8 +119,6 @@
     openrouter_model: '',
     openrouter_api_key: '',
     auto_commit_idle_min: 5,
-    commit_provider: 'openrouter',
-    copilot_model: '',
     sound_presets: {},
     terminal_panel_pct: 60,
     vibe_disabled: [],

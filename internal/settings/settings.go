@@ -40,13 +40,6 @@ type Settings struct {
 	// AutoCommitProjects guarda las carpetas con el boton "Auto" activado,
 	// para que al reiniciar Compass el vigilante se rearme solo en ellas.
 	AutoCommitProjects []string `json:"auto_commit_projects"`
-	// CommitProvider elige como se generan los mensajes de commit:
-	// "openrouter" (API con key) o "copilot" (GitHub Copilot CLI local).
-	CommitProvider string `json:"commit_provider"`
-	// CopilotModel es el modelo del CLI de Copilot. Vacio = Auto (equilibrado).
-	// "auto-intelligence" pide el perfil de maxima calidad; el resto son ids
-	// concretos del catalogo (haiku, flash, luna...).
-	CopilotModel string `json:"copilot_model"`
 	// SoundPresets elige el preset de sonido de cada evento (build, commit,
 	// terminal). Las claves son ids de evento y los valores ids de preset; el
 	// paquete sound normaliza ambos y rellena los que falten.
@@ -81,7 +74,6 @@ func Default() Settings {
 		// usuario no ha seleccionado uno en Opciones.
 		OpenRouterModel:   "",
 		AutoCommitIdleMin: 5,
-		CommitProvider:    ProviderOpenRouter,
 		TerminalPanelPct:  60,
 		// Los avisos de terminal llegan apagados: un build ya suena desde su
 		// propio proceso y encender ambos duplicaria el aviso.
@@ -95,12 +87,6 @@ func Default() Settings {
 		},
 	}
 }
-
-// Proveedores de mensajes de commit.
-const (
-	ProviderOpenRouter = "openrouter"
-	ProviderCopilot    = "copilot"
-)
 
 func configPath() string {
 	base := os.Getenv("LOCALAPPDATA")
@@ -149,11 +135,6 @@ func Load() Settings {
 	}
 	if s.TerminalPanelPct > 80 {
 		s.TerminalPanelPct = 80
-	}
-	// Un proveedor desconocido (o vacio en un fichero antiguo) cae en el
-	// historico: OpenRouter.
-	if s.CommitProvider != ProviderCopilot {
-		s.CommitProvider = ProviderOpenRouter
 	}
 	// Rutas vacias o repetidas en la lista de proyectos con Auto: se limpian
 	// para que el arranque no intente vigilar entradas invalidas.

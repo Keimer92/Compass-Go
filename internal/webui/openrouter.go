@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"compass/internal/settings"
@@ -198,4 +199,74 @@ func (b *Bridge) ListModels() []ModelOption {
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+// ModelSpeedResult es el resultado de medir un modelo con una peticion real.
+type ModelSpeedResult struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	MS    int64  `json:"ms"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error"`
+}
+
+// speedProbePrompt es corto a proposito: midelatencia de la API, no la
+// redaccion. Los modelos de razonamiento pueden tardar mas, y eso tambien
+// cuenta para elegir el mas rapido.
+const speedProbePrompt = "Reply with exactly: OK"
+
+// TestModelSpeeds mide cuanto tarda cada modelo en responder. endpoint y
+// apiKey pueden venir del formulario (sin guardar); vacios usan los guardados.
+// Se limita la concurrencia para no disparar el rate limit de los modelos
+// gratuitos y se devuelve todo ordenado por tiempo, con los fallos al final.
+func (b *Bridge) TestModelSpeeds(models []ModelOption, endpoint, apiKey string) []ModelSpeedResult {
+	cfg := settings.Load()
+	if v := strings.TrimSpace(endpoint); v != "" {
+		cfg.OpenRouterEndpoint = v
+	}
+	if v := strings.TrimSpace(apiKey); v != "" {
+		cfg.OpenRouterAPIKey = v
+	}
+	if strings.TrimSpace(cfg.OpenRouterEndpoint) == "" {
+		cfg.OpenRouterEndpoint = "https://openrouter.ai/api/v1"
+	}
+	if strings.TrimSpace(cfg.OpenRouterAPIKey) == "" || len(models) == 0 {
+		return []ModelSpeedResult{}
+	}
+
+	const workers = 3
+	results := make([]ModelSpeedResult, len(models))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				m := models[i]
+				start := time.Now()
+				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+				_, err := openRouterChat(ctx, cfg.OpenRouterEndpoint, cfg.OpenRouterAPIKey, m.ID, speedProbePrompt)
+				cancel()
+				r := ModelSpeedResult{ID: m.ID, Name: m.Name, MS: time.Since(start).Milliseconds(), OK: err == nil}
+				if err != nil {
+					r.Error = err.Error()
+				}
+				results[i] = r
+			}
+		}()
+	}
+	for i := range models {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].OK != results[j].OK {
+			return results[i].OK
+		}
+		return results[i].MS < results[j].MS
+	})
+	return results
 }

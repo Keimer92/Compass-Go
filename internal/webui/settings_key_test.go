@@ -18,7 +18,7 @@ func TestSetSettingsKeepsAPIKeyWhenModelChanges(t *testing.T) {
 
 	b := &Bridge{}
 	// Lo que envia el frontend al cambiar de modelo: la key va vacia (GetSettings
-	// la enmascara).
+	// nunca la devuelve).
 	b.SetSettings(settings.Settings{
 		OpenOutputDir:      true,
 		OpenRouterEndpoint: "https://openrouter.ai/api/v1",
@@ -35,19 +35,21 @@ func TestSetSettingsKeepsAPIKeyWhenModelChanges(t *testing.T) {
 	}
 }
 
-func TestGetSettingsMasksAPIKey(t *testing.T) {
+func TestGetSettingsNeverExposesAPIKey(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	settings.Save(settings.Settings{OpenRouterAPIKey: "sk-or-v1-secreto"})
 
 	b := &Bridge{}
-	if got := b.GetSettings().OpenRouterAPIKey; got != apiKeyMask {
-		t.Fatalf("la key deberia llegar enmascarada, got %q", got)
+	if got := b.GetSettings().OpenRouterAPIKey; got != "" {
+		t.Fatalf("la key no debe llegar al frontend, got %q", got)
 	}
-	// Guardar de nuevo con la mascara (p.ej. al cambiar solo el modelo) no la
-	// borra ni la sustituye por asteriscos.
+	if !b.OpenRouterKeyConfigured() {
+		t.Fatal("OpenRouterKeyConfigured debe ser true con key guardada")
+	}
+	// Guardar de nuevo sin key (p.ej. al cambiar solo el modelo) no la borra.
 	b.SetSettings(b.GetSettings())
 	if got := settings.Load().OpenRouterAPIKey; got != "sk-or-v1-secreto" {
-		t.Fatalf("la key se corrompio al reguardar la mascara: %q", got)
+		t.Fatalf("la key se perdio al reguardar los ajustes: %q", got)
 	}
 }

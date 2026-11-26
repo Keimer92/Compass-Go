@@ -465,24 +465,24 @@ func (b *Bridge) FocusWindow() {
 	w.Focus()
 }
 
-// apiKeyMask es el valor que ve el frontend cuando ya hay una key guardada.
-// Nunca se envia la key real; si vuelve con esta mascara se conserva la que ya
-// habia, de modo que cambiar el modelo (u otra opcion) no la borra.
-const apiKeyMask = "********"
-
-// GetSettings devuelve las opciones globales con la API key enmascarada.
+// GetSettings devuelve las opciones globales. La API key NUNCA se envia al
+// frontend: OpenRouterKeyConfigured dice si ya hay una guardada, sin revelar
+// ningun caracter (ni siquiera enmascarado).
 func (b *Bridge) GetSettings() settings.Settings {
 	s := settings.Load()
 	s.SoundPresets = sound.Normalize(s.SoundPresets)
-	if strings.TrimSpace(s.OpenRouterAPIKey) != "" {
-		s.OpenRouterAPIKey = apiKeyMask
-	}
+	s.OpenRouterAPIKey = ""
 	return s
 }
 
+// OpenRouterKeyConfigured indica si ya hay una API key guardada.
+func (b *Bridge) OpenRouterKeyConfigured() bool {
+	return strings.TrimSpace(settings.Load().OpenRouterAPIKey) != ""
+}
+
 // SetSettings guarda las opciones globales partiendo de lo que ya habia
-// guardado: la key solo se reemplaza si el frontend envia una nueva (no vacia
-// ni enmascarada). Asi cambiar el modelo no puede perder la key.
+// guardado: la key solo se reemplaza si el frontend envia una nueva (no vacia).
+// Asi cambiar el modelo no puede perder la key.
 func (b *Bridge) SetSettings(s settings.Settings) {
 	cur := settings.Load()
 
@@ -496,21 +496,13 @@ func (b *Bridge) SetSettings(s settings.Settings) {
 	if s.AutoCommitIdleMin > 0 {
 		cur.AutoCommitIdleMin = s.AutoCommitIdleMin
 	}
-	if s.CommitProvider == settings.ProviderCopilot {
-		cur.CommitProvider = settings.ProviderCopilot
-	} else {
-		cur.CommitProvider = settings.ProviderOpenRouter
-	}
-	// El modelo se valida contra el catalogo: cualquier id desconocido cae en
-	// Auto, que es lo que hace copilotModelArgs de todas formas.
-	cur.CopilotModel = s.CopilotModel
 	if v := strings.TrimSpace(s.OpenRouterEndpoint); v != "" {
 		cur.OpenRouterEndpoint = v
 	}
 	if v := strings.TrimSpace(s.OpenRouterModel); v != "" {
 		cur.OpenRouterModel = v
 	}
-	if k := strings.TrimSpace(s.OpenRouterAPIKey); k != "" && k != apiKeyMask {
+	if k := strings.TrimSpace(s.OpenRouterAPIKey); k != "" {
 		cur.OpenRouterAPIKey = k
 	}
 

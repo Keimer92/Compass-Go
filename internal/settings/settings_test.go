@@ -66,42 +66,6 @@ func TestLoadFallsBackOnCorruptFile(t *testing.T) {
 	}
 }
 
-func TestCommitProviderDefaultsToOpenRouter(t *testing.T) {
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	if got := Load().CommitProvider; got != ProviderOpenRouter {
-		t.Fatalf("proveedor por defecto = %q, queria %q", got, ProviderOpenRouter)
-	}
-}
-
-func TestCommitProviderUnknownFallsBack(t *testing.T) {
-	base := t.TempDir()
-	t.Setenv("LOCALAPPDATA", base)
-	dir := filepath.Join(base, "compass")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"commit_provider":"otro"}`
-	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := Load().CommitProvider; got != ProviderOpenRouter {
-		t.Fatalf("un proveedor desconocido debe caer en OpenRouter, got %q", got)
-	}
-}
-
-func TestCommitProviderCopilotRoundTrip(t *testing.T) {
-	base := t.TempDir()
-	t.Setenv("LOCALAPPDATA", base)
-
-	cfg := Default()
-	cfg.CommitProvider = ProviderCopilot
-	Save(cfg)
-
-	if got := Load().CommitProvider; got != ProviderCopilot {
-		t.Fatalf("CommitProvider = %q, queria %q", got, ProviderCopilot)
-	}
-}
-
 func TestAutoCommitIdleMinClamped(t *testing.T) {
 	base := t.TempDir()
 	t.Setenv("LOCALAPPDATA", base)
