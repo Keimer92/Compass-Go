@@ -78,6 +78,10 @@ Compass Go/
 ├─ Kit Whatsapp/              # motor de WhatsApp canónico (engine.js, bundle.mjs)
 │  ├─ whatsapp-engine-bundle/ #   bundle de ncc para Go/Wails
 │  └─ single/                 #   bundle autocontenido para Flutter
+├─ Kit D1/                    # stack de sincronización Cloudflare D1 (subtree)
+│  ├─ go/syncengine/          #   módulo Go reutilizable
+│  ├─ protocol/fixtures/      #   fixture canónico del contrato wire
+│  └─ worker/instances/       #   instancias del Worker por proyecto
 ├─ PLAN_SVELTE.md             # estado y plan de la migración a la GUI web
 └─ PLAN.md                    # plan de migración original
 ```
@@ -342,33 +346,9 @@ proyecto concreto:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
-- **Panel de Kit D1** (`frontend/src/components/KitD1Panel.svelte` +
-  `internal/webui/kitd1.go`): botón "Kit D1" en el pie del sidebar, al lado de
-  "Ajustes de Git". El kit es **global**, no por proyecto (como Git), y el panel
-  muestra: ruta (fijada en `settings.kit_d1_path` o autodetectada; también vía
-  `COMPASS_KIT_D1`), versión del módulo Go, rama/tag/working tree, sesión de
-  Wrangler (`whoami`), instancias de `worker/instances/*` y consumidores del
-  workspace (módulo Go con `go.work` local, o Flutter). Las acciones (ensamblar,
-  typecheck, dev, deploy, provision dry-run/real, whoami/login, listar tenants,
-  exportar/rotar clave, instalar dependencias) se arman en `KitD1Script` con
-  **whitelist** de acción + validación de instancia contra el disco (sin
-  interpolación libre) y se ejecutan en una pestaña propia del terminal de
-  Compass (`runKitD1` en `App.svelte`). Deploy, provision real y rotar clave
-  piden **confirmación de dos pasos**.
-- **Kit D1 vive DENTRO de Compass** en `Kit D1/` (raíz del repo), incorporado con
-  `git subtree add --prefix="Kit D1" ../Core Station/Kit D1 main --squash`. Ya no
-  es un checkout separado: el remoto `Keimer92/Kit-D1` queda como archivo
-  histórico (intacto, sin push). La ruta se resuelve en `kitD1Root()`: junto al
-  proyecto activo (`Kit D1/`, o `<padre>/Compass Go UX/Kit D1` si el activo es
-  GymPro/School Tracker), junto al exe (instalador), con fallback al checkout
-  viejo `Core Station/Kit D1`. `dist.bat` copia `Kit D1/` al payload del
-  instalador excluyendo `node_modules`, `.wrangler`, `dist`, `out` y `.git`;
-  por eso la acción **Instalar dependencias** (`npm install`) precede a
-  typecheck/dev/deploy en una máquina nueva. Los `go.work` de GymPro y School
-  Tracker apuntan con ruta relativa a `../Compass Go UX/Kit D1/go/syncengine`.
-  La action `tag` se retiró: con subtree un tag iría al repo de Compass, no al
-  del módulo. `git describe` filtra por `--match go/syncengine/v*`. Cobertura en
-  `kitd1_test.go` (fixture + detección dentro de Compass).
+- **Panel de Kit D1**: el botón "Kit D1" del pie del sidebar abre el panel de
+  administración del kit. Está documentado completo en la sección
+  [Core Kits → Kit D1](#kit-d1), junto al motor de WhatsApp.
 - **Fecha y hora en el Historial**: `GitLog` y `CommitDetail` usan
   `--date=format:%Y-%m-%d %H:%M`, así que cada commit muestra el día y la hora
   exacta (sin segundos ni zona horaria, que solo alargaban la fila). El formato
@@ -522,11 +502,19 @@ proyecto concreto:
   secuenciales y sumaban ~2 s). `App.svelte` precalienta ambos con
   `warmExplorer`/`warmLog` en el mismo `$effect` que `loadGitInfo`.
 
-## Core kits (motores canónicos)
+## Core Kits (motores canónicos): WhatsApp y D1
 
-Compass lleva dentro ciertos **core kits** —motores o runtimes compartidos— en
+Compass lleva dentro dos **core kits** —motores o runtimes compartidos— en
 carpetas propias de la raíz, para que viajen con el binario y no dependan de
-rutas externas. El primer kit es el **motor de WhatsApp** (`Kit Whatsapp/`).
+rutas externas. Ambos se copian al instalador y Compass los gestiona; el Kit D1
+además se administra desde un panel propio.
+
+| Kit | Carpeta | Qué es | Se gestiona desde |
+|-----|---------|--------|-------------------|
+| **WhatsApp** | `Kit Whatsapp/` | motor de envíos Baileys compartido (Go/Wails, Flutter, Kotlin) | etapado automático en cada release de Windows |
+| **D1** | `Kit D1/` | stack de sincronización Cloudflare D1 (módulo Go + Worker) | panel "Kit D1" del sidebar |
+
+### Kit WhatsApp
 
 - `Kit Whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
   `node_modules/` y el bundle generado `whatsapp-engine-bundle/`. **No guarda
@@ -614,14 +602,14 @@ rutas externas. El primer kit es el **motor de WhatsApp** (`Kit Whatsapp/`).
   staging: la ventana nueva hereda el entorno de Compass, así que basta con
   reiniciar Compass tras la instalación para que el proyecto vea el engine.
 
-## Guía de integración del WhatsApp Engine (para agentes de IA)
+#### Guía de integración del WhatsApp Engine (para agentes de IA)
 
 Cómo hacer que un proyecto consumidor (p.ej. **GymPro**) use el motor de
 WhatsApp canónico de Compass, de forma **dinámica y robusta a cambios de ruta**
 (mover Compass o el proyecto no debe romper la integración). La referencia del
 protocolo stdin/stdout está en `Kit Whatsapp/AGENTS.md`.
 
-### Modelo mental
+##### Modelo mental
 - El motor **canónico** vive en `Kit Whatsapp/` dentro de Compass Go: única
   fuente de verdad (`engine.js`, `bundle.mjs`, `node_modules/`). El repo no
   guarda `node.exe`: el runtime usa Node 20+ del sistema.
@@ -630,7 +618,7 @@ protocolo stdin/stdout está en `Kit Whatsapp/AGENTS.md`.
   mano el bundle dentro del proyecto: se regenera desde el canónico.
 - El motor corre como proceso hijo `node` y se comunica por stdin/stdout.
 
-### Resolución dinámica de la ruta del motor (sin hardcodear disco)
+##### Resolución dinámica de la ruta del motor (sin hardcodear disco)
 `whatsappEngineSource()` en `internal/tasks/whatsapp_engine.go` prueba en orden:
 1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
 2. `<dir del exe>/Kit Whatsapp`;
@@ -648,7 +636,7 @@ Ninguna capa usa una letra de unidad fija, por tanto:
   carpeta. Usa siempre la ruta de instalación relativa o deja que Compass la
   resuelva por cwd/exe.
 
-### Detección automática en el proyecto consumidor
+##### Detección automática en el proyecto consumidor
 Un proyecto recibe el runtime si cumple **cualquiera**:
 1. tiene carpeta `whatsapp_engine/` local (motor propio);
 2. tiene el marcador `use-whatsapp-engine` en su raíz;
@@ -658,7 +646,7 @@ Un proyecto recibe el runtime si cumple **cualquiera**:
 Para integrar un proyecto nuevo basta con que importe el paquete `whatsapp`;
 Compass etapará el motor solo. No hace falta marcador manual.
 
-### Pasos operativos (integrar / actualizar)
+##### Pasos operativos (integrar / actualizar)
 1. **Editar el motor canónico** solo en `Kit Whatsapp/engine.js` (y
    `bundle.mjs` si cambia el empaquetado). No tocar los bundles generados.
 2. **Regenerar el bundle** (lo hace Compass al ejecutar la tarea `whatsapp`, o
@@ -680,14 +668,14 @@ Compass etapará el motor solo. No hace falta marcador manual.
    listo). El modo `windows-dev` hereda el entorno y el proyecto ve el engine.
    Tras mover Compass, re-ejecuta `install.bat` para re-fijar la variable.
 
-### Por framework (dónde va el bundle)
+##### Por framework (dónde va el bundle)
 | Framework | Destino del bundle | Resolución en runtime |
 |---|---|---|
 | Go + Wails v3 | `resources/whatsapp-engine-bundle/` | `internal/whatsapp` desde el cwd de la app |
 | Flutter | `whatsapp_engine/index.js` (modo single) | cwd → exe dir → app docs |
 | Kotlin | carpeta de recursos del framework | según launcher |
 
-### Ejemplo concreto: GymPro (Go + Wails v3)
+##### Ejemplo concreto: GymPro (Go + Wails v3)
 
 Extracto fiel y simplificado de `GymPro/internal/whatsapp` (el paquete real
 vive en `supervisor.go`, `exec.go`, `instance_windows.go`, `console_windows.go`
@@ -849,7 +837,7 @@ Para (re)etapar el motor en GymPro tras cambiar `engine.js` basta con lanzar un
 release de Windows desde Compass: `stageWhatsappEngine` detecta que `engine.js`
 es más nuevo y regenera el bundle antes de copiarlo al `resources/` del proyecto.
 
-### Errores que un agente NO debe cometer
+##### Errores que un agente NO debe cometer
 - ❌ Hardcodear `D:\...` en código o en la env var. Usa rutas relativas /
   `%LOCALAPPDATA%`.
 - ❌ Editar el bundle dentro de `resources/whatsapp-engine-bundle/` del
@@ -859,6 +847,47 @@ es más nuevo y regenera el bundle antes de copiarlo al `resources/` del proyect
   20+ (sidecar solo si se compila con `--with-node`).
 - ❌ Dejar `COMPASS_WHATSAPP_ENGINE` apuntando a una instalación vieja tras
   mover Compass. Re-ejecuta `install.bat`.
+
+### Kit D1
+
+El kit de sincronización **Cloudflare D1** vive **DENTRO de Compass** en
+`Kit D1/` (raíz del repo), incorporado con
+`git subtree add --prefix="Kit D1" ../Core Station/Kit D1 main --squash`. Ya no
+es un checkout separado: el remoto `Keimer92/Kit-D1` queda como archivo
+histórico (intacto, sin push). Contiene el módulo Go
+`github.com/Keimer92/kit-d1/go/syncengine`, el protocolo y su fixture canónico
+(`protocol/fixtures/wire-session.json`), los scripts de provisión y el
+`worker/template/` del que se ensamblan las instancias por proyecto.
+
+- **Resolución de ruta** (`kitD1Root()` en `internal/webui/kitd1.go`): se fija en
+  `settings.kit_d1_path`, o se autodetecta junto al proyecto activo (`Kit D1/`,
+  o `<padre>/Compass Go UX/Kit D1` si el activo es GymPro/School Tracker), junto
+  al exe (instalador) y, como fallback, el checkout viejo `Core Station/Kit D1`.
+  También se puede forzar con `COMPASS_KIT_D1`.
+- **Panel de administración** (`frontend/src/components/KitD1Panel.svelte` +
+  `internal/webui/kitd1.go`): botón "Kit D1" en el pie del sidebar, al lado de
+  "Ajustes de Git". El kit es **global**, no por proyecto (como Git), y el panel
+  muestra ruta, versión del módulo Go, rama/tag/working tree, sesión de Wrangler
+  (`whoami`), instancias de `worker/instances/*` y consumidores del workspace
+  (módulo Go con `go.work` local, o Flutter).
+- **Acciones**: ensamblar, typecheck, dev, deploy, provision dry-run/real,
+  whoami/login, listar tenants, exportar/rotar clave e instalar dependencias.
+  Se arman en `KitD1Script` con **whitelist** de acción + validación de
+  instancia contra el disco (sin interpolación libre) y se ejecutan en una
+  pestaña propia del terminal de Compass (`runKitD1` en `App.svelte`). Deploy,
+  provision real y rotar clave piden **confirmación de dos pasos**. La acción
+  `tag` se retiró: con subtree un tag iría al repo de Compass, no al del módulo;
+  `git describe` filtra por `--match go/syncengine/v*`.
+- **Instalador**: `dist.bat` copia `Kit D1/` al payload excluyendo
+  `node_modules`, `.wrangler`, `dist`, `out` y `.git`; por eso la acción
+  **Instalar dependencias** (`npm install`, acción `bootstrap`) precede a
+  typecheck/dev/deploy en una máquina nueva.
+- **Consumidores**: los `go.work` de GymPro y School Tracker apuntan con ruta
+  relativa a `../Compass Go UX/Kit D1/go/syncengine`. El fixture del protocolo
+  (`Kit D1/protocol/fixtures/wire-session.json`) es la fuente única para el
+  replay Go de School Tracker (`internal/wiretest`).
+- Cobertura en `internal/webui/kitd1_test.go` (fixture + detección dentro de
+  Compass).
 
 ## Desarrollo
 
