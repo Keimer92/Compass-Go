@@ -90,3 +90,51 @@ func TestVibeCtxScriptOnlyWritesGivenTools(t *testing.T) {
 		t.Errorf("el script menciona la CLI excluida %q", vibeTools[1].key)
 	}
 }
+
+// vibeEnvPrefix debe fijar CODEBUDDY_IS_SANDBOX=1 solo para CodeBuddy, para que
+// --dangerously-skip-permissions acepte tambien HIGH/CRITICAL. Las demas CLIs no
+// llevan prefijo.
+func TestVibeEnvPrefix(t *testing.T) {
+	got := vibeEnvPrefix("02CodeBuddy")
+	if !strings.Contains(got, "$env:CODEBUDDY_IS_SANDBOX='1'; ") {
+		t.Fatalf("prefijo de CodeBuddy = %q, queria fijar CODEBUDDY_IS_SANDBOX=1", got)
+	}
+	for _, key := range []string{"01OpenCode", "03KiloCode", "06Copilot", "desconocida"} {
+		if p := vibeEnvPrefix(key); p != "" {
+			t.Errorf("vibeEnvPrefix(%q) = %q, queria vacio", key, p)
+		}
+	}
+}
+
+// VibeCommand debe anteponer el $env: de CodeBuddy a la invocacion cuando la
+// CLI esta instalada. Se omite si no lo esta en esta maquina.
+func TestVibeCommandCodeBuddyPrefix(t *testing.T) {
+	got := VibeCommand("02CodeBuddy")
+	if got == "" {
+		t.Skip("codebuddy no instalado en esta maquina")
+	}
+	if !strings.HasPrefix(got, "$env:CODEBUDDY_IS_SANDBOX='1'; & ") {
+		t.Fatalf("VibeCommand(02CodeBuddy) = %q, queria prefijo $env:CODEBUDDY_IS_SANDBOX", got)
+	}
+}
+
+// La entrada del menu contextual de CodeBuddy debe fijar el entorno antes del
+// "&" de invocacion, no despues (un "& $env:..." seria invalido).
+func TestVibeCtxScriptCodeBuddySetsSandbox(t *testing.T) {
+	var cb vibeTool
+	for _, tool := range vibeTools {
+		if tool.key == "02CodeBuddy" {
+			cb = tool
+		}
+	}
+	got := vibeCtxScript([]resolvedVibeTool{
+		{tool: cb, cmd: "'codebuddy.cmd' --dangerously-skip-permissions"},
+	}, "C:\\icons\\VibeCoding.ico")
+
+	// El valor del registro escapa las comillas simples como ''; se normaliza
+	// para comprobar el contenido real del script.
+	norm := strings.ReplaceAll(got, "''", "'")
+	if !strings.Contains(norm, "$env:CODEBUDDY_IS_SANDBOX='1'; & 'codebuddy.cmd' --dangerously-skip-permissions") {
+		t.Fatalf("el script de CodeBuddy no fija el entorno antes del &:\n%s", got)
+	}
+}

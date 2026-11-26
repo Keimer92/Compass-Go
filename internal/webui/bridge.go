@@ -377,7 +377,8 @@ func (b *Bridge) TaskScript(task string) string {
 		if cmd == "" {
 			return "Write-Host 'Esa CLI no esta instalada. Usa \"Instalar faltantes\".' -ForegroundColor Yellow"
 		}
-		return "& " + cmd
+		// VibeCommand ya devuelve la linea completa (prefijo $env: + & cmd).
+		return cmd
 	}
 	dir := b.projectDir()
 	exe := b.ExePath()

@@ -1367,6 +1367,15 @@ dev.bat              # Vite (HMR de UI) + backend con R = recompilar/reiniciar
   `tasks.SyncVibeContextMenu`, que reescribe las sub-entradas con
   `resolveVibeTools` (mismo filtro) y no crea el menu si el usuario nunca lo
   instalo.
+- **CodeBuddy y HIGH/CRITICAL**: `vibeEnv` fija variables de entorno por CLI
+  antes de lanzarla. CodeBuddy usa `CODEBUDDY_IS_SANDBOX=1`, porque
+  `--dangerously-skip-permissions` (bypassPermissions) aun pide confirmacion en
+  las acciones HIGH/CRITICAL; con esa variable de proceso se aceptan por
+  defecto (full pass). `vibeEnvPrefix` devuelve el prefijo `$env:NOMBRE='v'; `
+  que se inserta **antes** del `&` de invocacion, tanto en la ConPTY de la GUI
+  (`VibeCommand`, que ya devuelve la linea completa) como en la cascada del
+  Explorador (`vibeContextCommand`). Debe ser variable de proceso: no vale
+  inyectarla desde `settings.json`. El resto de CLIs no lleva prefijo.
 - **Instancia única por proyecto**: `internal/lock` con
   `x/sys/windows.LockFileEx` sobre un fichero por proyecto en
   `%LOCALAPPDATA%\compass\instances` (no se escribe nada en la carpeta del

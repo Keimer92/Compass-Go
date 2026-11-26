@@ -325,6 +325,30 @@ var vibeTools = []vibeTool{
 	{"10QoderCli", "Qoder CLI", "qodercli --yolo", "irm https://qoder.com/install.ps1 | iex", []string{"HOME/.qoder/bin/qodercli/qodercli.exe", "HOME/.qoder/bin/qodercli.exe"}, viaPowerShell},
 }
 
+// vibeEnv fija variables de entorno en la sesion de PowerShell antes de lanzar
+// la CLI. CodeBuddy necesita CODEBUDDY_IS_SANDBOX=1 para que
+// --dangerously-skip-permissions (bypassPermissions) acepte tambien las acciones
+// HIGH/CRITICAL; sin esa variable siguen pidiendo confirmacion. Debe ser una
+// variable de proceso (no de settings.json), y fijarla con $env: en el shell que
+// lanza la CLI cumple ese requisito. El resto de CLIs no necesita nada.
+var vibeEnv = map[string][]string{
+	"02CodeBuddy": {"CODEBUDDY_IS_SANDBOX=1"},
+}
+
+// vibeEnvPrefix devuelve las asignaciones $env:NAME='valor'; que deben ejecutarse
+// antes de invocar la CLI. Va antes del "& cmd" del lanzamiento, no dentro.
+func vibeEnvPrefix(key string) string {
+	var b strings.Builder
+	for _, kv := range vibeEnv[key] {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("$env:%s=%s; ", k, shell.PsQuote(v)))
+	}
+	return b.String()
+}
+
 func resolveToolCommand(t vibeTool) (string, string) {
 	return resolveToolCommandIn(t, nil)
 }
@@ -438,9 +462,9 @@ func menuStamp() string {
 	return fmt.Sprintf("%d", secs)
 }
 
-func vibeContextCommand(shellName, title, cmdline string) string {
-	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -Command "Set-Location -LiteralPath '%%V'; [Console]::Title = %s; & %s"`,
-		shellName, shell.PsQuote(title), cmdline)
+func vibeContextCommand(shellName, title, cmdline, envPrefix string) string {
+	return fmt.Sprintf(`"%s" -NoLogo -NoProfile -Command "Set-Location -LiteralPath '%%V'; [Console]::Title = %s; %s& %s"`,
+		shellName, shell.PsQuote(title), envPrefix, cmdline)
 }
 
 type resolvedVibeTool struct {
@@ -496,7 +520,7 @@ New-Item -Path 'HKCU:\Software\Classes\Directory\shell\%s' -Force | Out-Null; `+
 
 	shellName := shell.ShellPath()
 	for _, r := range resolvedTools {
-		command := vibeContextCommand(shellName, r.tool.title, r.cmd)
+		command := vibeContextCommand(shellName, r.tool.title, r.cmd, vibeEnvPrefix(r.tool.key))
 		ps.WriteString(fmt.Sprintf(`
 New-Item -Path 'HKCU:\Software\Classes\%s\shell\%s' -Force | Out-Null; `+
 			`Set-ItemProperty -Path 'HKCU:\Software\Classes\%s\shell\%s' -Name 'MUIVerb' -Value %s -Force; `+
@@ -705,13 +729,17 @@ func VibeTools() []VibeToolInfo {
 	return out
 }
 
-// VibeCommand devuelve la linea PowerShell que lanza la CLI indicada (con sus
-// flags por defecto) o "" si no esta instalada. Se ejecuta dentro de la ConPTY
-// del proyecto, que ya arranca con el cwd en la carpeta correcta.
+// VibeCommand devuelve la linea PowerShell completa que lanza la CLI indicada
+// (con sus flags y variables de entorno por defecto) o "" si no esta instalada.
+// Se ejecuta dentro de la ConPTY del proyecto, que ya arranca con el cwd en la
+// carpeta correcta. Incluye el "&" de invocacion y el prefijo $env: necesario.
 func VibeCommand(key string) string {
 	for _, tool := range VibeTools() {
 		if tool.Key == key {
-			return tool.cmd
+			if tool.cmd == "" {
+				return ""
+			}
+			return vibeEnvPrefix(tool.Key) + "& " + tool.cmd
 		}
 	}
 	return ""
