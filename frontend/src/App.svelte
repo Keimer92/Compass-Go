@@ -441,6 +441,10 @@
     })
     onGitChanged((d) => {
       if (!samePath(d.dir, projectPath)) return
+      // El vigilante de Go ya vio el cambio: refresca Explorador y panel Git
+      // al instante. Sin esto el Explorador solo se enteraba al enfocar la
+      // ventana o cambiar de pestaña.
+      notifyRepoChanged()
       const now = Date.now()
       if (now - (changeToastAt.get(d.dir) ?? 0) < 30_000) return
       changeToastAt.set(d.dir, now)

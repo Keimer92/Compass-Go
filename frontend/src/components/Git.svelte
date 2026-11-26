@@ -7,7 +7,6 @@
     gitGhInfo,
     gitCreateRemote,
     openExternal,
-    onGitChanged,
     onPushProgress,
     type GitInfo,
     type RemoteStatus,
@@ -204,13 +203,9 @@
 
   onMount(() => {
     refresh()
+    // App.svelte traduce `git:changed` a notifyRepoChanged, así que este bus
+    // cubre tanto los cambios del vigilante como los de un commit o un push.
     const offRepo = onRepoChanged(refresh)
-    // Aviso instantaneo del vigilante de archivos: el panel se repinta en
-    // cuanto se guarda algo, sin esperar al sondeo.
-    const offChanged = onGitChanged((e) => {
-      if (!samePath(e.dir, projectPath)) return
-      refresh()
-    })
     // El store global ya enruta el avance por proyecto; acá solo se pinta la
     // barra del asistente, y solo del proyecto que muestra este panel.
     const offPush = onPushProgress((p) => {
@@ -219,7 +214,6 @@
     })
     return () => {
       offRepo()
-      offChanged()
       offPush()
     }
   })

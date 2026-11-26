@@ -26,6 +26,10 @@ import (
 const (
 	// watchDebounce agrupa la rafaga de eventos de un mismo guardado.
 	watchDebounce = 200 * time.Millisecond
+	// watchPollEvery es la red de seguridad del proyecto activo: si fsnotify
+	// pierde un evento (buffer desbordado, unidad de red, limite de handles),
+	// el panel se entera igual en unos segundos sin cambiar de pestana.
+	watchPollEvery = 8 * time.Second
 	// watchMaxDirs acota los handles abiertos: un repo con node_modules puede
 	// tener decenas de miles de carpetas.
 	watchMaxDirs = 3000
@@ -184,7 +188,11 @@ func addWatchTree(w *fsnotify.Watcher, root string) int {
 func (b *Bridge) watchLoop(dw *dirWatch) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
+	// El sondeo solo cubre el proyecto activo: los demas ya los revisa
+	// autoStep si tienen Auto, y asi no se lanza un `git status` por proyecto.
+	poll := time.NewTicker(watchPollEvery)
 	defer func() {
+		poll.Stop()
 		if timer != nil {
 			timer.Stop()
 		}
@@ -194,6 +202,10 @@ func (b *Bridge) watchLoop(dw *dirWatch) {
 		select {
 		case <-dw.stop:
 			return
+		case <-poll.C:
+			if commitKey(b.projectDir()) == commitKey(dw.dir) {
+				b.watchFlush(dw)
+			}
 		case ev, ok := <-dw.fsw.Events:
 			if !ok {
 				return
