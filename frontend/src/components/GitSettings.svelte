@@ -128,7 +128,7 @@
     speeds = []
     try {
       speeds = await testModelSpeeds(
-        models.map((m) => m.id),
+        models,
         cfg.openrouter_endpoint,
         newApiKey.trim(),
       )
