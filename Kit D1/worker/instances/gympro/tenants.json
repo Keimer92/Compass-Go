@@ -1,0 +1,9 @@
+{
+  "tenants": [
+    {
+      "slug": "gympro",
+      "name": "Instalación GymPro",
+      "notes": "Una sola D1 compartida por todos los equipos del gimnasio. La columna `sk`, derivada de la clave de conexión, es lo que separa los datos de cada cliente: dos equipos con la misma clave comparten base de datos, con clave distinta nunca se ven."
+    }
+  ]
+}

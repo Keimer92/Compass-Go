@@ -1,0 +1,542 @@
+{
+  "version": 1,
+  "namespace": "school-tracker",
+  "tables": [
+    {
+      "name": "ano_lectivo",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "activo",
+        "cualitativo",
+        "updated_at"
+      ],
+      "conflict": [
+        "nombre"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "corte_evaluativo",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "activo",
+        "cualitativo",
+        "updated_at"
+      ],
+      "conflict": [
+        "nombre",
+        "sk"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "colegio",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "activo",
+        "cualitativo",
+        "orden",
+        "tipo",
+        "updated_at"
+      ],
+      "conflict": [
+        "nombre"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "asignatura",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "cualitativo",
+        "updated_at"
+      ],
+      "conflict": [
+        "nombre"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "grado",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "cualitativo",
+        "updated_at"
+      ],
+      "conflict": [
+        "nombre"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "seccion",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "cualitativo",
+        "updated_at"
+      ],
+      "conflict": [
+        "nombre"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "grado_asignatura",
+      "pk": [
+        "grado_id",
+        "asignatura_id"
+      ],
+      "upsert_pk": [
+        "grado_id",
+        "asignatura_id"
+      ],
+      "cols": [
+        "grado_id",
+        "asignatura_id",
+        "updated_at"
+      ],
+      "conflict": [
+        "grado_id",
+        "asignatura_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "colegio_asignatura",
+      "pk": [
+        "colegio_id",
+        "asignatura_id"
+      ],
+      "upsert_pk": [
+        "colegio_id",
+        "asignatura_id"
+      ],
+      "cols": [
+        "colegio_id",
+        "asignatura_id",
+        "updated_at"
+      ],
+      "conflict": [
+        "colegio_id",
+        "asignatura_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "colegio_grado",
+      "pk": [
+        "colegio_id",
+        "grado_id"
+      ],
+      "upsert_pk": [
+        "colegio_id",
+        "grado_id"
+      ],
+      "cols": [
+        "colegio_id",
+        "grado_id",
+        "activo",
+        "cualitativo",
+        "updated_at"
+      ],
+      "conflict": [
+        "colegio_id",
+        "grado_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "indicador",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "grado_id",
+        "asignatura_id",
+        "corte_evaluativo_id",
+        "ano_lectivo_id",
+        "orden",
+        "descripcion",
+        "activo",
+        "instrumento",
+        "unidad_numero",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "criterio",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "indicador_id",
+        "orden",
+        "descripcion",
+        "puntaje_maximo",
+        "updated_at"
+      ],
+      "conflict": [
+        "indicador_id",
+        "orden"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": false
+    },
+    {
+      "name": "indicador_colegio_seccion_activo",
+      "pk": [
+        "colegio_id",
+        "seccion_id",
+        "indicador_id"
+      ],
+      "upsert_pk": [
+        "colegio_id",
+        "seccion_id",
+        "indicador_id"
+      ],
+      "cols": [
+        "colegio_id",
+        "seccion_id",
+        "indicador_id",
+        "activo",
+        "updated_at"
+      ],
+      "conflict": [
+        "colegio_id",
+        "seccion_id",
+        "indicador_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "estudiante",
+      "pk": [
+        "codigo"
+      ],
+      "upsert_pk": [
+        "codigo"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "codigo",
+        "codigo_base",
+        "sexo",
+        "ano_lectivo_id",
+        "grado_id",
+        "seccion_id",
+        "colegio_id",
+        "foto",
+        "updated_at"
+      ],
+      "conflict": [
+        "codigo"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "configuracion_calificacion",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "nombre",
+        "color",
+        "minimo",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "multiplicador_calificacion",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "multiplicador",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "colegio_dias_asistencia",
+      "pk": [
+        "colegio_id"
+      ],
+      "upsert_pk": [
+        "colegio_id"
+      ],
+      "cols": [
+        "colegio_id",
+        "lunes",
+        "martes",
+        "miercoles",
+        "jueves",
+        "viernes",
+        "sabado",
+        "domingo",
+        "updated_at"
+      ],
+      "conflict": [
+        "colegio_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "asistencia",
+      "pk": [
+        "estudiante_codigo",
+        "fecha"
+      ],
+      "upsert_pk": [
+        "estudiante_id",
+        "fecha"
+      ],
+      "cols": [
+        "id",
+        "estudiante_id",
+        "fecha",
+        "estado",
+        "observacion",
+        "updated_at"
+      ],
+      "conflict": [
+        "estudiante_id",
+        "fecha"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false,
+      "computed": [
+        {
+          "column": "estudiante_codigo",
+          "parent": "estudiante",
+          "parent_key": "id",
+          "fk": "estudiante_id",
+          "target": "codigo",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "nota",
+      "pk": [
+        "estudiante_id",
+        "criterio_id",
+        "corte_evaluativo_id",
+        "asignatura_id"
+      ],
+      "upsert_pk": [
+        "estudiante_id",
+        "criterio_id",
+        "corte_evaluativo_id",
+        "asignatura_id"
+      ],
+      "cols": [
+        "estudiante_id",
+        "criterio_id",
+        "valor",
+        "corte_evaluativo_id",
+        "asignatura_id",
+        "updated_at"
+      ],
+      "conflict": [
+        "estudiante_id",
+        "criterio_id",
+        "corte_evaluativo_id",
+        "asignatura_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false,
+      "computed": [
+        {
+          "column": "estudiante_codigo",
+          "parent": "estudiante",
+          "parent_key": "id",
+          "fk": "estudiante_id",
+          "target": "codigo",
+          "canonize": false
+        }
+      ]
+    },
+    {
+      "name": "dia_sin_clases",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "colegio_id",
+        "grado_id",
+        "seccion_id",
+        "fecha",
+        "descripcion",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "instrumento_plantilla",
+      "pk": [
+        "propietario",
+        "nombre"
+      ],
+      "upsert_pk": [
+        "propietario",
+        "nombre"
+      ],
+      "cols": [
+        "id",
+        "propietario",
+        "nombre",
+        "tipo",
+        "definicion",
+        "updated_at"
+      ],
+      "conflict": [
+        "propietario",
+        "nombre"
+      ],
+      "set_exclude_id": true,
+      "server_assigns_id": true
+    },
+    {
+      "name": "estudiante_retirado",
+      "pk": [
+        "estudiante_codigo"
+      ],
+      "upsert_pk": [
+        "estudiante_id"
+      ],
+      "cols": [
+        "estudiante_id",
+        "fecha_retiro",
+        "motivo",
+        "updated_at"
+      ],
+      "conflict": [
+        "estudiante_id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false,
+      "computed": [
+        {
+          "column": "estudiante_codigo",
+          "parent": "estudiante",
+          "parent_key": "id",
+          "fk": "estudiante_id",
+          "target": "codigo",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "app_settings",
+      "pk": [
+        "key"
+      ],
+      "upsert_pk": [
+        "key"
+      ],
+      "cols": [
+        "key",
+        "value",
+        "updated_at"
+      ],
+      "conflict": [
+        "key"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    }
+  ]
+}

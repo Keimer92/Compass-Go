@@ -1,0 +1,243 @@
+{
+  "version": 1,
+  "namespace": "ela-academy",
+  "tables": [
+    {
+      "name": "teacher",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "name", "email", "phone", "address", "level",
+        "modality", "permissions", "created_at", "updated_at", "deleted_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true
+    },
+    {
+      "name": "curso",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "teacher_id", "name", "level", "modality",
+        "start_year", "end_year", "status", "created_at", "updated_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "teacher_sync_id",
+          "parent": "teacher",
+          "parent_key": "id",
+          "fk": "teacher_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "student",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "name", "email", "phone", "birth_date",
+        "enrollment_date", "teacher_id", "level", "modality", "gender",
+        "status", "notes", "curso_id", "final_grade", "created_at",
+        "updated_at", "deleted_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "teacher_sync_id",
+          "parent": "teacher",
+          "parent_key": "id",
+          "fk": "teacher_id",
+          "target": "sync_id",
+          "canonize": true
+        },
+        {
+          "column": "curso_sync_id",
+          "parent": "curso",
+          "parent_key": "id",
+          "fk": "curso_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "student_curso_history",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "student_id", "curso_id", "curso_name",
+        "started_at", "ended_at", "created_at", "updated_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "student_sync_id",
+          "parent": "student",
+          "parent_key": "id",
+          "fk": "student_id",
+          "target": "sync_id",
+          "canonize": true
+        },
+        {
+          "column": "curso_sync_id",
+          "parent": "curso",
+          "parent_key": "id",
+          "fk": "curso_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "attendance",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "student_id", "date", "status", "notes",
+        "created_at", "updated_at", "deleted_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "student_sync_id",
+          "parent": "student",
+          "parent_key": "id",
+          "fk": "student_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "payment",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "student_id", "amount", "payment_date",
+        "payment_method", "concept", "status", "month", "year", "discount",
+        "fine", "created_at", "updated_at", "deleted_at", "whatsapp_pending"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "student_sync_id",
+          "parent": "student",
+          "parent_key": "id",
+          "fk": "student_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "level",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "name", "display_order", "created_at",
+        "updated_at", "deleted_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true
+    },
+    {
+      "name": "modality",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": ["id", "sync_id", "name", "created_at", "updated_at"],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true
+    },
+    {
+      "name": "grade",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "student_id", "level", "score", "max_score",
+        "grading_period", "comment", "created_at", "updated_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "student_sync_id",
+          "parent": "student",
+          "parent_key": "id",
+          "fk": "student_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "payment_exemption",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "student_id", "month", "year", "created_at",
+        "updated_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "student_sync_id",
+          "parent": "student",
+          "parent_key": "id",
+          "fk": "student_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "pk": ["sync_id"],
+      "upsert_pk": ["sync_id"],
+      "cols": [
+        "id", "sync_id", "name", "username", "role", "password_hash",
+        "permissions", "teacher_id", "created_at", "updated_at", "deleted_at"
+      ],
+      "conflict": ["sync_id"],
+      "set_exclude_id": true,
+      "server_assigns_id": true,
+      "computed": [
+        {
+          "column": "teacher_sync_id",
+          "parent": "teacher",
+          "parent_key": "id",
+          "fk": "teacher_id",
+          "target": "sync_id",
+          "canonize": true
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "pk": ["key"],
+      "upsert_pk": ["key"],
+      "cols": ["key", "value", "updated_at"],
+      "conflict": ["key"],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    }
+  ]
+}

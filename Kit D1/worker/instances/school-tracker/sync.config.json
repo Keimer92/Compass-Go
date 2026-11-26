@@ -1,0 +1,9 @@
+{
+  "namespace": "school-tracker",
+  "deepLinkScheme": "schooltracker",
+  "auth": {
+    "brand": "School Tracker",
+    "resendFrom": "onboarding@resend.dev",
+    "recoveryPrefix": "ST"
+  }
+}

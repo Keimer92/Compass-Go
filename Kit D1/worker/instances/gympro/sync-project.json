@@ -1,0 +1,12 @@
+{
+  "namespace": "gympro",
+  "keyPrefix": "gym_",
+  "d1Binding": "DB",
+  "routingKv": "SCHOOL_ROUTING",
+  "kvNamespaces": ["SCHOOL_ROUTING", "RELEASES"],
+  "schemaFiles": ["schema.sql"],
+  "tenantsFile": "tenants.json",
+  "defaultTenant": "gympro",
+  "keysFile": "sync-keys.json",
+  "workerUrl": "https://gympro-d1-sync.pedroluisnfc.workers.dev"
+}
