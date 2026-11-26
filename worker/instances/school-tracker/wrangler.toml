@@ -1,0 +1,40 @@
+# School Tracker instance of the sync-kit worker TEMPLATE.
+# Deployed 2026-11-01 in place of the original hand-written worker, under the
+# SAME name so every installed app keeps the same URL, protocol and secrets.
+# Secrets (CF_API_TOKEN, RESEND_API_KEY) live on the worker itself; a
+# redeploy under the same name preserves them — never put them in this file.
+name = "schooltracker-go-wails-v3"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+[[kv_namespaces]]
+binding = "SCHOOL_ROUTING"
+id = "6114e848035443e395b739218cc6f506"
+
+[[kv_namespaces]]
+binding = "USERS"
+id = "85298d150c6a42ee90487dc298d826e0"
+
+[[kv_namespaces]]
+binding = "RELEASES"
+id = "90f3bfb856c544ec879461a8ee0766b6"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "school-tracker-mined-go-wails-v3"
+database_id = "377af671-9119-4fa9-ab12-6f6205506ed4"
+
+[vars]
+CF_ACCOUNT_ID = "ec285834428c30f51d6f92a67848d5d5"
+GOOGLE_CLIENT_ID = "495262715252-gd84mfbdqg8b32h4ppplfal50m772v8t.apps.googleusercontent.com"
+ADMIN_EMAILS = "pedroluisnfc@gmail.com"
+ALLOWED_EMAILS = "pedroluisnfc@gmail.com"
+
+# Realtime hub. Same class and migration tag as the previous deployment, so
+# the DO is reused, not re-created.
+[durable_objects]
+bindings = [{ name = "SYNC_HUB", class_name = "SyncHub" }]
+
+[[migrations]]
+tag = "v1_sync_hub"
+new_sqlite_classes = ["SyncHub"]

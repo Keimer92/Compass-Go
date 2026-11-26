@@ -1,0 +1,12 @@
+{
+  "namespace": "school-tracker",
+  "keyPrefix": "stp_",
+  "d1Binding": "DB",
+  "routingKv": "SCHOOL_ROUTING",
+  "kvNamespaces": ["SCHOOL_ROUTING", "USERS", "RELEASES"],
+  "schemaFiles": ["schema.sql"],
+  "tenantsFile": "tenants.json",
+  "defaultTenant": "nube",
+  "keysFile": "sync-keys.json",
+  "workerUrl": "https://schooltracker-go-wails-v3.pedroluisnfc.workers.dev"
+}

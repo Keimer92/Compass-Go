@@ -1,0 +1,16 @@
+{
+  "namespace": "ela-academy",
+  "keyPrefix": "ela_",
+  "d1Binding": "DB",
+  "routingKv": "SCHOOL_ROUTING",
+  "kvNamespaces": [
+    "SCHOOL_ROUTING"
+  ],
+  "schemaFiles": [
+    "schema.sql"
+  ],
+  "tenantsFile": "tenants.json",
+  "defaultTenant": "nube",
+  "keysFile": "sync-keys.json",
+  "workerUrl": "https://ela-academy-flutter.pedroluisnfc.workers.dev"
+}

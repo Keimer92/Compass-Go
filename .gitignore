@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+dist/
+*.key
+*.db
+*.sqlite
+*.sqlite3
+.dev.vars
+sync-keys.json
+school-keys.json

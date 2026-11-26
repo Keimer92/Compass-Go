@@ -1,0 +1,281 @@
+{
+  "version": 1,
+  "namespace": "gympro",
+  "tables": [
+    {
+      "name": "pricing_plans",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "name",
+        "price",
+        "duration_days",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "roles",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "name",
+        "description",
+        "permissions",
+        "created_at",
+        "is_system_role",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "categories",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "name",
+        "description",
+        "created_at",
+        "deleted_at",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "users",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "username",
+        "password_hash",
+        "full_name",
+        "role",
+        "created_at",
+        "updated_at",
+        "is_active",
+        "photo_url",
+        "deleted_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "members",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "full_name",
+        "email",
+        "phone",
+        "sex",
+        "fingerprint_id",
+        "registration_date",
+        "created_at",
+        "updated_at",
+        "is_active",
+        "deleted_at",
+        "last_payment_expiry_date"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "payments",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "member_id",
+        "user_id",
+        "amount",
+        "discount",
+        "plan_name",
+        "payment_date",
+        "payment_method",
+        "expiry_date",
+        "created_at",
+        "deleted_at",
+        "weight",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "attendance",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "member_id",
+        "check_in",
+        "deleted_at",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "products",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "name",
+        "description",
+        "price",
+        "cost",
+        "stock",
+        "min_stock",
+        "barcode",
+        "category",
+        "image_url",
+        "created_at",
+        "updated_at",
+        "deleted_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "sales",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "user_id",
+        "member_id",
+        "total_amount",
+        "discount",
+        "payment_method",
+        "date",
+        "due_date",
+        "status",
+        "deleted_at",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "sale_items",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "sale_id",
+        "product_id",
+        "quantity",
+        "unit_price",
+        "subtotal",
+        "deleted_at",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    },
+    {
+      "name": "audit_logs",
+      "pk": [
+        "id"
+      ],
+      "upsert_pk": [
+        "id"
+      ],
+      "cols": [
+        "id",
+        "user_id",
+        "username",
+        "action",
+        "details",
+        "entity_type",
+        "entity_id",
+        "created_at",
+        "updated_at"
+      ],
+      "conflict": [
+        "id"
+      ],
+      "set_exclude_id": false,
+      "server_assigns_id": false
+    }
+  ]
+}

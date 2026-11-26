@@ -1,0 +1,33 @@
+# GymPro instance of the sync-kit worker TEMPLATE.
+# Sync (DB + SCHOOL_ROUTING), avisos de cambios en tiempo real y el manifiesto
+# de actualizaciones (/updates/latest) servido desde el KV RELEASES.
+# GymPro no usa /auth/*.
+#
+# El binding se llama SCHOOL_ROUTING porque es el nombre que lee el motor
+# genérico; el namespace de KV en sí es exclusivo de GymPro (título
+# GYMPRO_ROUTING), para no compartir ruteo con School Tracker.
+name = "gympro-d1-sync"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+[[kv_namespaces]]
+binding = "SCHOOL_ROUTING"
+id = "de48cc0a0df14fd88183c929bbd35033"
+
+# Manifiesto de actualizaciones y binarios publicados (título GYMPRO_RELEASES).
+[[kv_namespaces]]
+binding = "RELEASES"
+id = "96822826ed0244098de5a505a9f3ad52"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gympro"
+database_id = "4a88ab63-53c8-4e8c-b1d4-5bd408273265"
+
+[[durable_objects.bindings]]
+name = "SYNC_HUB"
+class_name = "SyncHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SyncHub"]

@@ -1,0 +1,9 @@
+{
+  "tenants": [
+    {
+      "slug": "nube",
+      "name": "Instalación School Tracker",
+      "notes": "Single D1 database shared by every device (per school-year model, not per school). The `sk` column namespaces each user's rows inside it."
+    }
+  ]
+}

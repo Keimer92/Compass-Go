@@ -1,0 +1,20 @@
+name = "ela-academy-flutter"
+main = "src/index.ts"
+compatibility_date = "2026-11-04"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ela-academy-flutter"
+database_id = "780ecf6a-1cd1-4433-9d39-6b3ecb9d03cd"
+
+[[kv_namespaces]]
+binding = "SCHOOL_ROUTING"
+id = "fa3fb66dfa4d4dac860f90f0887cd979"
+
+[[durable_objects.bindings]]
+name = "SYNC_HUB"
+class_name = "SyncHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SyncHub"]
