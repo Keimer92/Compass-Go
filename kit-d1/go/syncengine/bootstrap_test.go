@@ -17,7 +17,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	schoolschema "github.com/Keimer92/Compass-Go/kit-d1/go/syncengine/example/school"
+	schoolschema "github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine/example/school"
 )
 
 func isDuplicateColumn(err error) bool {

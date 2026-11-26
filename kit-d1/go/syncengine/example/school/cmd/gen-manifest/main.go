@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Keimer92/Compass-Go/kit-d1/go/syncengine/example/school"
+	"github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine/example/school"
 )
 
 func main() {

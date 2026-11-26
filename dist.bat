@@ -172,18 +172,18 @@ set "RC_ERR="
 REM Versiones anteriores del payload usaban "Kit D1"; se elimina para no
 REM empaquetar dos copias del kit en el mismo instalador.
 if exist "dist\payload\Kit D1" rmdir /s /q "dist\payload\Kit D1" >nul 2>nul
-if exist "kit-d1" (
-    echo [INFO] Copiando kit-d1 a dist\payload sin node_modules...
-    if exist "dist\payload\kit-d1" rmdir /s /q "dist\payload\kit-d1"
-    robocopy "kit-d1" "dist\payload\kit-d1" /E /XD node_modules .wrangler dist out .git /NFL /NDL /NJH /NJS /NP >nul
+if exist "Kit-D1" (
+    echo [INFO] Copiando Kit-D1 a dist\payload sin node_modules...
+    if exist "dist\payload\Kit-D1" rmdir /s /q "dist\payload\Kit-D1"
+    robocopy "Kit-D1" "dist\payload\Kit-D1" /E /XD node_modules .wrangler dist out .git /NFL /NDL /NJH /NJS /NP >nul
     if errorlevel 8 set "RC_ERR=1"
     if defined RC_ERR (
-        echo [WARN] robocopy devolvio un error al copiar kit-d1; revisa dist\payload\kit-d1.
+        echo [WARN] robocopy devolvio un error al copiar Kit-D1; revisa dist\payload\Kit-D1.
     ) else (
-        echo [OK] kit-d1 copiado ^(sin node_modules: usa "Instalar dependencias" en el panel^).
+        echo [OK] Kit-D1 copiado ^(sin node_modules: usa "Instalar dependencias" en el panel^).
     )
 ) else (
-    echo [SKIP] No se encontro la carpeta "kit-d1"; se omite.
+    echo [SKIP] No se encontro la carpeta "Kit-D1"; se omite.
 )
 echo.
 

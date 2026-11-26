@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Keimer92/Compass-Go/kit-d1/go/syncengine"
+	"github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine"
 )
 
 func minimalSpecs() []syncengine.TableSpec {

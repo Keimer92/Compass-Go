@@ -63,8 +63,8 @@ func TestKitD1InfoConsumidores(t *testing.T) {
 	// consumidor anadiendolo al workspace.
 	consumer := filepath.Join(t.TempDir(), "mi-app")
 	_ = os.MkdirAll(consumer, 0o755)
-	_ = os.WriteFile(filepath.Join(consumer, "go.mod"), []byte("require github.com/Keimer92/Compass-Go/kit-d1/go/syncengine v0.1.0\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(consumer, "go.work"), []byte("replace github.com/Keimer92/Compass-Go/kit-d1/go/syncengine => \"D:/kit\"\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(consumer, "go.mod"), []byte("require github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine v0.1.0\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(consumer, "go.work"), []byte("replace github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine => \"D:/kit\"\n"), 0o644)
 	b.ws.Projects = append(b.ws.Projects, &workspace.Project{Path: consumer})
 	info := b.KitD1Info()
 	var found *KitD1Consumer
@@ -160,12 +160,12 @@ func TestKitD1AccionesCatalogo(t *testing.T) {
 }
 
 // TestKitD1RootDentroDeCompass comprueba que el kit se autodetecta cuando vive
-// como subcarpeta "kit-d1/" del proyecto activo (layout del subtree).
+// como subcarpeta "Kit-D1/" del proyecto activo (layout del subtree).
 func TestKitD1RootDentroDeCompass(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	t.Setenv(kitD1Env, "")
 	compass := filepath.Join(t.TempDir(), "Compass Go UX")
-	kit := filepath.Join(compass, "kit-d1")
+	kit := filepath.Join(compass, "Kit-D1")
 	if err := os.MkdirAll(filepath.Join(kit, "worker", "instances"), 0o755); err != nil {
 		t.Fatal(err)
 	}

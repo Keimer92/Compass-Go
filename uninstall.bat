@@ -106,7 +106,7 @@ if exist "%BINDIR%\VibeCoding.ico" del /f /q "%BINDIR%\VibeCoding.ico" >nul 2>nu
 if exist "%BINDIR%\Git.ico"        del /f /q "%BINDIR%\Git.ico" >nul 2>nul
 if exist "%BINDIR%\Uninstall.exe"  del /f /q "%BINDIR%\Uninstall.exe" >nul 2>nul
 if exist "%BINDIR%\Kit Whatsapp"    rmdir /s /q "%BINDIR%\Kit Whatsapp" >nul 2>nul
-if exist "%BINDIR%\kit-d1"          rmdir /s /q "%BINDIR%\kit-d1" >nul 2>nul
+if exist "%BINDIR%\Kit-D1"          rmdir /s /q "%BINDIR%\Kit-D1" >nul 2>nul
 if exist "%BINDIR%\Kit D1"          rmdir /s /q "%BINDIR%\Kit D1" >nul 2>nul
 if exist "%BINDIR%\corekit"        rmdir /s /q "%BINDIR%\corekit" >nul 2>nul
 REM Solo el .exe: los .ico de .cargo\bin los comparten otros tools.

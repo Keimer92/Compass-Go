@@ -60,7 +60,7 @@ agentes y desarrolladores está en [`AGENTS.md`](AGENTS.md).
 | Kit | Carpeta | Para qué |
 |-----|---------|----------|
 | **WhatsApp** | [`Kit Whatsapp/`](Kit%20Whatsapp/) | motor Baileys de envíos, compartido por GymPro, ELA Group y proyectos Flutter |
-| **D1** | [`kit-d1/`](kit-d1/) | sincronización Cloudflare D1: módulo Go, contrato wire y Worker por proyecto |
+| **D1** | [`Kit-D1/`](Kit-D1/) | sincronización Cloudflare D1: módulo Go, contrato wire y Worker por proyecto |
 
 ### Motor de WhatsApp
 
@@ -77,17 +77,17 @@ agentes y desarrolladores está en [`AGENTS.md`](AGENTS.md).
 
 ### Kit D1
 
-- Vive dentro de Compass como `kit-d1/` (incorporado con `git subtree`), así que
+- Vive dentro de Compass como `Kit-D1/` (incorporado con `git subtree`), así que
   deja de depender de un checkout externo. El nombre sin espacios es obligatorio
   para que la ruta sirva como módulo Go.
-- Expone el módulo Go `github.com/Keimer92/Compass-Go/kit-d1/go/syncengine`, el protocolo y
+- Expone el módulo Go `github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine`, el protocolo y
   su fixture canónico (`protocol/fixtures/wire-session.json`), y el template de
   Worker del que se ensambla cada instancia.
 - Se administra desde el botón **Kit D1** del sidebar: instancias, consumidores,
   sesión de Wrangler y acciones (deploy, provisión, claves, typecheck…), con
   whitelist de comandos y confirmación de dos pasos para las acciones peligrosas.
 - Los consumidores lo enlazan con un `go.work` local (no versionado), p. ej.
-  `replace github.com/Keimer92/Compass-Go/kit-d1/go/syncengine => ../Compass Go UX/kit-d1/go/syncengine`. Las versiones publicadas se tagean en este repo como `kit-d1/go/syncengine/vX.Y.Z`.
+  `replace github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine => ../Compass Go UX/Kit-D1/go/syncengine`. Las versiones publicadas se tagean en este repo como `Kit-D1/go/syncengine/vX.Y.Z`.
 
 ---
 
@@ -192,7 +192,7 @@ Compass Go UX/
 │  ├─ menu/                modelo de cards por tipo de proyecto
 │  └─ theme/ settings/ sound/ workspace/ ...   servicios transversales
 ├─ Kit Whatsapp/           motor de WhatsApp canónico + bundles
-├─ kit-d1/                 stack D1 (Go + protocolo + Worker) [git subtree]
+├─ Kit-D1/                 stack D1 (Go + protocolo + Worker) [git subtree]
 ├─ assets/ packaging/      iconos y plantilla del instalador NSIS
 ├─ dev.bat / dist.bat / install.bat / uninstall.bat
 └─ AGENTS.md               guía técnica completa y convenciones

@@ -78,7 +78,7 @@ Compass Go/
 ├─ Kit Whatsapp/              # motor de WhatsApp canónico (engine.js, bundle.mjs)
 │  ├─ whatsapp-engine-bundle/ #   bundle de ncc para Go/Wails
 │  └─ single/                 #   bundle autocontenido para Flutter
-├─ kit-d1/                    # stack de sincronización Cloudflare D1 (subtree)
+├─ Kit-D1/                    # stack de sincronización Cloudflare D1 (subtree)
 │  ├─ go/syncengine/          #   módulo Go reutilizable
 │  ├─ protocol/fixtures/      #   fixture canónico del contrato wire
 │  └─ worker/instances/       #   instancias del Worker por proyecto
@@ -508,7 +508,7 @@ además se administra desde un panel propio.
 | Kit | Carpeta | Qué es | Se gestiona desde |
 |-----|---------|--------|-------------------|
 | **WhatsApp** | `Kit Whatsapp/` | motor de envíos Baileys compartido (Go/Wails, Flutter, Kotlin) | etapado automático en cada release de Windows |
-| **D1** | `kit-d1/` | stack de sincronización Cloudflare D1 (módulo Go + Worker) | panel "Kit D1" del sidebar |
+| **D1** | `Kit-D1/` | stack de sincronización Cloudflare D1 (módulo Go + Worker) | panel "Kit D1" del sidebar |
 
 ### Kit WhatsApp
 
@@ -940,18 +940,18 @@ es más nuevo y regenera el bundle antes de copiarlo al `resources/` del proyect
 ### Kit D1
 
 El kit de sincronización **Cloudflare D1** vive **DENTRO de Compass** en
-`kit-d1/` (raíz del repo; sin espacios para que la ruta sea un module path de Go
+`Kit-D1/` (raíz del repo; sin espacios para que la ruta sea un module path de Go
 válido), incorporado con
-`git subtree add --prefix="kit-d1" ../Core Station/Kit D1 main --squash`. Ya no
+`git subtree add --prefix="Kit-D1" ../Core Station/Kit D1 main --squash`. Ya no
 es un checkout separado: el antiguo repo `Keimer92/Kit-D1` se retira. Contiene
-el módulo Go `github.com/Keimer92/Compass-Go/kit-d1/go/syncengine`, el protocolo
+el módulo Go `github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine`, el protocolo
 y su fixture canónico (`protocol/fixtures/wire-session.json`), los scripts de
 provisión y el `worker/template/` del que se ensamblan las instancias por
 proyecto.
 
 - **Resolución de ruta** (`kitD1Root()` en `internal/webui/kitd1.go`): se fija en
-  `settings.kit_d1_path`, o se autodetecta junto al proyecto activo (`kit-d1/`,
-  o `<padre>/Compass Go UX/kit-d1` si el activo es GymPro/School Tracker), junto
+  `settings.kit_d1_path`, o se autodetecta junto al proyecto activo (`Kit-D1/`,
+  o `<padre>/Compass Go UX/Kit-D1` si el activo es GymPro/School Tracker), junto
   al exe (instalador). Se conservan como fallback los nombres anteriores
   (`Kit D1/`, `Core Station/Kit D1`). También se puede forzar con
   `COMPASS_KIT_D1`.
@@ -968,16 +968,16 @@ proyecto.
   pestaña propia del terminal de Compass (`runKitD1` en `App.svelte`). Deploy,
   provision real y rotar clave piden **confirmación de dos pasos**. La acción
   `tag` se retiró del panel: ahora los tags se crean en el repo de Compass con
-  `git tag kit-d1/go/syncengine/vX.Y.Z`, y `git describe` filtra por
-  `--match kit-d1/go/syncengine/v*`.
-- **Instalador**: `dist.bat` copia `kit-d1/` al payload excluyendo
+  `git tag Kit-D1/go/syncengine/vX.Y.Z`, y `git describe` filtra por
+  `--match Kit-D1/go/syncengine/v*`.
+- **Instalador**: `dist.bat` copia `Kit-D1/` al payload excluyendo
   `node_modules`, `.wrangler`, `dist`, `out` y `.git`; por eso la acción
   **Instalar dependencias** (`npm install`, acción `bootstrap`) precede a
   typecheck/dev/deploy en una máquina nueva.
 - **Consumidores**: en desarrollo los `go.work` de GymPro y School Tracker
-  apuntan con ruta relativa a `../Compass Go UX/kit-d1/go/syncengine`; en un
-  release fijan `require github.com/Keimer92/Compass-Go/kit-d1/go/syncengine vX.Y.Z`.
-  El fixture del protocolo (`kit-d1/protocol/fixtures/wire-session.json`) es la
+  apuntan con ruta relativa a `../Compass Go UX/Kit-D1/go/syncengine`; en un
+  release fijan `require github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine vX.Y.Z`.
+  El fixture del protocolo (`Kit-D1/protocol/fixtures/wire-session.json`) es la
   fuente única para el replay Go de School Tracker (`internal/wiretest`).
 - Cobertura en `internal/webui/kitd1_test.go` (fixture + detección dentro de
   Compass).
@@ -1287,7 +1287,7 @@ dev.bat              # Vite (HMR de UI) + backend con R = recompilar/reiniciar
     tareas genéricas (`clean`, `git`, `terminal`, `environment`); `appTypes()`
     es la lista sin kits que usan release y firma. `GetMenu` oculta además la
     card Signing para ellos.
-  - El Kit D1 ya no necesita abrirse como proyecto externo: vive en `kit-d1/`
+  - El Kit D1 ya no necesita abrirse como proyecto externo: vive en `Kit-D1/`
     dentro de este repo (subtree) y se gestiona desde el panel. `ClassifyDir`
     sigue reconociéndolo (por si se abre esa carpeta directamente), pero
     `isWailsV3` se evalúa antes, así que abrir la raíz de Compass NO lo clasifica

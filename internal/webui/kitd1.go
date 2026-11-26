@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	kitD1Module = "github.com/Keimer92/Compass-Go/kit-d1/go/syncengine"
+	kitD1Module = "github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine"
 	kitD1Env    = "COMPASS_KIT_D1"
 )
 
@@ -93,7 +93,7 @@ var kitD1Actions = []KitD1ActionDef{
 }
 
 // kitD1Root resuelve la raíz del kit. El kit vive DENTRO de Compass como
-// "kit-d1/" (subtree), así que se busca junto al proyecto activo y junto al
+// "Kit-D1/" (subtree), así que se busca junto al proyecto activo y junto al
 // exe. Se conservan los candidatos viejos "Kit D1" / "Core Station/Kit D1"
 // como fallback para configuraciones anteriores que aún no se han migrado.
 func (b *Bridge) kitD1Root() string {
@@ -108,12 +108,12 @@ func (b *Bridge) kitD1Root() string {
 	base := b.projectDir()
 	if base != "" {
 		parent := filepath.Dir(base)
-		cands = append(cands, filepath.Join(base, "kit-d1"))
-		cands = append(cands, filepath.Join(parent, "kit-d1"))
+		cands = append(cands, filepath.Join(base, "Kit-D1"))
+		cands = append(cands, filepath.Join(parent, "Kit-D1"))
 		// Si el proyecto activo es un hermano de Compass (GymPro, School
-		// Tracker), el kit esta en <padre>/Compass Go UX/kit-d1.
-		cands = append(cands, filepath.Join(parent, "Compass Go UX", "kit-d1"))
-		cands = append(cands, filepath.Join(filepath.Dir(parent), "kit-d1"))
+		// Tracker), el kit esta en <padre>/Compass Go UX/Kit-D1.
+		cands = append(cands, filepath.Join(parent, "Compass Go UX", "Kit-D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(parent), "Kit-D1"))
 		// Legacy: nombres anteriores, conservados como fallback.
 		cands = append(cands, filepath.Join(base, "Kit D1"))
 		cands = append(cands, filepath.Join(parent, "Kit D1"))
@@ -123,8 +123,8 @@ func (b *Bridge) kitD1Root() string {
 	}
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
-		cands = append(cands, filepath.Join(exeDir, "kit-d1"))
-		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "kit-d1"))
+		cands = append(cands, filepath.Join(exeDir, "Kit-D1"))
+		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit-D1"))
 		cands = append(cands, filepath.Join(exeDir, "Kit D1"))
 		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Kit D1"))
 		cands = append(cands, filepath.Join(filepath.Dir(exeDir), "Core Station", "Kit D1"))
@@ -174,7 +174,7 @@ func (b *Bridge) KitD1Info() KitD1Info {
 	}
 	// El kit vive dentro del repo de Compass: sin --match, git describe tomaria
 	// un tag de Compass como si fuera la version del módulo syncengine.
-	if out, err := runGit(root, "describe", "--tags", "--match", "kit-d1/go/syncengine/v*", "--abbrev=0"); err == nil {
+	if out, err := runGit(root, "describe", "--tags", "--match", "Kit-D1/go/syncengine/v*", "--abbrev=0"); err == nil {
 		info.LastTag = out
 	}
 	info.Instances = kitD1Instances(root)
@@ -427,7 +427,7 @@ func (b *Bridge) kitD1Consumers(root string) []KitD1Consumer {
 		if b, err := os.ReadFile(filepath.Join(abs, "go.mod")); err == nil {
 			mod := string(b)
 			if strings.Contains(mod, kitD1Module) {
-				if m := regexp.MustCompile(`kit-d1/go/syncengine\s+(v\S+)`).FindStringSubmatch(mod); len(m) == 2 {
+				if m := regexp.MustCompile(`Kit-D1/go/syncengine\s+(v\S+)`).FindStringSubmatch(mod); len(m) == 2 {
 					c.Version = m[1]
 				}
 				c.Engine = "go"
