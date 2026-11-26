@@ -64,7 +64,7 @@ type Settings struct {
 	VibeDisabled []string `json:"vibe_disabled"`
 
 	// KitD1Path es la raiz de Kit D1 (contiene worker/instances y scripts/).
-	// El kit vive dentro de Compass como "Kit D1/" (subtree); vacio = autodetectar
+	// El kit vive dentro de Compass como "kit-d1/" (subtree); vacio = autodetectar
 	// junto al proyecto activo o al exe, con fallback al checkout antiguo
 	// "Core Station/Kit D1". El panel permite fijarlo explícitamente.
 	KitD1Path string `json:"kit_d1_path"`

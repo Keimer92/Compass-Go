@@ -14,10 +14,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
-	"github.com/Keimer92/kit-d1/go/syncengine"
+	"github.com/Keimer92/Compass-Go/kit-d1/go/syncengine"
 	"testing"
 
-	"github.com/Keimer92/kit-d1/go/syncengine/example/school"
+	"github.com/Keimer92/Compass-Go/kit-d1/go/syncengine/example/school"
 )
 
 // stubWorker habla el contrato HTTP del worker real (`/push`, `/pull`).

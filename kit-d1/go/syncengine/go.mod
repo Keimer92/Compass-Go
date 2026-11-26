@@ -1,4 +1,4 @@
-module github.com/Keimer92/kit-d1/go/syncengine
+module github.com/Keimer92/Compass-Go/kit-d1/go/syncengine
 
 go 1.26.0
 
