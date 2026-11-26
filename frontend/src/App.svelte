@@ -17,6 +17,7 @@
   import Git from './components/Git.svelte'
   import History from './components/History.svelte'
   import GitSettings from './components/GitSettings.svelte'
+  import KitD1Panel from './components/KitD1Panel.svelte'
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
   import { warmExplorer, warmLog } from './lib/panelCache'
@@ -57,6 +58,7 @@
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
   let gitSettingsOpen = $state(false)
+  let kitD1Open = $state(false)
   let lastError = $state('')
   let themes = $state<ThemeInfo[]>([])
   let theme = $state<ThemeInfo | null>(null)
@@ -805,6 +807,42 @@
     reclaimFocus()
   }
 
+  // runKitD1 abre una pestana de terminal con un script ya armado por el
+  // backend (KitD1Script), sin pasar por taskScript (que solo conoce tareas del
+  // menu). Cada accion del panel Kit D1 crea su propia pestana.
+  async function runKitD1(label: string, script: string) {
+    kitD1Open = false
+    const key = ++seq
+    const tab: Tab = { key, label, ptyId: null, exited: false, project: '' }
+    tabs.push(tab)
+    mountTerm(key)
+    await tick()
+    await attachTerm(key)
+    await activate(key)
+    await startPtyWithScript(tab, script)
+  }
+
+  async function startPtyWithScript(tab: Tab, script: string) {
+    const entry = terms.get(tab.key)
+    if (!entry) return
+    entry.term.clear()
+    fitTerm(tab.key)
+    const id = `tab-${sessionTag}-${tab.key}`
+    tab.ptyId = id
+    tab.exited = false
+    const opened = await openTerminal(id, tab.label, script, entry.term.rows, entry.term.cols)
+    if (!opened) {
+      tab.ptyId = null
+      tab.exited = true
+      lastError = 'ERROR: no se pudo abrir la ConPTY'
+      return
+    }
+    lastError = ''
+    lastPtySize.set(tab.key, `${entry.term.cols}x${entry.term.rows}`)
+    entry.term.focus()
+    reclaimFocus()
+  }
+
   // La app que se lanza en modo dev (o cualquier ventana hija) puede robar el
   // foco al abrirse. Solo reafirmamos el foco si REALMENTE se perdio: llamar a
   // Focus() con la ventana ya enfocada provoca un parpadeo del WebView.
@@ -1027,6 +1065,9 @@
       <button class="theme-btn" onclick={() => (gitSettingsOpen = true)}>
         <span>⎇</span><span class="theme-btn-text">Ajustes de Git</span>
       </button>
+      <button class="theme-btn" onclick={() => (kitD1Open = true)}>
+        <span>◫</span><span class="theme-btn-text">Kit D1</span>
+      </button>
     </div>
   </aside>
 
@@ -1227,6 +1268,10 @@
 
 {#if gitSettingsOpen}
   <GitSettings onClose={() => (gitSettingsOpen = false)} />
+{/if}
+
+{#if kitD1Open}
+  <KitD1Panel onClose={() => (kitD1Open = false)} onRun={runKitD1} />
 {/if}
 
 {#if optionsOpen}

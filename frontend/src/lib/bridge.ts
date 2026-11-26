@@ -213,4 +213,50 @@ export const commitDetail = (hash: string) => call<CommitDetail>(M('CommitDetail
 export const githubAccounts = () => call<string[]>(M('GitHubAccounts'))
 export const githubLogin = (username: string) => call<string>(M('GitHubLogin'), username)
 export const githubLogout = (account: string) => call<string>(M('GitHubLogout'), account)
+
+// Kit D1: estado del kit global y acciones lanzadas en la ConPTY.
+export interface KitD1Instance {
+  name: string
+  workerName: string
+  workerUrl: string
+  namespace: string
+  keyPrefix: string
+  hasPackage: boolean
+  hasSchema: boolean
+  hasKeys: boolean
+  scripts: string[]
+}
+export interface KitD1Consumer {
+  name: string
+  path: string
+  version: string
+  local: boolean
+  engine: 'go' | 'flutter'
+}
+export interface KitD1Info {
+  path: string
+  exists: boolean
+  goVersion: string
+  gitBranch: string
+  gitDirty: boolean
+  lastTag: string
+  instances: KitD1Instance[]
+  consumers: KitD1Consumer[]
+  error: string
+}
+export interface KitD1ActionDef {
+  id: string
+  label: string
+  description: string
+  needsInstance: boolean
+  dangerous: boolean
+  group: string
+}
+export const kitD1Info = () => call<KitD1Info>(M('KitD1Info'))
+export const kitD1Whoami = () => call<string>(M('KitD1Whoami'))
+export const kitD1Actions = () => call<KitD1ActionDef[]>(M('KitD1Actions'))
+export const kitD1SetPath = (path: string) => call<KitD1Info>(M('KitD1SetPath'), path)
+export const kitD1PickPath = () => call<KitD1Info>(M('KitD1PickPath'))
+export const kitD1Script = (action: string, instance: string, arg: string) =>
+  call<string>(M('KitD1Script'), action, instance, arg)
 export const gitSync = () => call<string>(M('GitSync'))

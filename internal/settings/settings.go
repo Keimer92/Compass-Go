@@ -62,6 +62,11 @@ type Settings struct {
 	// card. Se guarda la lista de deshabilitadas (y no la de habilitadas)
 	// para que cualquier CLI nueva aparezca activa sin migrar el fichero.
 	VibeDisabled []string `json:"vibe_disabled"`
+
+	// KitD1Path es la raiz del checkout de Kit D1 (contiene worker/instances y
+	// scripts/). Vacio = autodetectar junto al proyecto activo / exe. El panel
+	// de Kit D1 permite fijarlo explícitamente.
+	KitD1Path string `json:"kit_d1_path"`
 }
 
 // Default devuelve los valores de fabrica.

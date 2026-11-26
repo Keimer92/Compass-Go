@@ -342,6 +342,21 @@ proyecto concreto:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
+- **Panel de Kit D1** (`frontend/src/components/KitD1Panel.svelte` +
+  `internal/webui/kitd1.go`): botón "Kit D1" en el pie del sidebar, al lado de
+  "Ajustes de Git". El kit es **global**, no por proyecto (como Git), y el panel
+  muestra: ruta (fijada en `settings.kit_d1_path` o autodetectada en
+  `<padre del proyecto>/Core Station/Kit D1`, también vía `COMPASS_KIT_D1`),
+  versión del módulo Go, rama/tag/working tree, sesión de Wrangler (`whoami`),
+  instancias de `worker/instances/*` y consumidores del workspace (módulo Go
+  con `go.work` local, o Flutter). Las acciones (ensamblar, typecheck, dev,
+  deploy, provision dry-run/real, whoami/login, listar tenants, exportar/rotar
+  clave, crear tag) se arman en `KitD1Script` con **whitelist** de acción +
+  validación de instancia contra el disco (sin interpolación libre) y se ejecutan
+  en una pestaña propia del terminal de Compass (`runKitD1` en `App.svelte`).
+  Deploy, provision real, rotar clave y crear tag piden **confirmación de dos
+  pasos**. La detección de consumidores/instancias está cubierta por
+  `kitd1_test.go` (fixture) y verificada contra el checkout real del kit.
 - **Fecha y hora en el Historial**: `GitLog` y `CommitDetail` usan
   `--date=format:%Y-%m-%d %H:%M`, así que cada commit muestra el día y la hora
   exacta (sin segundos ni zona horaria, que solo alargaban la fila). El formato
