@@ -741,7 +741,8 @@
   .wiz-bar { height:6px; border-radius:3px; background:color-mix(in srgb, var(--border) 60%, transparent); overflow:hidden; }
   .wiz-fill { height:100%; border-radius:3px; background:var(--accent); transition:width .18s linear; }
   .wiz-bar.indet .wiz-fill { animation:indeterminate 1.1s ease-in-out infinite; }
-  .wiz-meta { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-top:5px; font-size:10px; color:var(--muted); }
+  .wiz-meta { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:2px 8px; margin-top:5px; font-size:10px; color:var(--muted); }
+  .wiz-meta > span:first-child { min-width:0; }
   .wiz-bytes { color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap; }
   @media (prefers-reduced-motion: reduce) {
     .wiz-fill { transition:none; }
