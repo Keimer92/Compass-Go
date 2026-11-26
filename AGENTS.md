@@ -337,8 +337,8 @@ proyecto concreto:
   los índices de las demás cards. La pestaña "Git" reemplaza a la antigua
   pestaña "Commit": el generador de commit con IA queda siempre desplegado y,
   si la carpeta aún no es un repo, ofrece **Inicializar repositorio** (rama
-  `main` + primer commit). Toda la configuración (commit automático, proveedor
-  de mensajes, modelo de Copilot y OpenRouter) vive en el modal **Ajustes de
+  `main` + primer commit). Toda la configuración (commit automático, modelo de
+  OpenRouter y su API key) vive en el modal **Ajustes de
   Git**, que se abre desde un botón del pie del sidebar justo debajo de
   "Opciones" (`GitSettings.svelte`). Las pestañas del panel derecho son ahora
   **Explorador / Git / Historial**. No hay barra superior (topbar): el título lo
@@ -465,24 +465,20 @@ proyecto concreto:
   Compass ya no apaga el botón. Sacar un proyecto del workspace lo apaga
   (`stopAuto`) para que no commitee en segundo plano. API:
   `Bridge.SetAutoCommit(bool)` y `Bridge.AutoCommitStatus()`.
-- **Proveedor de mensajes de commit** (`settings.CommitProvider`):
-  `openrouter` (por defecto, API con key) o `copilot` (CLI local de GitHub
-  Copilot). El segundo vive en `internal/webui/copilot.go`: localiza el binario
-  (`%LOCALAPPDATA%\GitHubCopilotCLI\copilot.exe`, luego PATH; si es el shim
-  `.cmd` de npm lo lanza vía `cmd /c`) y ejecuta
-  `copilot -s --deny-tool=shell --deny-tool=write -p <prompt>` con timeout de
-  120 s. No usa API: consume la suscripción del usuario y tarda ~18 s por
-  mensaje. `Bridge.CopilotAvailable()` permite avisar en Git → Ajustes si falta el
-  CLI. El prompt (resumen de git acotado a ~9 KB de diff) viaja como argv, muy
-  por debajo del límite de Windows.
-- **Modelo de Copilot** (`settings.CopilotModel` + `Bridge.CopilotModels()`):
-  el catálogo curado son los perfiles Auto (`""` = equilibrado,
-  `auto-intelligence`) y los modelos pequeños del catálogo (haiku/flash/luna),
-  que son los más rápidos y baratos. `copilotModelArgs` traduce la elección a
-  `--model`/`--auto-tier` y **cae en Auto ante cualquier id desconocido**, así
-  que nunca se pasa texto arbitrario al CLI. Ojo: qué modelos están disponibles
-  depende del plan de GitHub; con Copilot Free solo responde `auto` y el resto
-  devuelve `Model "X" is not available`.
+- **Proveedor de mensajes de commit**: solo OpenRouter (`internal/webui/openrouter.go`).
+  El CLI local de GitHub Copilot se retiró como proveedor; la configuración
+  `commit_provider`/`copilot_model` de ficheros antiguos se ignora y desaparece
+  al siguiente `Save`. `GenerateCommit` exige API key y modelo, y cae en el
+  gratuito más rápido si no hay modelo elegido.
+- **API key de OpenRouter**: `GetSettings` nunca devuelve la clave (ni
+  enmascarada); `Bridge.OpenRouterKeyConfigured()` dice si hay una guardada.
+  El modal muestra "API configurada" y solo abre el input al pulsar
+  "Introducir nueva key"; `SetSettings` conserva la anterior si la nueva viene
+  vacía.
+- **Test de velocidad de modelos**: `Bridge.TestModelSpeeds(models, endpoint, key)`
+  mide una petición real (`Reply with exactly: OK`) a cada modelo con 3 workers
+  y timeout de 12 s, y devuelve `[]ModelSpeedResult` ordenado por ms (fallos al
+  final). El modal lo pinta en una lista y permite fijar el ganador como modelo.
 - **Modal de Opciones**: `App.svelte` lo pinta como rejilla de dos columnas de
   tarjetas (`.opt-grid`/`.opt-card`, 780 px, una columna por debajo de 720 px)
   con secciones Herramientas y General. La tarjeta Git solo remite a la pestaña
