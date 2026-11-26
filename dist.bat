@@ -114,7 +114,7 @@ for %%I in (CompassGo.ico VibeCoding.ico Git.ico) do (
 echo [OK] Iconos copiados.
 echo.
 
-REM Core kits (motores canonicos, p.ej. whatsapp) viajan dentro del payload;
+REM El kit de WhatsApp (motor canonico) viaja dentro del payload;
 REM el instalador ya empaqueta payload\* con File /r.
 REM
 REM Se excluyen los artefactos de BUILD del motor (node_modules, out, examples):
@@ -125,43 +125,43 @@ REM de ~2418 archivos a ~30 y la instalacion de ~15 s a unos pocos segundos.
 REM El repo ya NO guarda node.exe: --with-node lo copia del Node del PATH.
 REM Se borra la copia previa porque /MIR + /XD no purga las carpetas excluidas.
 set "RC_ERR="
-if exist "corekit" (
+if exist "Kit Whatsapp" (
     if "%NO_NODE%"=="1" (
-        echo [INFO] Copiando core kits sin node.exe ^(--no-node^)...
-        if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
-        robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /XF node.exe /NFL /NDL /NJH /NJS /NP >nul
+        echo [INFO] Copiando el kit de WhatsApp sin node.exe ^(--no-node^)...
+        if exist "dist\payload\Kit Whatsapp" rmdir /s /q "dist\payload\Kit Whatsapp"
+        robocopy "Kit Whatsapp" "dist\payload\Kit Whatsapp" /E /XD node_modules out examples /XF node.exe /NFL /NDL /NJH /NJS /NP >nul
         if errorlevel 8 set "RC_ERR=1"
     ) else (
-        echo [INFO] Copiando core kits a dist\payload sin artefactos de build...
-        if exist "dist\payload\corekit" rmdir /s /q "dist\payload\corekit"
-        robocopy "corekit" "dist\payload\corekit" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
+        echo [INFO] Copiando el kit de WhatsApp a dist\payload sin artefactos de build...
+        if exist "dist\payload\Kit Whatsapp" rmdir /s /q "dist\payload\Kit Whatsapp"
+        robocopy "Kit Whatsapp" "dist\payload\Kit Whatsapp" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
         if errorlevel 8 set "RC_ERR=1"
         REM El repo ya no guarda un node.exe: para el sidecar se toma el Node
         REM 20+ del sistema (el primero del PATH). Si no hay Node, se avisa y el
         REM instalador queda sin sidecar (los proyectos usarian el del PATH).
-        if not exist "dist\payload\corekit\whatsapp\node.exe" (
+        if not exist "dist\payload\Kit Whatsapp\node.exe" (
             for /f "delims=" %%I in ('where node 2^>nul') do (
-                if not exist "dist\payload\corekit\whatsapp\node.exe" (
-                    copy /y "%%I" "dist\payload\corekit\whatsapp\node.exe" >nul 2>nul
+                if not exist "dist\payload\Kit Whatsapp\node.exe" (
+                    copy /y "%%I" "dist\payload\Kit Whatsapp\node.exe" >nul 2>nul
                 )
             )
         )
-        if not exist "dist\payload\corekit\whatsapp\node.exe" (
+        if not exist "dist\payload\Kit Whatsapp\node.exe" (
             echo [WARN] No se encontro Node en el PATH: el payload va sin node.exe.
             echo        Instala Node 20+ o compila sin --with-node.
         )
     )
     if defined RC_ERR (
-        echo [WARN] robocopy devolvio un error al copiar corekit; revisa dist\payload\corekit.
+        echo [WARN] robocopy devolvio un error al copiar el kit; revisa dist\payload\Kit Whatsapp.
     ) else (
         if "%NO_NODE%"=="1" (
-            echo [OK] Core kits copiados ^(sin node.exe: los proyectos usaran Node 20+ del sistema^).
+            echo [OK] Kit de WhatsApp copiado ^(sin node.exe: los proyectos usaran Node 20+ del sistema^).
         ) else (
-            echo [OK] Core kits copiados.
+            echo [OK] Kit de WhatsApp copiado.
         )
     )
 ) else (
-    echo [SKIP] No se encontro la carpeta corekit; se omite.
+    echo [SKIP] No se encontro la carpeta "Kit Whatsapp"; se omite.
 )
 echo.
 

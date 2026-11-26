@@ -137,17 +137,17 @@ REM ---------------------------------------------------------------
 REM Apunta a los proyectos que consumen el motor (p.ej. GymPro en modo
 REM desarrollo) al engine canonico instalado junto al binario, para que lo
 REM reutilicen sin copiarlo dentro del proyecto.
-if exist "%BINDIR%\corekit\whatsapp" (
+if exist "%BINDIR%\Kit Whatsapp" (
     echo [INFO] Configurando COMPASS_WHATSAPP_ENGINE...
-    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "[Environment]::SetEnvironmentVariable('COMPASS_WHATSAPP_ENGINE','%BINDIR%\corekit\whatsapp','User')"
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "[Environment]::SetEnvironmentVariable('COMPASS_WHATSAPP_ENGINE','%BINDIR%\Kit Whatsapp','User')"
     if errorlevel 1 (
         echo [WARN] No se pudo definir COMPASS_WHATSAPP_ENGINE.
-        echo        Definela manualmente: %BINDIR%\corekit\whatsapp
+        echo        Definela manualmente: %BINDIR%\Kit Whatsapp
     ) else (
-        echo [OK] COMPASS_WHATSAPP_ENGINE = %BINDIR%\corekit\whatsapp
+        echo [OK] COMPASS_WHATSAPP_ENGINE = %BINDIR%\Kit Whatsapp
     )
 ) else (
-    echo [SKIP] No se encontro corekit\whatsapp; se omite COMPASS_WHATSAPP_ENGINE.
+    echo [SKIP] No se encontro "Kit Whatsapp"; se omite COMPASS_WHATSAPP_ENGINE.
 )
 echo.
 

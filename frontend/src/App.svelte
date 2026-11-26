@@ -16,7 +16,6 @@
   import Explorer from './components/Explorer.svelte'
   import Git from './components/Git.svelte'
   import History from './components/History.svelte'
-  import System from './components/System.svelte'
   import GitSettings from './components/GitSettings.svelte'
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
@@ -1121,7 +1120,6 @@
             {/key}
           {/if}
         </div>
-        <System />
       </aside>
     </section>
   </main>

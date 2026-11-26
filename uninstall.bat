@@ -105,6 +105,7 @@ if exist "%BINDIR%\CompassGo.ico"  del /f /q "%BINDIR%\CompassGo.ico" >nul 2>nul
 if exist "%BINDIR%\VibeCoding.ico" del /f /q "%BINDIR%\VibeCoding.ico" >nul 2>nul
 if exist "%BINDIR%\Git.ico"        del /f /q "%BINDIR%\Git.ico" >nul 2>nul
 if exist "%BINDIR%\Uninstall.exe"  del /f /q "%BINDIR%\Uninstall.exe" >nul 2>nul
+if exist "%BINDIR%\Kit Whatsapp"    rmdir /s /q "%BINDIR%\Kit Whatsapp" >nul 2>nul
 if exist "%BINDIR%\corekit"        rmdir /s /q "%BINDIR%\corekit" >nul 2>nul
 REM Solo el .exe: los .ico de .cargo\bin los comparten otros tools.
 if exist "%LEGACYBIN%\compass-go.exe" del /f /q "%LEGACYBIN%\compass-go.exe" >nul 2>nul

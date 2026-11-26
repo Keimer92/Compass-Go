@@ -93,12 +93,14 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
   ; Limpieza de artefactos de build de versiones anteriores del motor de
   ; WhatsApp. El runtime usa el Node 20+ del sistema y el bundle ya viaja
   ; compilado; node_modules, out, examples y el sidecar node.exe ya no viajan.
-  RMDir /r "$INSTDIR\corekit\whatsapp\node_modules"
-  RMDir /r "$INSTDIR\corekit\whatsapp\out"
-  RMDir /r "$INSTDIR\corekit\whatsapp\examples"
+  RMDir /r "$INSTDIR\Kit Whatsapp\node_modules"
+  RMDir /r "$INSTDIR\Kit Whatsapp\out"
+  RMDir /r "$INSTDIR\Kit Whatsapp\examples"
   ; Borra el sidecar de instalaciones anteriores para que no se prefiera sobre
   ; el Node del PATH.
-  Delete "$INSTDIR\corekit\whatsapp\node.exe"
+  Delete "$INSTDIR\Kit Whatsapp\node.exe"
+  ; Restos del layout anterior (corekit\whatsapp).
+  RMDir /r "$INSTDIR\corekit"
 
   File /r "payload\*"
 

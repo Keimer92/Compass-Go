@@ -75,8 +75,9 @@ Compass Go/
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
-├─ corekit/                  # core kits canónicos que viajan dentro de Compass (p.ej. whatsapp)
-│  └─ whatsapp/               #   motor de WhatsApp: engine.js, bundle.mjs (sin node.exe)
+├─ Kit Whatsapp/              # motor de WhatsApp canónico (engine.js, bundle.mjs)
+│  ├─ whatsapp-engine-bundle/ #   bundle de ncc para Go/Wails
+│  └─ single/                 #   bundle autocontenido para Flutter
 ├─ PLAN_SVELTE.md             # estado y plan de la migración a la GUI web
 └─ PLAN.md                    # plan de migración original
 ```
@@ -147,7 +148,7 @@ trabajo temporal: al terminar `makensis` se borran el `.nsi`, el `.bmp` y
 `CompassGo-Setup.exe` (el instalador lo lleva todo dentro). Con
 `--no-installer` sí se conserva `dist\payload` (es el único artefacto).
 
-Al copiar `corekit/` al payload se excluyen los artefactos de build del motor
+Al copiar `Kit Whatsapp/` al payload se excluyen los artefactos de build del motor
 (`node_modules`, `out`, `examples`) y, **por defecto, también `node.exe`**: el
 runtime usa el **Node 20+ instalado en el sistema** (PATH) y el bundle ya viaja
 compilado. El payload baja a ~13 MB / ~35 archivos y la instalación silenciosa
@@ -352,20 +353,6 @@ proyecto concreto:
   las mismas acciones que `git credential-manager github login/logout`, pero
   sin consola; Compass no guarda tokens. Los nombres se validan contra
   `[A-Za-z0-9][A-Za-z0-9-]{0,38}` antes de pasarlos como argumento.
-- **Panel Sistema** (`frontend/src/components/System.svelte` +
-  `internal/sysinfo`): sustituye al pie de la mascota en el panel derecho y
-  muestra CPU (uso + nombre), RAM, GPU y discos con barras. `Bridge.GetSystemInfo`
-  devuelve `sysinfo.Snapshot()`: `GetSystemTimes` y `GlobalMemoryStatusEx` por
-  `kernel32` (sin dependencias nuevas), nombre de CPU por registro,
-  `GetLogicalDrives` + `GetDiskFreeSpaceEx` para unidades fijas/extraíbles, y la
-  GPU con una consulta CIM a PowerShell **en segundo plano** y cacheada (tarda
-  ~1 s; el primer poll sale sin GPU y el siguiente la trae). El uso de CPU se
-  calcula con el delta entre lecturas y se reutiliza 1 s. Para no retrasar el
-  arranque, la primera lectura de CPU solo guarda la base y devuelve 0 (sin
-  esperar los 200 ms de una segunda muestra) y la consulta de GPU se lanza 2 s
-  después; el componente, además, espera 1.2 s antes de su primer poll. El
-  componente refresca cada 2 s y conserva el último valor si una lectura falla.
-  `sysinfo_other.go` mantiene `go build` fuera de Windows.
 - **Mascota** (`frontend/src/lib/Mascot.svelte`): brújula 3D con brazos en SVG
   puro (sin assets, hereda `currentColor` del tema). El bisel metalico se logra
   con una base `currentColor` y capas de brillo/sombra; la esfera es oscura y
@@ -511,18 +498,18 @@ proyecto concreto:
 ## Core kits (motores canónicos)
 
 Compass lleva dentro ciertos **core kits** —motores o runtimes compartidos— en
-`corekit/`, para que viajen con el binario y no dependan de rutas externas. El
-primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
+carpetas propias de la raíz, para que viajen con el binario y no dependan de
+rutas externas. El primer kit es el **motor de WhatsApp** (`Kit Whatsapp/`).
 
-- `corekit/whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
+- `Kit Whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
   `node_modules/` y el bundle generado `whatsapp-engine-bundle/`. **No guarda
   ningún `node.exe`**: el runtime usa el **Node 20+ del sistema** (PATH) y
   `dist.bat --with-node` copia ese Node del PATH al payload cuando se necesita
   el sidecar para distribuir a máquinas sin Node.
 - **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
-  2. `<dir del exe>/corekit/whatsapp` (instalación / binario compilado);
-  3. `<cwd>/corekit/whatsapp` (desarrollo con `go run`).
+  2. `<dir del exe>/Kit Whatsapp` (instalación / binario compilado);
+  3. `<cwd>/Kit Whatsapp` (desarrollo con `go run`).
 - **Detección de uso (opt-in + automática)** (`projectUsesWhatsappEngine` /
   `projectImportsWhatsapp` en `internal/tasks/whatsapp_engine.go`): un proyecto
   recibe el runtime si se cumple **cualquiera** de estos criterios:
@@ -534,7 +521,7 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   4. **escaneo automático**: sus fuentes Go importan un paquete cuya ruta
      referencia `whatsapp` (p.ej. `miproyecto/internal/whatsapp`). El escaneo
      recorre recursivamente los `.go` y omite `node_modules`, `vendor`, `.git`,
-     `bin`, `resources`, `out` y `corekit` (para no rallar ni falsar positivos
+     `bin`, `resources`, `out` y `Kit Whatsapp` (para no rallar ni falsar positivos
      dentro del propio Compass); para en cuanto encuentra una coincidencia.
   El marcador `use-whatsapp-engine` es el mecanismo **canónico y
   multiplataforma**: sirve igual para Flutter, Kotlin, Python, Go y Go+Wails y
@@ -556,7 +543,7 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   `node.exe` **del propio proyecto** (staging/release anterior) y, si no,
   `node` en el PATH; exigen **Node >= 20** (Baileys 6.7.x). No usan el
   `node.exe` del engine canónico (`COMPASS_WHATSAPP_ENGINE`), para que el
-  runtime dependa del Node del sistema aunque el corekit conserve el binario.
+  runtime dependa del Node del sistema aunque el kit conserve el binario.
   GymPro lo hace en `internal/whatsapp/node.go` (`resolveNode` +
   `checkNodeVersion`, con `findFirstProject`); ELA Group en
   `WhatsappService._findNode` (sidecar → `where node` → rutas comunes → PATH,
@@ -588,12 +575,12 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
   que reconstruye el bundle si `engine.js` es más nuevo). La antigua card
   "WhatsApp" y las tareas `whatsapp` / `whatsapp-portable` se retiraron: el
   portable lo genera el propio release para los proyectos que usan el motor.
-- `install.bat` / `dist.bat` copian `corekit/` junto al binario/instalador
+- `install.bat` / `dist.bat` copian `Kit Whatsapp/` junto al binario/instalador
   (sin los artefactos de build del motor: `node_modules`, `out`, `examples`, y
   sin `node.exe` salvo con `--with-node`).
 - **Variable de entorno en la instalación**: `install.bat` define
-  `COMPASS_WHATSAPP_ENGINE` (ámbito Usuario) apuntando al corekit instalado
-  (`%LOCALAPPDATA%\Programs\Keimer\corekit\whatsapp`), para que los proyectos
+  `COMPASS_WHATSAPP_ENGINE` (ámbito Usuario) apuntando al kit instalado
+  (`%LOCALAPPDATA%\Programs\Keimer\Kit Whatsapp`), para que los proyectos
   que consumen el motor (p.ej. GymPro en modo desarrollo) lo reutilicen en vivo
   sin copiarlo dentro del proyecto. `uninstall.bat` elimina esa variable.
   El modo desarrollo de Compass (`windows-dev` → `wails3 task dev`) no hace
@@ -605,10 +592,10 @@ primer kit es el **motor de WhatsApp** (`corekit/whatsapp/`).
 Cómo hacer que un proyecto consumidor (p.ej. **GymPro**) use el motor de
 WhatsApp canónico de Compass, de forma **dinámica y robusta a cambios de ruta**
 (mover Compass o el proyecto no debe romper la integración). La referencia del
-protocolo stdin/stdout está en `corekit/whatsapp/AGENTS.md`.
+protocolo stdin/stdout está en `Kit Whatsapp/AGENTS.md`.
 
 ### Modelo mental
-- El motor **canónico** vive en `corekit/whatsapp/` dentro de Compass Go: única
+- El motor **canónico** vive en `Kit Whatsapp/` dentro de Compass Go: única
   fuente de verdad (`engine.js`, `bundle.mjs`, `node_modules/`). El repo no
   guarda `node.exe`: el runtime usa Node 20+ del sistema.
 - Cada proyecto consumidor recibe **su propia copia** del bundle generado
@@ -619,18 +606,18 @@ protocolo stdin/stdout está en `corekit/whatsapp/AGENTS.md`.
 ### Resolución dinámica de la ruta del motor (sin hardcodear disco)
 `whatsappEngineSource()` en `internal/tasks/whatsapp_engine.go` prueba en orden:
 1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
-2. `<dir del exe>/corekit/whatsapp`;
-3. `<cwd>/corekit/whatsapp`.
+2. `<dir del exe>/Kit Whatsapp`;
+3. `<cwd>/Kit Whatsapp`.
 
 Ninguna capa usa una letra de unidad fija, por tanto:
 - Si **instalas** Compass, `install.bat` fija `COMPASS_WHATSAPP_ENGINE` a
-  `%LOCALAPPDATA%\Programs\Keimer\corekit\whatsapp` (ruta **relativa a la
+  `%LOCALAPPDATA%\Programs\Keimer\Kit Whatsapp` (ruta **relativa a la
   máquina**: sobrevive a mover el repo).
 - Si trabajas **solo desde el repo** (`go run` / `wails dev`), la variable puede
-  estar ausente y la resolución cae a `<cwd>/corekit/whatsapp` (encuentra el
+  estar ausente y la resolución cae a `<cwd>/Kit Whatsapp` (encuentra el
   motor dentro del repo).
 - **Nunca** apuntes la env var a una ruta absoluta del repo
-  (`D:\...\Compass Go\corekit\whatsapp`): se rompería al volver a mover la
+  (`D:\...\Compass Go\Kit Whatsapp`): se rompería al volver a mover la
   carpeta. Usa siempre la ruta de instalación relativa o deja que Compass la
   resuelva por cwd/exe.
 
@@ -645,12 +632,12 @@ Para integrar un proyecto nuevo basta con que importe el paquete `whatsapp`;
 Compass etapará el motor solo. No hace falta marcador manual.
 
 ### Pasos operativos (integrar / actualizar)
-1. **Editar el motor canónico** solo en `corekit/whatsapp/engine.js` (y
+1. **Editar el motor canónico** solo en `Kit Whatsapp/engine.js` (y
    `bundle.mjs` si cambia el empaquetado). No tocar los bundles generados.
 2. **Regenerar el bundle** (lo hace Compass al ejecutar la tarea `whatsapp`, o
    manual):
    ```bat
-   cd corekit\whatsapp
+   cd "Kit Whatsapp"
    npm install
    node bundle.mjs --asset      # Go/Wails          → whatsapp-engine-bundle/
    node bundle.mjs --single     # Flutter           → out/single/index.js
