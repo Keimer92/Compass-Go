@@ -602,12 +602,105 @@ además se administra desde un panel propio.
   staging: la ventana nueva hereda el entorno de Compass, así que basta con
   reiniciar Compass tras la instalación para que el proyecto vea el engine.
 
+#### Protocolo stdin/stdout del motor
+
+Contrato que deben respetar todos los consumidores (Go/Wails, Flutter, Tauri,
+Python). El motor corre como proceso hijo de `node` y habla **una línea JSON por
+mensaje**. `engine.js` es la única fuente de verdad; los bundles son artefactos
+generados y **nunca** se editan a mano.
+
+##### Entrada (app → motor, por stdin)
+
+```json
+{ "type": "config", "browser": ["GymPro","Chrome","121.0.6167.160"], "authDir": "whatsapp_auth",
+  "connectTimeoutMs": 60000,
+  "rate": { "sendDelayMs": 5000, "maxWindowSends": 20, "windowMs": 60000 } }
+{ "type": "send", "number": "50588888888", "text": "Hola" }
+{ "type": "send_image", "number": "50588888888", "imagePath": "C:/tmp/recibo.png", "caption": "Su recibo" }
+{ "type": "pair", "phoneNumber": "50588888888" }
+```
+
+`config` es opcional y puede llegar **en cualquier momento** (antes o después
+de conectar); los campos no enviados conservan su default. `send` y
+`send_image` pasan por la cola serial con rate-limit.
+
+##### Salida (motor → host, por stdout con prefijos)
+
+| Prefijo | Significado |
+|---|---|
+| `STATUS:init` / `STATUS:starting` / `STATUS:auth_ready` | ciclo de arranque |
+| `STATUS:socket_creating` / `STATUS:connecting_socket` | conexión con servidores |
+| `STATUS:restarting` / `STATUS:disconnected:<reason>` / `STATUS:error:<msg>` | reconexión y errores |
+| `STATUS:connected:<client>\|\|<id>\|\|<pic>` | conectado (separador `\|\|` triple) |
+| `STATUS:session_invalid` / `STATUS:session_cleared` | sesión inválida / limpiada |
+| `QR_DATA_URL:data:image/png;base64,...` | QR listo para la UI |
+| `SENDING:<n>` / `SENT_CONFIRM:<n>` / `SENT_RETRY_OK:<n>` / `SEND_ERROR:<msg>` / `SEND_RETRY_FAILED:<msg>` | envío de texto |
+| `IMAGE_SENT_CONFIRM:<n>` / `IMAGE_ERROR:<msg>` | envío de imagen |
+| `PAIR_CODE:<code>` / `PAIR_ERROR:<msg>` | código de vinculación |
+| `CONFIG_RECEIVED:ok` / `ENGINE_ERROR:<msg>` | config aceptada / error interno |
+| *(stderr)* | logs de depuración (`WA_DEBUG_*`, `WA_ENGINE_UNCAUGHT_*`) |
+
+**No cambiar** el `emit()` del motor: usa `fs.writeSync(1, ...)` porque en
+Windows, cuando stdout es un pipe, `console.log` puede quedar bufferizado y
+llegar tarde (o perder eventos).
+
+##### Config por app
+
+Precedencia: **mensaje `CONFIG` > env `WHATSAPP_AUTH_DIR` > defaults**.
+
+| Parámetro | Default | Descripción |
+|---|---|---|
+| `browser` | `['WhatsApp Engine','Chrome','121.0.6167.160']` | navegador que ve WhatsApp |
+| `authDir` | env `WHATSAPP_AUTH_DIR` o `whatsapp_auth` | carpeta de la sesión |
+| `connectTimeoutMs` | `60000` | watchdog del QR/conexión |
+| `rate.sendDelayMs` | `5000` | intervalo mínimo entre envíos (ms) |
+| `rate.maxWindowSends` | `20` | máximo de envíos por ventana |
+| `rate.windowMs` | `60000` | ventana de tiempo (ms) |
+
+Cada app debe usar un `authDir` distinto para evitar "logged in from another
+device" entre apps propias.
+
+##### Rate limit anti-ban y sesión
+
+El motor centralizó esto tras un ban por ráfaga de 12 recibos al reconectar:
+
+1. **Cola serial** (`sendChain`): los envíos van **uno a la vez**, nunca en
+   paralelo. El bug original era `rl.on('line')` con handlers `async` que
+   disparaban todos a la vez al reconectar.
+2. **`SEND_DELAY_MS`**: espera tras cada envío (default 5000 ms).
+3. **Ventana deslizante**: máximo 20 envíos por 60 s; el exceso se **encola**,
+   no se descarta.
+4. **Flag `isSocketOpen`**: solo envía con socket `open`; sin conexión los
+   mensajes quedan bufferizados (máx 30 s).
+
+| Código | Significado | Acción |
+|---|---|---|
+| `401` / `loggedOut` | sesión expirada | limpia `authDir` + pide QR nuevo |
+| `403` | cuenta **baneada/suspendida** | igual que logout: limpia sesión + QR |
+| `Connection Failure` | IP marcada por WhatsApp (no la cuenta) | reintenta (máx 5); **no es fix de código**, cambiar red/IP |
+
+Evitar regenerar QR en bucle mientras la IP esté marcada: cada intento
+resetea el contador.
+
+##### Build y seguridad
+
+- `node bundle.mjs --asset` → `whatsapp-engine-bundle/` (carpeta con `index.js`
+  + `file*.js` + `worker*.js`; hay que copiar **toda** la carpeta).
+  `node bundle.mjs --single` → `out/single/index.js` (un solo archivo, Flutter).
+- **Baileys pinneado a `6.7.24`** (rama legacy segura; resuelve
+  `GHSA-qvv5-jq5g-4cgg`). `npm audit` reporta 0 vulnerabilidades. No saltar a
+  `7.x` sin migration test: es un major.
+- `NODE_TLS_REJECT_UNAUTHORIZED=0` se usa para evadir inspección SSL de
+  antivirus corporativos; reduce la seguridad TLS de terceros.
+- **Nunca commitear** `whatsapp_auth` ni el `authDir` de una app.
+
 #### Guía de integración del WhatsApp Engine (para agentes de IA)
 
 Cómo hacer que un proyecto consumidor (p.ej. **GymPro**) use el motor de
 WhatsApp canónico de Compass, de forma **dinámica y robusta a cambios de ruta**
-(mover Compass o el proyecto no debe romper la integración). La referencia del
-protocolo stdin/stdout está en `Kit Whatsapp/AGENTS.md`.
+(mover Compass o el proyecto no debe romper la integración). El protocolo
+stdin/stdout está documentado arriba, en
+[Protocolo stdin/stdout del motor](#protocolo-stdinstout-del-motor).
 
 ##### Modelo mental
 - El motor **canónico** vive en `Kit Whatsapp/` dentro de Compass Go: única
@@ -888,6 +981,164 @@ histórico (intacto, sin push). Contiene el módulo Go
   replay Go de School Tracker (`internal/wiretest`).
 - Cobertura en `internal/webui/kitd1_test.go` (fixture + detección dentro de
   Compass).
+
+#### Contrato HTTP (protocolo v1)
+
+Contrato entre un cliente (Go `syncengine`, cliente Dart o los tests del
+Worker) y el Worker de Cloudflare de cada proyecto. Cada byte fue capturado de
+una sesión real contra el worker (`wrangler dev --local`, D1/KV simulados) y se
+reproduce en `TestReplayDelContratoWire` de School Tracker. La grabación
+canónica es `protocol/fixtures/wire-session.json`.
+
+- **Transporte**: `POST <workerUrl>/<path>` con cuerpo `application/json`
+  (siempre un objeto, aunque sea `{}`). Toda petición lleva la cabecera
+  `X-School-Key: <key>`; el Worker la enruta por la KV `SCHOOL_ROUTING` a la D1
+  del proyecto (binding `DB`). Una clave = un namespace dentro de una D1.
+- Las respuestas son objetos con `ok: true`. Los errores pueden venir como
+  4xx/5xx **o** como HTTP 200 con `ok: false`: el cliente debe tratar **ambas**
+  formas como fallo y leer `error`.
+- Timestamps de fila: `YYYY-MM-DD HH:MM:SS` (estilo SQLite, texto UTC-ish
+  local). `/hello.serverTime` es ISO-8601 con milisegundos.
+
+| Endpoint | Request | Response / uso |
+|---|---|---|
+| `/hello` | `{}` | `{ok,databaseId,serverTime}` — prueba de conexión y enrutado |
+| `/stats` | `{}` | `{ok,total,tombstones,porTabla}` — diagnóstico; nombres del manifiesto |
+| `/ids` | `{deviceId,blocks:{tabla:n}}` | `{ok,blocks:{tabla:{start,end}}}` — reserva de bloques de ids **antes** de escribir, para que dispositivos offline no colisionen |
+| `/push` | `{since,deviceId,data:{tabla:[fila]},deletions:[{tabla,pk}]}` | `{ok,applied,deletionsApplied}` — upsert por PK canónico sellando `updated_at` al reloj del server; los deletes se guardan como tombstone `(tabla,pk,updated_at,device_id)` |
+| `/pull` | `{deviceId,since}` | `{ok,rows,deleted,serverTime}` — filas con columnas calculadas resueltas por `LEFT JOIN`; excluye las filas con `device_id` del propio cliente (anti-eco) |
+| `/reset` | `{}` | `{ok,borradas}` — vacía el namespace (incluye tombstones) |
+
+`/usage` (cuota) y las rutas no-JSON (`/ws`, `/conectar`, `/release.json`,
+`/updates/latest`) son opcionales/diagnóstico; `/usage` no aparece en el
+fixture porque necesita la API de Analytics, inexistente en `wrangler dev
+--local`.
+
+**Invariantes del cliente**:
+
+- **Dos relojes independientes**: el *pull cursor* es `serverTime` y solo se
+  guarda tras un pull exitoso (arranca en `1970-01-01 00:00:00`); el *push
+  cursor* es reloj local (`last_push_sync`) y solo avanza tras un push real y
+  exitoso. Un push fallido **nunca** lo avanza. Se reinician en
+  `wipe_remote`, `reset_remote`, `restore_from_cloud` o un push `full=true`.
+- **Anti-eco**: el Worker sella `updated_at`, el `/pull` excluye las filas del
+  propio `deviceId` y `sync_recent_pulls` (TTL 86 400 s) completa el mecanismo.
+- **Freno de reintento**: tras pushes fallidos consecutivos, backoff
+  exponencial de 5 → 240 min (`push_fail_count`, `push_retry_after`). Mientras
+  está armado se sigue **pulling** pero no se hace push; `force=true` lo
+  salta solo para botones explícitos (cuota free tier ≈100k filas/día; un push
+  completo ≈8k).
+- **Identidad canónica**: la PK es la lista ordenada del manifiesto (tombstones
+  y anti-eco la usan tal cual). `CloudPK` sustituye las columnas calculadas por
+  su `fk` almacenado, para borrar filas remotas durante un wipe. Clave anti-eco:
+  `tabla + "|" + pkPart + "|" + updated_at`, con cada valor PK en JSON y
+  **barra final**, p. ej. `asistencia|"0035"|"2026-10-21"||2026-10-21 08:00:00`.
+
+#### Especificación del manifiesto de schema (v1)
+
+Cada proyecto declara su schema sincronizable en un manifiesto. El motor Go lo
+consume como `[]syncengine.TableSpec` (ver
+`go/syncengine/example/school/schema.go`); el Worker lo consume como JSON
+generado a partir del registry. Ambos describen **el mismo** contrato.
+
+**Contrato mínimo de la SQLite local**: la tabla debe existir con el mismo
+nombre que en D1; tener `updated_at TEXT` mantenido en cada escritura (es la
+única ordenación que conoce el protocolo); poder registrar un tombstone por PK
+canónica en la **misma transacción** que el `DELETE`; y contar con las tablas de
+infraestructura `d1_config`, `sync_recent_pulls`, `sync_pending_deletions`
+(+ las dedicadas por tabla) y `d1_id_blocks`.
+
+| Campo `TableSpec` | Tipo | Significado |
+|---|---|---|
+| `name` | ident | Nombre compartido por SQLite local y D1 |
+| `pk` | ident[] | **Identidad canónica (cloud)**, en orden de tombstone; puede incluir columnas calculadas |
+| `strategy` | enum | Cómo aplicar las filas bajadas (default `replace`) |
+| `business_key` | ident[] | Columnas reconciliadas en vez del id (lo exige `catalog`) |
+| `computed` | ComputedFK[] | Columnas solo de protocolo resueltas por joins con padres |
+| `upsert` | Upsert | Objetivo/config de conflicto para `key-upsert` |
+| `tombstone_table` | ident | Tabla dedicada de borrados pendientes (si no, la genérica) |
+| `orphan` | OrphanPurge | Purga local de huérfanos (nunca se tombstonan) |
+| `restored` | bool | La borra un restore-from-cloud autoritativo |
+| `wire_cols` | ident[] | Columnas que el Worker almacena; espejo del registry, validado en build |
+
+- **ComputedFK**: `column` (columna wire con el valor de negocio),
+  `parent` (tabla dueña de la clave), `parent_key` (default `id`), `fk`
+  (columna local que referencia al padre y se reescribe al aplicar), `target`
+  (columna de negocio del padre, estable entre dispositivos), `code_col`.
+  El Worker **no las almacena**: las adjunta en push (join local) y las
+  resuelve en pull (`LEFT JOIN`). Existen porque los rowids locales divergen
+  entre dispositivos.
+- **Upsert**: `conflict` (columnas objetivo del `ON CONFLICT`), `set`
+  (columnas a actualizar; vacío = todas salvo el objetivo) e `include_id`.
+- **Estrategias**: `replace` (`INSERT OR REPLACE`, default) · `catalog`
+  (reconcilia por `business_key` conservando el id local) · `fk-rewrite`
+  (resuelve cada FK calculada al id local del padre; descarta filas sin padre)
+  · `key-upsert` (reescribe FKs y `ON CONFLICT DO UPDATE` para conservar una
+  sola fila por identidad de negocio) · `validate-only` (solo aplica si el
+  código adjunto resuelve a la misma fila local). Escape hatch: un
+  `UpsertHook` inyectable por app; si dos proyectos lo necesitan, pasa a ser
+  una estrategia del kit.
+- **Validación en build** (`syncengine.NewRegistry`): todos los identificadores
+  deben cumplir `^[A-Za-z_][A-Za-z0-9_]*$` (llegan a SQL por interpolación; el
+  allowlist es la guardia anti-inyección), sin nombres vacíos ni duplicados ni
+  PK vacía; cada componente de `pk` debe ser calculada o estar en `wire_cols`;
+  se valida la matriz estrategia/requisitos y se rechazan estrategias
+  desconocidas; `orphan` exige `fk` y `parent`.
+- **Orden**: la lista del spec **es** el orden de payload/aplicación. Los
+  padres deben ir antes que las tablas reconciliadas por su clave de negocio.
+
+El manifiesto completo (22 tablas) está en
+`go/syncengine/example/school/schema.go` (+ DDL en `ddl.go`) y se prueba desde
+la app en School Tracker (`internal/syncschema/schema_test.go`).
+
+#### Worker template y operaciones
+
+El Worker es un servidor D1 genérico gobernado por el manifiesto
+(`sync.schema.json`, generado desde el registry Go). **Nunca editar a mano**
+`worker/instances/<project>/src/**`: es copia de `template/src` y
+`scripts/build-instance.mjs` la sobrescribe.
+
+- **Layout**: `template/src/` con `index.ts` (router que monta módulos según
+  bindings), `engine.ts` (endpoints), y los opcionales `hub.ts` (`/ws`),
+  `releases.ts` (feed de updates), `auth.ts` (Google/email, `/admin/*`) y
+  `provision.ts` (`/ping`, `/conectar`). Cada instancia lleva su
+  `sync.schema.json`, `sync.config.json`, `wrangler.toml`, `package.json`,
+  `sync-project.json` (config de ops), `schema.sql`, `tenants.json` y
+  `sync-keys.json` (credencial, gitignored).
+- **Montaje por binding**: `engine` requiere `DB` + `SCHOOL_ROUTING`;
+  `provision` siempre ( `/conectar` solo con `deepLinkScheme`); `releases`
+  requiere KV `RELEASES`; `auth` requiere KV `USERS`; `hub` requiere el DO
+  `SYNC_HUB`. Un proyecto que solo quiere sincronizar declara `DB` +
+  `SCHOOL_ROUTING` y obtiene el worker mínimo.
+- **Feed de updates**: con `RELEASES` KV, `GET /updates/latest?version=<v>&platform=<os>`
+  devuelve el manifiesto (`200`), `204` si la versión publicada no es más
+  nueva, `404` si no hay nada publicado (la app lo trata como fallo, no como
+  "estás al día"). Artefactos en `file:<name>`, descargables desde
+  `/release/<name>`. Se publica con
+  `node scripts/publish-update.mjs --dir worker/instances/<p> --manifest update.json --file <artifact>`.
+- **Cómo el manifiesto gobierna el engine**: `conflict` (objetivo del
+  `ON CONFLICT`), `set_exclude_id` (el UPDATE nunca reescribe el `id` stored),
+  `server_assigns_id` (INSERT omite el id; la identidad es la clave de
+  negocio), `computed[].canonize` (reescribe la FK al id canónico del padre
+  mediante `COALESCE((SELECT …), …)`). `ensureSchema` añade las columnas
+  `sk`/`device_id`, el índice `idx_<t>_sk` y, donde hace falta, el UNIQUE
+  `idx_<t>_conflict`.
+- **Checklist para proyecto nuevo**: (1) escribir el registry Go y generar
+  `sync.schema.json`; (2) copiar una instancia existente para las formas de
+  `wrangler.toml`/`package.json`, con worker/D1/KVs propios; (3) añadir
+  `sync.config.json`; (4) `node scripts/build-instance.mjs <p>` y
+  `npx tsc --noEmit`; (5) `node scripts/provision.mjs --dir worker/instances/<p>`
+  y probar con `npx wrangler dev --local`; (6) emitir claves con
+  `generate-key.mjs` y operar con `admin.mjs` (requiere `SYNC_ADMIN_ID_TOKEN`).
+  Nada del lado cloud debe vivir en el repo de la app.
+- **Paridad**: `scripts/parity-check.mjs` compara una captura fresca contra el
+  fixture dorado: paths/statuses estrictos, requests byte a byte (se aceptan
+  solo diferencias de orden de array) y respuestas como JSON normalizado de
+  timestamps e insensible al orden. `school-tracker` pasó los 14 intercambios.
+- **Credenciales**: `*.key`, `sync-keys.json`, `school-keys.json`, `.dev.vars`,
+  `.wrangler/`, `*.db`/`*.sqlite` están gitignored. `wrangler.toml` guarda
+  identificadores (account id, KV/D1 ids, emails), no secretos: el token vive
+  en `wrangler secret`.
 
 ## Desarrollo
 

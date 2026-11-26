@@ -201,12 +201,11 @@ Compass Go UX/
 
 ## Documentación
 
-- [`AGENTS.md`](AGENTS.md) — arquitectura, convenciones, scripts, integración de
-  los core kits y notas para agentes de IA.
-- [`Kit Whatsapp/AGENTS.md`](Kit%20Whatsapp/AGENTS.md) — protocolo stdin/stdout
-  del motor.
-- [`Kit D1/README.md`](Kit%20D1/README.md) — uso del módulo, provisión y
-  verificación de paridad del Worker.
+- [`AGENTS.md`](AGENTS.md) — única guía técnica: arquitectura, convenciones,
+  scripts, protocolo stdin/stdout de WhatsApp, contrato HTTP y manifiesto de D1.
+  Secciones útiles: [Core Kits](AGENTS.md#core-kits-motores-canónicos-whatsapp-y-d1),
+  [protocolo de WhatsApp](AGENTS.md#protocolo-stdinstout-del-motor) y
+  [Kit D1](AGENTS.md#kit-d1).
 
 ---
 
