@@ -8,7 +8,7 @@
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
     listCleanupCandidates, purgeCleanupCandidates, getSoundCatalog, previewSound,
-    getVibeTools,
+    getVibeTools, setReleasePortable,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
   import { svg } from './lib/icons'
@@ -88,7 +88,17 @@
   // CLIs que se muestran en la barra lateral: habilitadas en Opciones e
   // instaladas (una card que solo mostrara un aviso no aporta nada).
   let vibeSide = $derived(vibeTools.filter((t) => t.found && t.enabled))
-  let subMenu = $state<{ title: string; items: Subcard[] } | null>(null)
+  let subMenu = $state<{ title: string; items: Subcard[]; portable?: boolean } | null>(null)
+  // Toggle "Incluir portable" del modal Win Release. Arranca apagado cada vez
+  // que se abre el modal: por defecto el release deja solo el instalador.
+  let releasePortable = $state(false)
+  // Con el toggle apagado, la card "Portable (un exe)" de Flutter no se
+  // ofrece: ahi el portable es una eleccion explicita, no un extra.
+  let subItems = $derived(
+    subMenu && subMenu.portable && !releasePortable
+      ? subMenu.items.filter((s) => s.task !== 'flutter-portable')
+      : subMenu?.items ?? []
+  )
 
   // Modal "Elegir que borrar" de la card Clean. cleanupSelected usa el path
   // absoluto devuelto por Go como clave; Go vuelve a validarlo antes de borrar.
@@ -814,7 +824,16 @@
       // Release / Git / Entorno abren un modal con subcards (como en la GUI Gio).
       const subs = await subcards(item.id)
       if (subs?.length) {
-        subMenu = { title: item.label, items: subs }
+        // El release de escritorio trae el toggle del portable; se reinicia a
+        // apagado en cada apertura (el backend tambien, via SetReleasePortable).
+        const isRelease = subs.some(
+          (s) => s.task.startsWith('windows-release') || s.task === 'flutter-portable'
+        )
+        subMenu = { title: item.label, items: subs, portable: isRelease }
+        if (isRelease) {
+          releasePortable = false
+          setReleasePortable(false).catch(() => {})
+        }
         return
       }
       const task = await runTask(item.id)
@@ -828,6 +847,15 @@
     } catch (e) {
       lastError = 'ERROR: ' + (e as Error).message
     }
+  }
+
+  function togglePortable(e: Event) {
+    // Se lee del input y no del estado: el orden entre `bind:checked` y
+    // `onchange` no esta garantizado en todos los navegadores.
+    releasePortable = (e.currentTarget as HTMLInputElement).checked
+    setReleasePortable(releasePortable).catch((err) => {
+      lastError = 'ERROR: ' + (err as Error).message
+    })
   }
 
   async function pickSubcard(sub: Subcard) {
@@ -1103,8 +1131,24 @@
   <div class="modal-backdrop" onclick={() => (subMenu = null)} role="presentation">
     <div class="modal wide" onclick={(e) => e.stopPropagation()} role="dialog" aria-label={subMenu.title}>
       <div class="modal-head"><span>{subMenu.title}</span><button onclick={() => (subMenu = null)}>×</button></div>
+      {#if subMenu.portable}
+        <label class="sub-opt">
+          <span class="sub-opt-text">
+            <span class="sub-opt-title">Incluir portable</span>
+            <span class="sub-opt-desc">
+              Añade el .exe portable (se ejecuta sin instalar) a los artefactos.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            class="sub-switch"
+            bind:checked={releasePortable}
+            onchange={togglePortable}
+          />
+        </label>
+      {/if}
       <div class="sub-grid">
-        {#each subMenu.items as sub}
+        {#each subItems as sub}
           <button class="sub-card" onclick={() => pickSubcard(sub)} title={`${sub.label} — ${sub.description}`}>
             <span class="sub-icon">{@html svg(sub.icon, 18)}</span>
             <span class="sub-text">

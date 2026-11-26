@@ -37,7 +37,12 @@ func main() {
 	// embebido. Lo usa dev.bat; en una compilacion con -tags production Wails
 	// ignora la variable y siempre sirve el bundle.
 	dev := flag.Bool("dev", false, "sirve el frontend desde Vite (HMR)")
+	// --portable lo enciende el toggle del modal Win Release. Apagado (por
+	// defecto) el release de escritorio deja solo el instalador.
+	portable := flag.Bool("portable", false, "incluye el portable en el release de escritorio")
 	flag.Parse()
+
+	tasks.SetIncludePortable(*portable)
 
 	// Se usa 127.0.0.1 y no localhost: en Windows `localhost` puede resolverse
 	// primero a ::1 y Vite escucha solo en IPv4 (server.host), con lo que el

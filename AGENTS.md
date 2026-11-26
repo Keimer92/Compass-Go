@@ -301,6 +301,28 @@ proyecto concreto:
   `.ps1` siguen materializándose en `%LOCALAPPDATA%\compass\env-backup` (área
   de trabajo, no destino). No se migran backups antiguos automáticamente.
 
+### Toggle "Incluir portable" del release de Windows
+
+- **Apagado por defecto**: el modal **Win Release** muestra un interruptor
+  encima de las cards cuando el submenú trae release de escritorio
+  (`windows-release-*` o `flutter-portable`). Cada vez que se abre se reinicia a
+  apagado; encendido, el release deja además el `.exe` portable.
+- **Viaja como `--portable`**: la tarea corre en otro proceso
+  (`compass-web.exe --task …`), así que `App.svelte` guarda el estado con
+  `Bridge.SetReleasePortable(bool)` y `Bridge.TaskScript` añade `'--portable'`
+  solo a las tareas `windows-release*`. `main.go` lo lee con
+  `flag.Bool("portable", …)` y llama a `tasks.SetIncludePortable`.
+- **Qué hace cada tipo**: en Go y Go+Wails, `dropPortable`
+  (`internal/tasks/release.go`) quita el `.exe` de la lista de artefactos y lo
+  borra de `bin/`, dejando el instalador NSIS; si no hay instalador (NSIS falló
+  o la variante solo produce el exe) se conserva el exe para no terminar sin
+  nada. En Go+Wails **x86** solo existe el portable (`wails3 task build
+  ARCH=386`), así que con el toggle apagado esa arquitectura se omite con un
+  aviso (afecta a "Todos"). En Flutter el portable es una card aparte
+  (`flutter-portable`) y se oculta del modal mientras el toggle está apagado.
+- **Consola**: `compass-web.exe --task windows-release-x64` sin `--portable`
+  tampoco genera el portable; el flag es la única forma de activarlo.
+
 ## Panel Git lateral (tipo VSCode)
 
 - **Git vive en el panel derecho, no en una card**: la card Git y sus subcards

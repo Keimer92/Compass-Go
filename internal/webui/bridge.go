@@ -50,6 +50,11 @@ type Bridge struct {
 	// watchDead marca carpetas retiradas mientras un ensureWatch en vuelo
 	// todavia recorre el arbol: al terminar no debe dejar un vigilante vivo.
 	watchDead map[string]bool
+
+	// releasePortable es el toggle "Incluir portable" del modal Win Release.
+	// Se guarda aqui porque TaskScript (que arma el comando) y el modal viven
+	// en procesos distintos del de la tarea.
+	releasePortable bool
 }
 
 // commitRun es una generacion de mensaje de commit en curso. El id permite
@@ -379,9 +384,30 @@ func (b *Bridge) TaskScript(task string) string {
 	// ArgumentList se une con espacios sin entrecomillar: la ruta (que puede
 	// llevar espacios) tiene que ir con comillas dobles dentro del literal.
 	argPath := psQuote(`"` + dir + `"`)
+	args := fmt.Sprintf("'--task',%s,'--path',%s", psQuote(task), argPath)
+	// El release de escritorio lleva el toggle "Incluir portable" del modal.
+	// El proceso de la tarea es otra instancia del binario, asi que la opcion
+	// viaja como flag; sin ella el release deja solo el instalador.
+	if strings.HasPrefix(task, "windows-release") && b.releasePortableOn() {
+		args += ",'--portable'"
+	}
 	return fmt.Sprintf(
-		"$p = Start-Process -FilePath %s -ArgumentList '--task',%s,'--path',%s -NoNewWindow -Wait -PassThru; exit $p.ExitCode",
-		psQuote(exe), psQuote(task), argPath)
+		"$p = Start-Process -FilePath %s -ArgumentList %s -NoNewWindow -Wait -PassThru; exit $p.ExitCode",
+		psQuote(exe), args)
+}
+
+// SetReleasePortable guarda el toggle "Incluir portable" del modal Win Release.
+// Se reinicia a false cada vez que se abre el modal (por defecto, sin portable).
+func (b *Bridge) SetReleasePortable(on bool) {
+	b.mu.Lock()
+	b.releasePortable = on
+	b.mu.Unlock()
+}
+
+func (b *Bridge) releasePortableOn() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.releasePortable
 }
 
 // psQuote envuelve en comillas simples de PowerShell (escapando las internas).

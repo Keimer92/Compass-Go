@@ -133,6 +133,43 @@ func desktopArchOf(key string) (desktopArch, bool) {
 	return 0, false
 }
 
+// ── Opciones del release de escritorio ──────────────────────────────────────
+
+// includePortable decide si el release deja tambien el portable (el .exe suelto
+// que se ejecuta sin instalar). Por defecto NO se genera: el toggle del modal
+// "Win Release" de la GUI lo enciende y viaja al proceso de la tarea como
+// --portable. El instalador se genera siempre que la plataforma lo soporte.
+var includePortable bool
+
+// SetIncludePortable fija la opcion para este proceso (una sola tarea).
+func SetIncludePortable(on bool) { includePortable = on }
+
+// portableEnabled informa si hay que dejar el portable.
+func portableEnabled() bool { return includePortable }
+
+// dropPortable quita el portable de la lista de artefactos y lo borra del disco.
+// Si es el unico artefacto se conserva: quedarse sin nada seria peor que
+// ignorar el toggle (p. ej. NSIS no disponible y solo se pudo compilar el exe).
+func dropPortable(artifacts []string, portable string) []string {
+	if portable == "" || len(artifacts) < 2 {
+		return artifacts
+	}
+	out := make([]string, 0, len(artifacts))
+	for _, a := range artifacts {
+		if filepath.Clean(a) == filepath.Clean(portable) {
+			if err := os.Remove(a); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("[WARN] No se pudo borrar el portable %s: %v\n", a, err)
+			}
+			continue
+		}
+		out = append(out, a)
+	}
+	if len(out) == 0 {
+		return artifacts
+	}
+	return out
+}
+
 // ── Entradas de los submenús ────────────────────────────────────────────────
 
 type releaseEntry struct {
@@ -420,11 +457,20 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 				artifacts[0] = wrapped
 			}
 		}
+		if !portableEnabled() && len(artifacts) > 0 {
+			artifacts = dropPortable(artifacts, artifacts[0])
+		}
 		return artifacts, nil
 	case project.TypeGoWails:
 		target, ok := desktopArchOf(key)
 		if !ok {
 			return nil, fmt.Errorf("[ERROR] Arquitectura sin equivalente.")
+		}
+		// x86 solo se compila como portable (`wails3 task build ARCH=386`);
+		// sin portable no hay nada que entregar en esa arquitectura.
+		if target == archX86 && !portableEnabled() {
+			fmt.Println("[WARN] Windows x86 solo se distribuye como portable: se omite. Activa «Incluir portable» para generarlo.")
+			return nil, nil
 		}
 		artifacts, err := wailsBuildDesktopArch(ctx, target)
 		if err != nil {
@@ -447,6 +493,9 @@ func windowsArtifacts(ctx *project.ProjectContext, key string) ([]string, error)
 			} else if wrapped != "" {
 				artifacts[0] = wrapped
 			}
+		}
+		if !portableEnabled() && len(artifacts) > 0 {
+			artifacts = dropPortable(artifacts, artifacts[0])
 		}
 		return artifacts, nil
 	default:

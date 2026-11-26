@@ -82,3 +82,24 @@ func TestTaskScriptQuotesPaths(t *testing.T) {
 		t.Fatalf("comillas simples desbalanceadas: %s", script)
 	}
 }
+
+// TestTaskScriptPortableFlag comprueba que el toggle del modal Win Release
+// llega al proceso de la tarea como --portable, y solo a los releases.
+func TestTaskScriptPortableFlag(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Chdir(dir)
+	b := NewBridge(dir)
+
+	if s := b.TaskScript("windows-release-x64"); strings.Contains(s, "--portable") {
+		t.Fatalf("sin activar el toggle no debe llevar --portable: %s", s)
+	}
+	b.SetReleasePortable(true)
+	if s := b.TaskScript("windows-release-x64"); !strings.Contains(s, "'--portable'") {
+		t.Fatalf("con el toggle activo falta --portable: %s", s)
+	}
+	// Una tarea que no es de release no debe recibir el flag.
+	if s := b.TaskScript("env-do-inventory"); strings.Contains(s, "--portable") {
+		t.Fatalf("una tarea normal no lleva --portable: %s", s)
+	}
+}

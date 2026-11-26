@@ -27,6 +27,9 @@ export interface Subcard { task: string; label: string; description: string; ico
 export const subcards = (id: string) => call<Subcard[]>(M('Subcards'), id)
 export const getExePath = () => call<string>(M('ExePath'))
 export const taskScript = (task: string) => call<string>(M('TaskScript'), task)
+// Toggle "Incluir portable" del modal Win Release. Viaja al proceso de la
+// tarea como `--portable`; por defecto el release deja solo el instalador.
+export const setReleasePortable = (on: boolean) => call<void>(M('SetReleasePortable'), on)
 export const getDebug = () => call<Record<string, any>>(M('GetDebug'))
 
 export interface PtyData { id: string; data: string }
