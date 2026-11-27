@@ -368,12 +368,18 @@ func (b *Bridge) GenerateCommit(dir string) (string, error) {
 	if model == "" {
 		return "", errors.New("falta el modelo de OpenRouter: elige uno en Opciones")
 	}
-	prompt := "You write precise Conventional Commit messages from the git evidence below.\n" +
-		"You cannot explore the repository: base EVERY line strictly on the diff, status and new-file excerpts.\n\n" +
-		"Output format (exactly this, nothing else):\n" +
-		"Line 1: <type>(<scope>): <imperative summary, max 72 chars, no trailing period>\n" +
-		"Then 3 to 5 lines, each starting with \"- \", max 90 chars, describing ONE concrete change.\n\n" +
-		"Rules:\n" +
+	prompt := "You write Conventional Commit messages from the git evidence below.\n" +
+		"You cannot explore the repository: base every line strictly on the diff, status and new-file excerpts.\n\n" +
+		"Reply with the raw commit message only, using REAL line breaks, in exactly this shape:\n\n" +
+		"<type>(<scope>): <imperative summary, max 72 chars, no trailing period>\n" +
+		"\n" +
+		"- <one concrete change, max 90 chars>\n" +
+		"- <one concrete change, max 90 chars>\n" +
+		"- <one concrete change, max 90 chars>\n\n" +
+		"Format rules:\n" +
+		"- The first line is the subject and nothing else. NEVER append bullets, dashes or a list to it.\n" +
+		"- Leave exactly one empty line between the subject and the bullets.\n" +
+		"- Write 3 to 5 bullets, one per line, each starting with \"- \".\n" +
 		"- type is one of: feat, fix, refactor, perf, docs, test, build, ci, chore, style.\n" +
 		"- scope is the affected area taken from the paths (e.g. webui, shell, tasks, frontend, installer).\n" +
 		"- Each bullet must name what actually changed: function, type, struct field, flag, CSS class,\n" +
@@ -381,7 +387,13 @@ func (b *Bridge) GenerateCommit(dir string) (string, error) {
 		"- BANNED generic phrasing: \"improve code\", \"update files\", \"various changes\",\n" +
 		"  \"minor fixes\", \"refactor code\", \"enhance functionality\", \"make improvements\".\n" +
 		"- If several files change for one reason, group them in a single bullet that names the reason.\n" +
-		"- No blank lines, no markdown fences, no quotes, no preamble, no explanation.\n\n" +
+		"- No markdown fences, no quotes, no preamble, no explanation, no trailing empty line.\n\n" +
+		"Example reply:\n" +
+		"fix(receipt): keep receipt capture working without the emblem\n" +
+		"\n" +
+		"- Wrap precacheImage of assets/receipt/ela_emblem.png in try/catch inside ReceiptRenderer\n" +
+		"- Swallow image load errors so OverlayEntry capture still renders the receipt\n" +
+		"- Drop the unused logoStr lookup in _PaymentsPageState._showReceiptDialog\n\n" +
 		"Git evidence:\n" + summary
 
 	// La peticion vive en un contexto cancelable para que el boton Cancelar
@@ -441,9 +453,28 @@ func (b *Bridge) CancelCommit(dir string) {
 	}
 }
 
-// cleanCommitMessage descarta el ruido del CLI y deja cabecera + viñetas.
+// Limites del mensaje. La cabecera debe caber en el asunto que muestra el
+// historial y cada viñeta no puede desbordar el panel de detalle.
+const (
+	commitHeaderMax  = 72
+	commitBulletMax  = 90
+	commitMaxBullets = 5
+)
+
+// conventionalHeader reconoce un asunto Conventional Commit. Sirve para saber
+// donde acaba la cabecera cuando el modelo pega el cuerpo en la misma linea.
+var conventionalHeader = regexp.MustCompile(`^[a-z]+(\([^)]*\))?!?:\s`)
+
+// inlineBulletSep encuentra viñetas escritas en linea, no al principio de una
+// linea: "fix(x): algo - hace A - hace B".
+var inlineBulletSep = regexp.MustCompile(`\s+[-–—•]\s+`)
+
+// cleanCommitMessage descarta el ruido del CLI y deja cabecera + viñetas, una
+// por linea. Los modelos gratuitos a veces devuelven todo el mensaje en una
+// sola linea; sin normalizarlo git guarda ese texto como asunto y el historial
+// muestra un parrafo interminable.
 func cleanCommitMessage(raw string) string {
-	var out []string
+	var cleaned []string
 	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
 		line = strings.TrimRight(line, " \t")
 		t := strings.TrimSpace(line)
@@ -454,25 +485,79 @@ func cleanCommitMessage(raw string) string {
 			continue
 		}
 		if t == "" {
-			if len(out) > 0 && out[len(out)-1] != "" {
-				out = append(out, "")
-			}
 			continue
 		}
-		out = append(out, strings.Trim(line, "`\"' "))
+		cleaned = append(cleaned, strings.Trim(t, "`\"' "))
 	}
-	for len(out) > 0 && out[len(out)-1] == "" {
-		out = out[:len(out)-1]
+	if len(cleaned) == 0 {
+		return ""
 	}
-	if len(out) > 6 {
-		out = out[:6] // cabecera + hasta 5 vinietas
+
+	// La primera linea es el asunto. Si trae viñetas pegadas, se separan.
+	header := cleaned[0]
+	var bullets []string
+	if parts := inlineBulletSep.Split(header, -1); len(parts) > 1 && conventionalHeader.MatchString(header) {
+		header = parts[0]
+		bullets = append(bullets, parts[1:]...)
 	}
-	for i, line := range out {
-		if len(line) > 95 {
-			out[i] = strings.ToValidUTF8(line[:95], "")
+	for _, line := range cleaned[1:] {
+		if parts := inlineBulletSep.Split(line, -1); len(parts) > 1 {
+			bullets = append(bullets, parts...)
+			continue
+		}
+		bullets = append(bullets, line)
+	}
+
+	out := []string{clipWords(header, commitHeaderMax)}
+	seen := map[string]bool{}
+	for _, b := range bullets {
+		b = trimBulletMarker(strings.TrimSpace(b))
+		if b == "" || seen[strings.ToLower(b)] {
+			continue
+		}
+		seen[strings.ToLower(b)] = true
+		out = append(out, "- "+clipWords(b, commitBulletMax))
+		if len(out) > commitMaxBullets {
+			break
 		}
 	}
-	return strings.Join(out, "\n")
+	if len(out) == 1 {
+		return out[0]
+	}
+	// La linea en blanco separa asunto y cuerpo: sin ella git no reconoce el
+	// cuerpo y el panel de detalle lo muestra vacio.
+	return out[0] + "\n\n" + strings.Join(out[1:], "\n")
+}
+
+// trimBulletMarker quita el prefijo de lista que ponga el modelo ("- ", "* ",
+// "• ", "1. ") para volver a añadir siempre el mismo.
+func trimBulletMarker(s string) string {
+	for _, prefix := range []string{"- ", "* ", "• ", "– ", "— "} {
+		if strings.HasPrefix(s, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(s, prefix))
+		}
+	}
+	if n := len(s); n > 3 {
+		if s[0] >= '1' && s[0] <= '9' && (s[1] == '.' || s[1] == ')') {
+			return strings.TrimSpace(s[2:])
+		}
+	}
+	return s
+}
+
+// clipWords recorta a max caracteres en un limite de palabra, sin partir
+// caracteres multibyte.
+func clipWords(s string, max int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	cut := string(r[:max])
+	if i := strings.LastIndex(cut, " "); i > max/2 {
+		cut = cut[:i]
+	}
+	return strings.TrimRight(cut, " ,;:.-")
 }
 
 // Commit stagea todo y hace el commit con el mensaje dado en el proyecto
