@@ -257,11 +257,27 @@
     openExternal(info.webUrl).catch(fail)
   }
 
-  let canPush = $derived(
+  // `canPush` exige commits pendientes: con el árbol y la rama al día, `git
+  // push` solo respondería "Everything up-to-date", así que el botón se apaga
+  // hasta que haya un commit nuevo. Una rama sin upstream (nunca subida) sí
+  // puede subirse aunque `ahead` sea 0.
+  let ready = $derived(
     info.isRepo && info.hasCommits && !!info.remoteUrl && remote.state !== 'missing' &&
     !info.branch.startsWith('detached') && !busy && !task.busy
   )
-  let canSync = $derived(canPush && !!info.upstream)
+  let upToDate = $derived(!!info.upstream && info.ahead === 0 && info.behind === 0)
+  let canPush = $derived(ready && (!info.upstream || info.ahead > 0))
+  // Sincronizar sigue disponible con la rama al día: puede haber commits que
+  // bajar (behind > 0) aunque no haya nada que subir.
+  let canSync = $derived(ready && !!info.upstream)
+
+  let pushTitle = $derived.by(() => {
+    if (remote.state === 'missing') return 'El remoto ya no existe: vincula otro repositorio'
+    if (!info.remoteUrl) return 'Configura un remoto primero'
+    if (upToDate) return 'Todo subido: no hay commits pendientes'
+    if (info.upstream && info.ahead === 0) return 'Nada que subir; usa Sincronizar para bajar cambios'
+    return 'Subir rama actual'
+  })
 
   // ── Progreso del push del asistente ──
   // En MB (la unidad que se pidio) cuando hay volumen suficiente; en KB/B para
@@ -276,19 +292,33 @@
   let pushKnown = $derived(!!pushProg && pushProg.total > 0)
   let pushPct = $derived(pushProg ? Math.max(0, Math.min(100, pushProg.percent)) : 0)
   let pushLeft = $derived(pushKnown ? Math.max(0, (pushProg as PushProgress).total - (pushProg as PushProgress).uploaded) : 0)
-  let pushLabel = $derived.by(() => {
-    if (!wizBusy) return ''
-    if (!pushProg) return wizStatus
-    switch (pushProg.stage) {
+
+  // Etiqueta de fase del push, compartida por el asistente y el panel.
+  function stageLabel(p: PushProgress | null, fallback: string): string {
+    if (!p) return fallback
+    switch (p.stage) {
       case 'counting': return 'Preparando los objetos…'
       case 'compressing': return 'Comprimiendo…'
       case 'writing':
-        return pushProg.speed > 0 ? `Subiendo · ${humanBytes(pushProg.speed)}/s` : 'Subiendo…'
+        return p.speed > 0 ? `Subiendo · ${humanBytes(p.speed)}/s` : 'Subiendo…'
       case 'resolving': return 'Confirmando en GitHub…'
       case 'done': return 'Subida completa'
     }
-    return wizStatus
-  })
+    return fallback
+  }
+
+  let pushLabel = $derived(wizBusy ? stageLabel(pushProg, wizStatus) : '')
+
+  // Barra de progreso real del push/sync del panel (misma fuente de eventos:
+  // `git push --progress`). Durante el pull del sync aún no hay avance, así
+  // que la barra queda animada hasta que llegan los objetos.
+  let liveProg = $derived(task.busy ? task.progress : null)
+  let liveKnown = $derived(!!liveProg && liveProg.total > 0)
+  let livePct = $derived(liveProg ? Math.max(0, Math.min(100, liveProg.percent)) : 0)
+  let liveLeft = $derived(liveKnown ? Math.max(0, (liveProg as PushProgress).total - (liveProg as PushProgress).uploaded) : 0)
+  let liveLabel = $derived(
+    stageLabel(liveProg, task.action === 'sync' ? 'Pull --rebase…' : 'Preparando la subida…')
+  )
 </script>
 
 <div class="head">
@@ -387,21 +417,30 @@
       {info.changes === 0 ? 'Sin cambios pendientes.' : `${info.changes} cambio${info.changes === 1 ? '' : 's'} pendiente${info.changes === 1 ? '' : 's'}.`}
     </div>
     <div class="actions">
-      <button class="pill primary" onclick={push} disabled={!canPush} title={remote.state === 'missing' ? 'El remoto ya no existe: vincula otro repositorio' : info.remoteUrl ? 'Subir rama actual' : 'Configura un remoto primero'}>
-        {#if task.action === 'push'}<span class="spin" aria-hidden="true"></span>{/if}
+      <button class="pill primary" onclick={push} disabled={!canPush} title={pushTitle}>
         {task.action === 'push' ? 'Subiendo…' : 'Push'}
       </button>
       <button class="pill ghost" onclick={sync} disabled={!canSync} title={info.upstream ? 'Pull --rebase + Push' : 'La rama no tiene upstream'}>
-        {#if task.action === 'sync'}<span class="spin" aria-hidden="true"></span>{/if}
         {task.action === 'sync' ? 'Sincronizando…' : 'Sincronizar'}
       </button>
     </div>
-    {#if task.action === 'sync'}
-      <div class="sync-line">Pull --rebase y push con {info.upstream || 'el remoto'}…</div>
-    {:else if task.action === 'push'}
-      <div class="sync-line">Subiendo {info.branch || 'la rama'} a {info.upstream || 'origin'}…</div>
-    {:else if task.progress && task.progress.stage !== 'done'}
-      <div class="sync-line">Subiendo… {task.progress.percent}%</div>
+    {#if upToDate && !task.busy}
+      <div class="sync-line ok-line">Al día con {info.upstream}.</div>
+    {/if}
+    {#if task.busy}
+      <div class="push-prog" aria-live="polite">
+        <div class="pp-bar" class:indet={!liveKnown}>
+          <div class="pp-fill" style={`width:${liveKnown ? livePct : 35}%`}></div>
+        </div>
+        <div class="pp-meta">
+          <span class="pp-label">{liveLabel}</span>
+          {#if liveProg && (liveProg.uploaded > 0 || liveKnown)}
+            <span class="pp-bytes">
+              {humanBytes(liveProg.uploaded)}{#if liveKnown} de {humanBytes(liveProg.total)}{/if}{#if liveLeft > 0} · faltan {humanBytes(liveLeft)}{/if}
+            </span>
+          {/if}
+        </div>
+      </div>
     {/if}
   {/if}
 
@@ -603,10 +642,19 @@
   .pill:disabled { opacity:.5; cursor:default; }
   .actions .pill, .commit-actions .pill { flex:1; }
   .actions .pill { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
-  .spin { flex:0 0 auto; width:11px; height:11px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin .7s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spin { animation-duration:1.8s; } }
   .sync-line { margin-top:6px; font-size:10px; color:var(--muted); }
+  .ok-line { color:var(--green); }
+  .push-prog { margin-top:8px; }
+  .pp-bar { height:5px; border-radius:3px; background:color-mix(in srgb, var(--border) 60%, transparent); overflow:hidden; }
+  .pp-fill { height:100%; border-radius:3px; background:var(--accent); transition:width .18s linear; }
+  .pp-bar.indet .pp-fill { animation:indeterminate 1.1s ease-in-out infinite; }
+  .pp-meta { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:2px 8px; margin-top:5px; font-size:10px; color:var(--muted); }
+  .pp-label { min-width:0; }
+  .pp-bytes { color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  @media (prefers-reduced-motion: reduce) {
+    .pp-fill { transition:none; }
+    .pp-bar.indet .pp-fill { animation-duration:2.4s; }
+  }
   .empty { padding:26px 18px; text-align:center; color:var(--text); }
   .empty-ico { color:var(--brand); }
   .empty p { font-size:12px; line-height:1.5; }

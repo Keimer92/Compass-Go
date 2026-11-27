@@ -114,9 +114,6 @@
     moodTimer = setTimeout(() => (moodFlash = null), 2600)
   }
   let rightTab = $state<'explorer' | 'git' | 'log'>('explorer')
-  // El panel derecho se puede plegar para darle todo el ancho al terminal
-  // (diffs anchos de las CLI, tablas, etc.). No se desmonta: solo se oculta.
-  let rightCollapsed = $state(false)
   let themeMenu = $state(false)
   let optionsOpen = $state(false)
   let gitSettingsOpen = $state(false)
@@ -836,11 +833,6 @@
     }
   }
 
-  function toggleRightPanel() {
-    // El ResizeObserver del stage detecta el nuevo ancho y reajusta xterm/PTY.
-    rightCollapsed = !rightCollapsed
-  }
-
   // Separador cards/terminal. Mientras se arrastra NO se reajusta el xterm:
   // cada pixel cambiaria el PTY y la TUI se redibujaria sin parar. Al soltar
   // se hace un unico fit (y se guarda el reparto para la proxima sesion).
@@ -1342,15 +1334,6 @@
                     }}>×</button>
                 </div>
               {/each}
-              <button
-                class="term-wide"
-                title={rightCollapsed ? 'Mostrar panel derecho' : 'Ampliar terminal'}
-                aria-label={rightCollapsed ? 'Mostrar panel derecho' : 'Ampliar terminal'}
-                onclick={(e) => {
-                  e.stopPropagation()
-                  toggleRightPanel()
-                }}
-              >{rightCollapsed ? '⤡' : '⤢'}</button>
             </div>
           {/if}
           <div class="term-stage" bind:this={termStageEl}>
@@ -1366,7 +1349,7 @@
         </div>
       </div>
 
-      <aside class="right" class:collapsed={rightCollapsed}>
+      <aside class="right">
         <div class="right-tabs">
           <button class:active={rightTab === 'explorer'} onclick={() => (rightTab = 'explorer')}>Explorador</button>
           <button class:active={rightTab === 'git'} onclick={() => (rightTab = 'git')}>Git</button>
