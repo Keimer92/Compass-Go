@@ -49,11 +49,93 @@ func ensurePubget(ctx *project.ProjectContext) error {
 	return nil
 }
 
+// cmakeCacheValue extrae el valor de una clave del CMakeCache.txt.
+func cmakeCacheValue(cacheFile, key string) string {
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		k, val, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || !strings.HasPrefix(k, key+":") {
+			continue
+		}
+		return strings.TrimSpace(val)
+	}
+	return ""
+}
+
+// samePath compara rutas de Windows ignorando mayusculas y tipo de separador.
+func samePath(a, b string) bool {
+	norm := func(p string) string {
+		p = strings.ReplaceAll(filepath.Clean(p), "\\", "/")
+		return strings.ToLower(strings.TrimSuffix(p, "/"))
+	}
+	return norm(a) == norm(b)
+}
+
+// staleCacheOrigin devuelve la ruta con la que se genero la cache de CMake si
+// no corresponde al proyecto actual, o "" si sigue siendo valida.
+func staleCacheOrigin(cacheFile, root string) string {
+	// CMAKE_CACHEFILE_DIR es el directorio donde se creo la cache: la senal mas
+	// fiable, y sirve igual para el build de Windows y para el .cxx de Android.
+	if dir := cmakeCacheValue(cacheFile, "CMAKE_CACHEFILE_DIR"); dir != "" {
+		if !samePath(dir, filepath.Dir(cacheFile)) {
+			return dir
+		}
+	}
+	// El build de Windows compila ademas desde <raiz>/windows.
+	if home := cmakeCacheValue(cacheFile, "CMAKE_HOME_DIRECTORY"); home != "" {
+		if strings.EqualFold(filepath.Base(filepath.Clean(home)), "windows") &&
+			!samePath(home, filepath.Join(root, "windows")) {
+			return home
+		}
+	}
+	return ""
+}
+
+// ensureFlutterCMakeCache borra las caches de CMake generadas con otra ruta de
+// origen (proyecto movido o renombrado). CMake no se recupera solo: aborta con
+// "The current CMakeCache.txt directory ... is different than the directory
+// ... where CMakeCache.txt was created".
+func ensureFlutterCMakeCache(ctx *project.ProjectContext) {
+	targets := []struct {
+		pattern string
+		dir     string
+		label   string
+	}{
+		{filepath.Join("build", "windows", "*", "CMakeCache.txt"), filepath.Join("build", "windows"), "Windows"},
+		{filepath.Join("build", ".cxx", "*", "*", "*", "CMakeCache.txt"), filepath.Join("build", ".cxx"), "Android"},
+	}
+	for _, t := range targets {
+		matches, err := filepath.Glob(filepath.Join(ctx.ScriptDir, t.pattern))
+		if err != nil {
+			continue
+		}
+		for _, cache := range matches {
+			origin := staleCacheOrigin(cache, ctx.ScriptDir)
+			if origin == "" {
+				continue
+			}
+			dir := filepath.Join(ctx.ScriptDir, t.dir)
+			fmt.Printf("[WARN] Cache de CMake (%s) generada en otra ruta: %s\n", t.label, origin)
+			fmt.Printf("[INFO] Borrando %s para regenerarla en la ruta actual...\n", dir)
+			if err := shell.RemoveDir(dir); err != nil {
+				fmt.Printf("[WARN] No se pudo borrar %s: %v\n", dir, err)
+			} else {
+				fmt.Println("[OK] Cache de CMake regenerada desde cero.")
+			}
+			break
+		}
+	}
+}
+
 // FlutterRunWindows lanza 'flutter run -d windows' en una ventana nueva.
 func FlutterRunWindows(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
+	ensureFlutterCMakeCache(ctx)
 	// En dev el servicio Dart puede leer el kit canónico por
 	// COMPASS_WHATSAPP_ENGINE; solo se etaja si esa vía no está disponible.
 	prepareWhatsappEngineDev(ctx)
@@ -65,6 +147,7 @@ func FlutterRunAndroid(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
+	ensureFlutterCMakeCache(ctx)
 	serial, err := selectAndroidDevice(ctx)
 	if err != nil {
 		return err
@@ -129,6 +212,7 @@ func flutterBuildRelease(ctx *project.ProjectContext) (string, error) {
 	if err := ensurePubget(ctx); err != nil {
 		return "", err
 	}
+	ensureFlutterCMakeCache(ctx)
 	// Un motor de un build/prueba anterior deja node.exe abierto dentro del
 	// Release; Windows no permite sobrescribirlo y CMake falla con Permission
 	// denied. Se cierran solo los motores de este proyecto antes de etapar.
@@ -206,6 +290,7 @@ func FlutterBuildWindows(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
+	ensureFlutterCMakeCache(ctx)
 	// Cierra motores huérfanos del proyecto antes de que CMake copie node.exe.
 	closeProjectWhatsappEngines(ctx.ScriptDir)
 	prepareWhatsappEngine(ctx)
@@ -273,6 +358,7 @@ func FlutterBuildApk(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
+	ensureFlutterCMakeCache(ctx)
 	command := "flutter build apk --release"
 	fmt.Printf("\n[INFO] Ejecutando: %s\n\n", command)
 	ok, err := shell.RunShellStatus(command, ctx.ScriptDir, nil)
@@ -304,6 +390,7 @@ func FlutterBuildAab(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
+	ensureFlutterCMakeCache(ctx)
 	name, version := flutterAppMeta(ctx)
 	rename := ""
 	if name != "" {

@@ -611,6 +611,16 @@ además se administra desde un panel propio.
   (envuelto en el `MSB3073` de MSBuild). Nunca toca los `node.exe` del sistema ni
   de otros proyectos; si no puede cerrar uno avisa con `[WARN]`. No hace falta
   compilador alternativo: Flutter Windows solo usa MSVC.
+- **Flutter: caché de CMake tras mover el proyecto**: `ensureFlutterCMakeCache`
+  (`internal/tasks/flutter.go`, llamado tras `ensurePubget` en `windows-dev`,
+  `windows-build`, `flutter-portable`, `flutter-installer`, `android-dev`,
+  `android-apk` y `android-aab`) compara `CMAKE_CACHEFILE_DIR` de cada
+  `CMakeCache.txt` con su ubicación real y `CMAKE_HOME_DIRECTORY` con
+  `<raíz>/windows`. Si el proyecto se movió o renombró, borra `build/windows`
+  (o `build/.cxx` en Android) antes de compilar; CMake por sí solo aborta con
+  «The current CMakeCache.txt directory ... is different than the directory
+  ... where CMakeCache.txt was created» y no se recupera. Si se compila fuera
+  de Compass, el equivalente manual es `flutter clean`.
 - **Flutter: regla CMake automática**: si el proyecto usa el motor y
   `windows/CMakeLists.txt` no menciona `whatsapp_engine`, Compass inyecta el
   bloque `install(DIRECTORY "${CMAKE_SOURCE_DIR}/../whatsapp_engine" ...)` al
