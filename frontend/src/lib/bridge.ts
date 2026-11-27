@@ -280,3 +280,25 @@ export const kitD1PickPath = () => call<KitD1Info>(M('KitD1PickPath'))
 export const kitD1Script = (action: string, instance: string, arg: string) =>
   call<string>(M('KitD1Script'), action, instance, arg)
 export const gitSync = () => call<string>(M('GitSync'))
+
+// Versionador: la card "Version" abre un modal GUI en vez de una ConPTY.
+export interface VersionFileInfo {
+  path: string
+  current: string
+  missing: boolean
+  code: number
+  hasCode: boolean
+}
+export interface VersionPlanInfo {
+  type: string
+  files: VersionFileInfo[]
+  omitted: string[]
+}
+export interface VersionResult {
+  version: string
+  files: number
+  added: number
+  notes: string[]
+}
+export const versionInfo = () => call<VersionPlanInfo>(M('VersionInfo'))
+export const applyVersion = (version: string) => call<VersionResult>(M('ApplyVersion'), version)

@@ -83,6 +83,10 @@
 .term-tab { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-radius: 12px; background: color-mix(in srgb, var(--border) 35%, var(--panel)); color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; border: 1px solid transparent; }
 .term-tab:hover { color: var(--text); }
 .term-tab.active { background: color-mix(in srgb, var(--accent) 26%, var(--panel)); color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* Arrastre: la pestaña que se mueve se atenúa y la destino muestra una guía
+   vertical en el borde por el que va a entrar. */
+.term-tab.dragging { opacity: .45; }
+.term-tab.drop-target { border-left-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
 .term-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .term-dot.dead { background: var(--muted); }
 .term-close { background: none; border: none; color: inherit; font-size: 14px; line-height: 1; padding: 0 2px; opacity: .6; cursor: pointer; }

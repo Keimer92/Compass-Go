@@ -19,6 +19,7 @@
   import History from './components/History.svelte'
   import GitSettings from './components/GitSettings.svelte'
   import KitD1Panel from './components/KitD1Panel.svelte'
+  import Version from './components/Version.svelte'
   import ToastHost from './components/ToastHost.svelte'
   import Mascot from './lib/Mascot.svelte'
   import { loadGitInfo } from './lib/gitCache'
@@ -120,6 +121,9 @@
   let optionsOpen = $state(false)
   let gitSettingsOpen = $state(false)
   let kitD1Open = $state(false)
+  // La card "Version" abre un modal GUI (lista de archivos + versión nueva) en
+  // vez de una pestaña ConPTY con un prompt de texto.
+  let versionOpen = $state(false)
   let lastError = $state('')
   let themes = $state<ThemeInfo[]>([])
   let theme = $state<ThemeInfo | null>(null)
@@ -294,7 +298,8 @@
     }
   }
 
-  // Lanza una CLI en una pestana del proyecto activo.
+  // Lanza una CLI en una pestana del proyecto activo. Cada clic abre una
+  // instancia nueva: se pueden tener varias sesiones del mismo CLI a la vez.
   async function launchVibe(tool: VibeToolInfo) {
     try {
       const t = await runTask('vibe-run-' + tool.key)
@@ -303,7 +308,7 @@
         return
       }
       lastError = ''
-      await runNamedTask(tool.title, t)
+      await runNamedTask(tool.title, t, true)
     } catch (e) {
       lastError = 'ERROR: ' + (e as Error).message
     }
@@ -983,6 +988,12 @@
         return
       }
       lastError = ''
+      // "Version" tiene panel propio: se resuelve en un modal GUI, no en una
+      // ConPTY pidiendo el número por texto.
+      if (task === 'version') {
+        versionOpen = true
+        return
+      }
       await runNamedTask(item.label, task)
     } catch (e) {
       lastError = 'ERROR: ' + (e as Error).message
@@ -1054,23 +1065,40 @@
     }
   }
 
-  async function runNamedTask(label: string, task: string) {
+  // Etiqueta unica dentro del proyecto: dos instancias del mismo CLI no pueden
+  // llamarse igual o no se distinguen en la barra de pestañas.
+  function uniqueTabLabel(base: string, project: string): string {
+    const taken = new Set(tabs.filter((t) => t.project === project).map((t) => t.label))
+    if (!taken.has(base)) return base
+    for (let n = 2; ; n++) {
+      const candidate = `${base} · ${n}`
+      if (!taken.has(candidate)) return candidate
+    }
+  }
+
+  // fresh = true crea siempre una pestaña nueva (CLIs interactivas); con false
+  // se reutiliza la pestaña de la card para tareas de build, que no tiene
+  // sentido lanzar dos veces.
+  async function runNamedTask(label: string, task: string, fresh = false) {
     // Reutiliza la pestana de esa card solo si es del MISMO proyecto; asi dos
     // proyectos con una card "Windows" no comparten terminal.
     const project = workspace.projects[workspace.active]?.path ?? ''
-    const existing = tabs.find((t) => t.label === label && t.project === project)
-    if (existing) {
-      if (existing.ptyId) {
+    if (!fresh) {
+      const existing = tabs.find((t) => t.label === label && t.project === project)
+      if (existing) {
+        if (existing.ptyId) {
+          await activate(existing.key)
+          return
+        }
         await activate(existing.key)
+        await startPty(existing, task)
         return
       }
-      await activate(existing.key)
-      await startPty(existing, task)
-      return
     }
 
     const key = ++seq
-    tabs.push({ key, label, ptyId: null, exited: false, project })
+    const tabLabel = fresh ? uniqueTabLabel(label, project) : label
+    tabs.push({ key, label: tabLabel, ptyId: null, exited: false, project })
     mountTerm(key)
     await attachTerm(key)
     await activate(key)
@@ -1106,6 +1134,52 @@
   async function closeAllTabs() {
     for (const t of [...tabs]) await closeTab(t.key)
     activeKey = null
+  }
+
+  // ── Reordenar pestañas arrastrando ────────────────────────────────────────
+  let dragKey = $state<number | null>(null)
+  let dropKey = $state<number | null>(null)
+
+  function tabDragStart(e: DragEvent, key: number) {
+    dragKey = key
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      // Sin datos, algunos motores no llegan a iniciar el arrastre.
+      e.dataTransfer.setData('text/plain', String(key))
+    }
+  }
+
+  function tabDragOver(e: DragEvent, key: number) {
+    if (dragKey === null || dragKey === key) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    dropKey = key
+  }
+
+  function tabDrop(e: DragEvent, key: number) {
+    e.preventDefault()
+    const from = dragKey
+    dragKey = null
+    dropKey = null
+    if (from !== null && from !== key) reorderTabs(from, key)
+  }
+
+  function tabDragEnd() {
+    dragKey = null
+    dropKey = null
+  }
+
+  // Mueve la pestaña arrastrada al hueco de la destino. Solo se reordenan las
+  // del proyecto visible; las de otros proyectos conservan su sitio.
+  function reorderTabs(fromKey: number, toKey: number) {
+    const order = visibleTabs.map((t) => t.key)
+    const from = order.indexOf(fromKey)
+    const to = order.indexOf(toKey)
+    if (from < 0 || to < 0) return
+    order.splice(to, 0, order.splice(from, 1)[0])
+    const byKey = new Map(tabs.map((t) => [t.key, t]))
+    let i = 0
+    tabs = tabs.map((t) => (order.includes(t.key) ? byKey.get(order[i++])! : t))
   }
 </script>
 
@@ -1194,7 +1268,7 @@
             <span class="vibe-tip" role="tooltip">
               <span class="vibe-tip-title">{tool.title}</span>
               <span class="vibe-tip-path">{tool.path}</span>
-              <span class="vibe-tip-hint">Clic para abrir en el proyecto activo</span>
+              <span class="vibe-tip-hint">Clic para abrir otra instancia en el proyecto activo</span>
             </span>
           </button>
         {/each}
@@ -1243,12 +1317,19 @@
                 <div
                   class="term-tab"
                   class:active={tab.key === activeKey}
+                  class:dragging={dragKey === tab.key}
+                  class:drop-target={dropKey === tab.key && dragKey !== tab.key}
                   role="tab"
                   tabindex="0"
-                  title={tab.project}
+                  draggable="true"
+                  title={`${tab.project} · arrastra para reordenar`}
                   aria-selected={tab.key === activeKey}
                   onclick={() => activate(tab.key)}
                   onkeydown={(e) => e.key === 'Enter' && activate(tab.key)}
+                  ondragstart={(e) => tabDragStart(e, tab.key)}
+                  ondragover={(e) => tabDragOver(e, tab.key)}
+                  ondrop={(e) => tabDrop(e, tab.key)}
+                  ondragend={tabDragEnd}
                 >
                   <span class="term-dot" class:dead={tab.exited}></span>
                   <span class="term-label">{tab.label}</span>
@@ -1419,6 +1500,10 @@
 
 {#if kitD1Open}
   <KitD1Panel onClose={() => (kitD1Open = false)} onRun={runKitD1} />
+{/if}
+
+{#if versionOpen}
+  <Version onClose={() => (versionOpen = false)} />
 {/if}
 
 {#if optionsOpen}

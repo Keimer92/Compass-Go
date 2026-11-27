@@ -100,29 +100,184 @@ var (
 func VersionBump(ctx *project.ProjectContext) error {
 	printVersionBanner()
 
+	plan, err := planVersion(ctx)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("  Tipo de proyecto: %s\n", projectTypeLabel(ctx.ProjectType))
+	fmt.Println()
+	for _, o := range plan.omitted {
+		rel, _ := filepath.Rel(ctx.ScriptDir, o)
+		fmt.Printf("  (no existe, se omite)   %s\n", rel)
+	}
+	for _, f := range plan.files {
+		rel, _ := filepath.Rel(ctx.ScriptDir, f.path)
+		cur := f.current
+		if !f.hasCurrent {
+			cur = "(sin version - se agregara)"
+		}
+		fmt.Printf("  %-34s : %s\n", rel, cur)
+	}
+	fmt.Println()
+
+	newVer := ui.AskText("Nueva version (X.Y.Z, opcional sufijo -pre/+build)", "")
+	newVer = strings.TrimSpace(newVer)
+	if newVer == "" {
+		return fmt.Errorf("version vacia")
+	}
+	if !ValidVersion(newVer) {
+		return fmt.Errorf("formato invalido. Usa X.Y.Z (ej: 1.2.3) o con sufijo (ej: 2.0.0-beta.1)")
+	}
+
+	added, gradleNotes, err := plan.Apply(newVer)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("[OK] Version actualizada a %s en %d archivo(s).\n", newVer, len(plan.files))
+	if added > 0 {
+		fmt.Printf("[OK] Se inserto el campo version en %d archivo(s) que no lo tenian.\n", added)
+	}
+	for _, n := range gradleNotes {
+		fmt.Printf("[OK] versionCode incrementado en %s\n", n)
+	}
+	fmt.Println()
+	ui.Pause()
+	return nil
+}
+
+// ValidVersion indica si s tiene el formato X.Y.Z con sufijo opcional.
+func ValidVersion(s string) bool {
+	return reNewVersion.MatchString(strings.TrimSpace(s))
+}
+
+// VersionFileInfo describe un archivo que el versionador tocaria. Es lo que
+// pinta el panel GUI antes de aplicar el cambio.
+type VersionFileInfo struct {
+	Path    string `json:"path"`
+	Current string `json:"current"`
+	Missing bool   `json:"missing"` // no tiene marcador: se insertara
+	Code    uint64 `json:"code"`    // versionCode de Gradle (0 si no aplica)
+	HasCode bool   `json:"hasCode"`
+}
+
+// VersionPlanInfo es el plan completo de un proyecto.
+type VersionPlanInfo struct {
+	Type    string            `json:"type"`
+	Files   []VersionFileInfo `json:"files"`
+	Omitted []string          `json:"omitted"`
+}
+
+// VersionResult resume lo aplicado, para el mensaje final de la GUI.
+type VersionResult struct {
+	Version string   `json:"version"`
+	Files   int      `json:"files"`
+	Added   int      `json:"added"`
+	Notes   []string `json:"notes"`
+}
+
+// VersionInfo calcula el plan sin escribir nada: lista los archivos de version
+// del proyecto y el valor actual de cada uno.
+func VersionInfo(ctx *project.ProjectContext) (VersionPlanInfo, error) {
+	plan, err := planVersion(ctx)
+	if err != nil {
+		return VersionPlanInfo{}, err
+	}
+	info := VersionPlanInfo{
+		Type:    projectTypeLabel(ctx.ProjectType),
+		Files:   make([]VersionFileInfo, 0, len(plan.files)),
+		Omitted: make([]string, 0, len(plan.omitted)),
+	}
+	for _, o := range plan.omitted {
+		if rel, err := filepath.Rel(ctx.ScriptDir, o); err == nil {
+			info.Omitted = append(info.Omitted, rel)
+		}
+	}
+	for _, f := range plan.files {
+		rel, err := filepath.Rel(ctx.ScriptDir, f.path)
+		if err != nil {
+			rel = f.path
+		}
+		info.Files = append(info.Files, VersionFileInfo{
+			Path:    rel,
+			Current: f.current,
+			Missing: !f.hasCurrent,
+			Code:    f.currentCode,
+			HasCode: f.hasCode,
+		})
+	}
+	return info, nil
+}
+
+// VersionApply valida y aplica la version nueva sin preguntar nada. Lo usa el
+// panel GUI; la tarea de terminal comparte el mismo plan y la misma escritura.
+func VersionApply(ctx *project.ProjectContext, newVer string) (VersionResult, error) {
+	newVer = strings.TrimSpace(newVer)
+	if newVer == "" {
+		return VersionResult{}, fmt.Errorf("version vacia")
+	}
+	if !ValidVersion(newVer) {
+		return VersionResult{}, fmt.Errorf("formato invalido. Usa X.Y.Z (ej: 1.2.3) o con sufijo (ej: 2.0.0-beta.1)")
+	}
+	plan, err := planVersion(ctx)
+	if err != nil {
+		return VersionResult{}, err
+	}
+	added, notes, err := plan.Apply(newVer)
+	if err != nil {
+		return VersionResult{}, err
+	}
+	return VersionResult{
+		Version: newVer,
+		Files:   len(plan.files),
+		Added:   added,
+		// En el modal las rutas absolutas no caben: se muestran relativas.
+		Notes: relVersionNotes(ctx.ScriptDir, notes),
+	}, nil
+}
+
+// relVersionNotes quita la raiz del proyecto de las notas de versionCode.
+func relVersionNotes(root string, notes []string) []string {
+	prefix := strings.TrimRight(root, `\/`) + string(filepath.Separator)
+	out := make([]string, len(notes))
+	for i, n := range notes {
+		out[i] = strings.ReplaceAll(n, prefix, "")
+	}
+	return out
+}
+
+// versionPlan es el resultado de la fase de validacion (todo-o-nada): que
+// archivos se tocarian y con que version actual.
+type versionPlan struct {
+	files   []versionFile
+	omitted []string
+}
+
+// planVersion valida el proyecto y devuelve sus archivos de version. No
+// escribe nada: si algo falta, el error sale antes de tocar disco.
+func planVersion(ctx *project.ProjectContext) (*versionPlan, error) {
 	// Go puro guarda la version en un `const version` de un archivo Go. No se
 	// puede usar go.mod: una directiva `version = "..."` rompe el build con
 	// "unknown directive: version".
 	if ctx.ProjectType == project.TypeGo {
-		return versionBumpGo(ctx)
+		return planGoVersion(ctx)
 	}
 
 	configs := versionConfigs(ctx)
-
-	// Fase de VALIDACION (todo-o-nada).
 	var files []versionFile
 	var omitted []string
 	for _, sf := range configs {
 		if !fileExists(sf.path) {
 			if sf.source == srcRequired {
-				return fmt.Errorf("no existe el archivo: %s", sf.path)
+				return nil, fmt.Errorf("no existe el archivo: %s", sf.path)
 			}
 			omitted = append(omitted, sf.path)
 			continue
 		}
 		data, err := os.ReadFile(sf.path)
 		if err != nil {
-			return fmt.Errorf("no se pudo leer %s: %w", sf.path, err)
+			return nil, fmt.Errorf("no se pudo leer %s: %w", sf.path, err)
 		}
 		text := strings.TrimPrefix(string(data), "\ufeff")
 
@@ -136,7 +291,7 @@ func VersionBump(ctx *project.ProjectContext) error {
 				// entero sincronizado. Si es fuente obligatoria, avisamos; si no,
 				// la omitimos (p. ej. build.gradle de un modulo que no aplica).
 				if sf.source == srcRequired {
-					return fmt.Errorf("no se encontro `versionCode` en: %s\n  Anadelo dentro del bloque defaultConfig.", sf.path)
+					return nil, fmt.Errorf("no se encontro `versionCode` en: %s\n  Anadelo dentro del bloque defaultConfig.", sf.path)
 				}
 				hasCur = false
 			}
@@ -161,23 +316,23 @@ func VersionBump(ctx *project.ProjectContext) error {
 		}
 
 		if sf.format == fmtPyproject {
-			return fmt.Errorf("no se encontró una versión estática dentro de `[project]` o `[tool.poetry]` en %s. Los proyectos con version dinámica deben actualizarla en su sistema de build.", sf.path)
+			return nil, fmt.Errorf("no se encontró una versión estática dentro de `[project]` o `[tool.poetry]` en %s. Los proyectos con version dinámica deben actualizarla en su sistema de build.", sf.path)
 		}
 		if sf.format == fmtYAML {
-			return fmt.Errorf("no se encontro el campo `version:` en: %s\n  Añádelo bajo `info:` y vuelve a intentarlo.", sf.path)
+			return nil, fmt.Errorf("no se encontro el campo `version:` en: %s\n  Añádelo bajo `info:` y vuelve a intentarlo.", sf.path)
 		}
 		if sf.format != fmtJSON && sf.format != fmtTOML {
-			return fmt.Errorf("no se encontro el marcador de version en: %s\n  %s", sf.path, missingHint(sf.format))
+			return nil, fmt.Errorf("no se encontro el marcador de version en: %s\n  %s", sf.path, missingHint(sf.format))
 		}
 		if sf.format == fmtTOML {
 			if !rePackage.MatchString(text) {
-				return fmt.Errorf("TOML sin version y sin seccion [package]:\n  no se puede insertar de forma segura: %s", sf.path)
+				return nil, fmt.Errorf("TOML sin version y sin seccion [package]:\n  no se puede insertar de forma segura: %s", sf.path)
 			}
 		} else {
 			if !strings.HasPrefix(strings.TrimSpace(text), "{") {
 				// Validación ligera de objeto JSON raíz.
 				if !jsonIsObject(text) {
-					return fmt.Errorf("JSON no es un objeto; no se puede insertar version de forma segura: %s", sf.path)
+					return nil, fmt.Errorf("JSON no es un objeto; no se puede insertar version de forma segura: %s", sf.path)
 				}
 			}
 		}
@@ -185,38 +340,18 @@ func VersionBump(ctx *project.ProjectContext) error {
 	}
 
 	if len(files) == 0 {
-		return fmt.Errorf("no se encontro ningun archivo de version reconocido para %s", projectTypeLabel(ctx.ProjectType))
+		return nil, fmt.Errorf("no se encontro ningun archivo de version reconocido para %s", projectTypeLabel(ctx.ProjectType))
 	}
+	return &versionPlan{files: files, omitted: omitted}, nil
+}
 
-	fmt.Printf("  Tipo de proyecto: %s\n", projectTypeLabel(ctx.ProjectType))
-	fmt.Println()
-	for _, o := range omitted {
-		rel, _ := filepath.Rel(ctx.ScriptDir, o)
-		fmt.Printf("  (no existe, se omite)   %s\n", rel)
-	}
-	for _, f := range files {
-		rel, _ := filepath.Rel(ctx.ScriptDir, f.path)
-		cur := f.current
-		if !f.hasCurrent {
-			cur = "(sin version - se agregara)"
-		}
-		fmt.Printf("  %-34s : %s\n", rel, cur)
-	}
-	fmt.Println()
-
-	newVer := ui.AskText("Nueva version (X.Y.Z, opcional sufijo -pre/+build)", "")
-	newVer = strings.TrimSpace(newVer)
-	if newVer == "" {
-		return fmt.Errorf("version vacia")
-	}
-	if !reNewVersion.MatchString(newVer) {
-		return fmt.Errorf("formato invalido. Usa X.Y.Z (ej: 1.2.3) o con sufijo (ej: 2.0.0-beta.1)")
-	}
-
+// Apply escribe la version nueva en todos los archivos del plan y devuelve
+// cuantos campos se insertaron y las notas de versionCode.
+func (p *versionPlan) Apply(newVer string) (int, []string, error) {
 	var added int
 	var gradleNotes []string
-	for i := range files {
-		f := &files[i]
+	for i := range p.files {
+		f := &p.files[i]
 		var newText string
 		if f.hasCurrent {
 			if f.format == fmtGradle {
@@ -225,7 +360,7 @@ func VersionBump(ctx *project.ProjectContext) error {
 			var err error
 			newText, err = applyFormat(f, newVer)
 			if err != nil {
-				return fmt.Errorf("%s: %w", f.path, err)
+				return added, gradleNotes, fmt.Errorf("%s: %w", f.path, err)
 			}
 		} else {
 			added++
@@ -236,7 +371,7 @@ func VersionBump(ctx *project.ProjectContext) error {
 			} else {
 				idx := strings.Index(f.text, "{")
 				if idx < 0 {
-					return fmt.Errorf("no se encontro el inicio del objeto JSON: %s", f.path)
+					return added, gradleNotes, fmt.Errorf("no se encontro el inicio del objeto JSON: %s", f.path)
 				}
 				prop := fmt.Sprintf("\"version\": \"%s\"", newVer)
 				rest := f.text[idx+1:]
@@ -248,20 +383,10 @@ func VersionBump(ctx *project.ProjectContext) error {
 			}
 		}
 		if err := os.WriteFile(f.path, []byte(newText), 0644); err != nil {
-			return fmt.Errorf("no se pudo escribir %s: %w", f.path, err)
+			return added, gradleNotes, fmt.Errorf("no se pudo escribir %s: %w", f.path, err)
 		}
 	}
-
-	fmt.Printf("[OK] Version actualizada a %s en %d archivo(s).\n", newVer, len(files))
-	if added > 0 {
-		fmt.Printf("[OK] Se inserto el campo version en %d archivo(s) que no lo tenian.\n", added)
-	}
-	for _, n := range gradleNotes {
-		fmt.Printf("[OK] versionCode incrementado en %s\n", n)
-	}
-	fmt.Println()
-	ui.Pause()
-	return nil
+	return added, gradleNotes, nil
 }
 
 func printVersionBanner() {
@@ -316,15 +441,15 @@ func goPackageFromModule(root string) string {
 	return "main"
 }
 
-// versionBumpGo actualiza `const version = "x.y.z"` en un archivo Go de la
-// raiz. Si no existe el archivo o no tiene el const, lo crea/inserta.
-func versionBumpGo(ctx *project.ProjectContext) error {
+// planGoVersion prepara el archivo Go que guarda `const version`. Si no existe
+// el archivo, se parte de un `package` valido y Apply inserta el const.
+func planGoVersion(ctx *project.ProjectContext) (*versionPlan, error) {
 	path := goVersionFile(ctx.ScriptDir)
 	var text string
 	if fileExists(path) {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("no se pudo leer %s: %w", path, err)
+			return nil, fmt.Errorf("no se pudo leer %s: %w", path, err)
 		}
 		text = strings.TrimPrefix(string(data), "\ufeff")
 	} else {
@@ -332,34 +457,13 @@ func versionBumpGo(ctx *project.ProjectContext) error {
 	}
 
 	cur, hasCur := detectVersion(fmtGoConst, text)
-
-	fmt.Printf("  Tipo de proyecto: GO\n\n")
-	rel, _ := filepath.Rel(ctx.ScriptDir, path)
-	shown := cur
-	if !hasCur {
-		shown = "(sin version - se agregara)"
-	}
-	fmt.Printf("  %-34s : %s\n", rel, shown)
-	fmt.Println()
-
-	newVer := ui.AskText("Nueva version (X.Y.Z, opcional sufijo -pre/+build)", "")
-	newVer = strings.TrimSpace(newVer)
-	if newVer == "" {
-		return fmt.Errorf("version vacia")
-	}
-	if !reNewVersion.MatchString(newVer) {
-		return fmt.Errorf("formato invalido. Usa X.Y.Z (ej: 1.2.3) o con sufijo (ej: 2.0.0-beta.1)")
-	}
-
-	newText := applyGoVersion(text, hasCur, newVer)
-	if err := os.WriteFile(path, []byte(newText), 0644); err != nil {
-		return fmt.Errorf("no se pudo escribir %s: %w", path, err)
-	}
-
-	fmt.Printf("[OK] Version actualizada a %s en %s.\n", newVer, rel)
-	fmt.Println()
-	ui.Pause()
-	return nil
+	return &versionPlan{files: []versionFile{{
+		path:       path,
+		format:     fmtGoConst,
+		current:    cur,
+		hasCurrent: hasCur,
+		text:       text,
+	}}}, nil
 }
 
 // applyGoVersion reemplaza el `const version` existente o lo inserta en un

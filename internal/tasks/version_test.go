@@ -195,3 +195,85 @@ func TestGoVersionFileAndPackage(t *testing.T) {
 		t.Errorf("con main.go queria main.go, got %s", filepath.Base(got))
 	}
 }
+
+// La GUI pide el plan sin escribir nada y luego aplica: ambos pasos deben
+// describir y tocar los mismos archivos que la tarea de terminal.
+func TestVersionInfoAndApplyFlutter(t *testing.T) {
+	root := t.TempDir()
+	pubspec := "name: demo\nversion: 1.0.0+3\n"
+	if err := os.WriteFile(filepath.Join(root, "pubspec.yaml"), []byte(pubspec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter}
+
+	info, err := VersionInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Files) != 1 || info.Files[0].Path != "pubspec.yaml" || info.Files[0].Current != "1.0.0+3" {
+		t.Fatalf("plan inesperado: %+v", info)
+	}
+	if info.Files[0].Missing {
+		t.Fatal("pubspec no deberia marcarse como faltante")
+	}
+	// VersionInfo no escribe.
+	if data, _ := os.ReadFile(filepath.Join(root, "pubspec.yaml")); string(data) != pubspec {
+		t.Fatalf("VersionInfo modifico el archivo: %q", data)
+	}
+
+	res, err := VersionApply(ctx, "2.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Version != "2.0.0" || res.Files != 1 {
+		t.Fatalf("resultado inesperado: %+v", res)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "pubspec.yaml"))
+	if !strings.Contains(string(data), "version: 2.0.0+4") {
+		t.Fatalf("pubspec no actualizado con build incrementado: %q", data)
+	}
+}
+
+func TestVersionApplyRejectsBadFormat(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "pubspec.yaml"), []byte("version: 1.0.0+1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeFlutter}
+	if _, err := VersionApply(ctx, "2.0"); err == nil {
+		t.Fatal("se acepto una version con formato invalido")
+	}
+	if _, err := VersionApply(ctx, "  "); err == nil {
+		t.Fatal("se acepto una version vacia")
+	}
+}
+
+// En Go puro el plan apunta a main.go y la GUI puede crear el const cuando no
+// existe, sin dejar codigo invalido.
+func TestVersionApplyGoInsertsConst(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module demo/app\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"x\") }\n"
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGo}
+
+	info, err := VersionInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Files) != 1 || !info.Files[0].Missing {
+		t.Fatalf("plan inesperado: %+v", info)
+	}
+	if _, err := VersionApply(ctx, "0.4.0"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "main.go"))
+	assertValidGo(t, string(data))
+	if !strings.Contains(string(data), `const version = "0.4.0"`) {
+		t.Fatalf("no se inserto el const: %q", data)
+	}
+}
