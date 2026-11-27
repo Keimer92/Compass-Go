@@ -1135,40 +1135,42 @@
             <span class="dot" style="background:{colors[i % colors.length]}"></span>
             <span class="pname">{p.name}</span>
           </button>
-          {#if kitBadges[p.path]?.whatsapp}
-            <span
-              class="project-kit wa"
-              title="Consume el motor de WhatsApp (Kit Whatsapp)"
-              aria-label="Usa Kit Whatsapp"
-            >WA</span>
-          {/if}
-          {#if kitBadges[p.path]?.d1}
-            <span
-              class="project-kit d1"
-              title="Consume Kit D1 (módulo syncengine o D1 de Flutter)"
-              aria-label="Usa Kit D1"
-            >D1</span>
-          {/if}
-          <button
-            class="project-repo"
-            class:github={repoBadges[p.path]?.isGitHub}
-            title={repoBadges[p.path]?.webUrl ? `Abrir ${repoBadges[p.path].webUrl}` : (repoBadges[p.path]?.remoteUrl || 'Solo local, sin repositorio remoto')}
-            aria-label="Estado del repositorio"
-            onclick={(e) => {
-              e.stopPropagation()
-              if (repoBadges[p.path]?.webUrl) openExternal(repoBadges[p.path].webUrl).catch(() => {})
-            }}
-          >{repoBadges[p.path]?.isGitHub ? 'GitHub' : repoBadges[p.path]?.isRepo ? 'Remoto' : 'Local'}</button>
-          <button
-            class="project-auto"
-            class:on={autoStates[p.path]?.enabled}
-            disabled={autoStates[p.path]?.busy}
-            aria-pressed={!!autoStates[p.path]?.enabled}
-            title={autoStates[p.path]?.enabled ? 'Auto-commit activo: desactivar' : 'Activar auto-commit al estar inactivo'}
-            aria-label="Auto-commit"
-            onclick={(e) => { e.stopPropagation(); toggleAutoFor(p.path) }}
-          >Auto</button>
           <button class="project-close" onclick={() => dropProject(i)} aria-label="Cerrar proyecto" title="Cerrar proyecto">×</button>
+          <div class="project-chips">
+            {#if kitBadges[p.path]?.whatsapp}
+              <span
+                class="project-kit wa"
+                title="Consume el motor de WhatsApp (Kit Whatsapp)"
+                aria-label="Usa Kit Whatsapp"
+              >WA</span>
+            {/if}
+            {#if kitBadges[p.path]?.d1}
+              <span
+                class="project-kit d1"
+                title="Consume Kit D1 (módulo syncengine o D1 de Flutter)"
+                aria-label="Usa Kit D1"
+              >D1</span>
+            {/if}
+            <button
+              class="project-repo"
+              class:github={repoBadges[p.path]?.isGitHub}
+              title={repoBadges[p.path]?.webUrl ? `Abrir ${repoBadges[p.path].webUrl}` : (repoBadges[p.path]?.remoteUrl || 'Solo local, sin repositorio remoto')}
+              aria-label="Estado del repositorio"
+              onclick={(e) => {
+                e.stopPropagation()
+                if (repoBadges[p.path]?.webUrl) openExternal(repoBadges[p.path].webUrl).catch(() => {})
+              }}
+            >{repoBadges[p.path]?.isGitHub ? 'GitHub' : repoBadges[p.path]?.isRepo ? 'Remoto' : 'Local'}</button>
+            <button
+              class="project-auto"
+              class:on={autoStates[p.path]?.enabled}
+              disabled={autoStates[p.path]?.busy}
+              aria-pressed={!!autoStates[p.path]?.enabled}
+              title={autoStates[p.path]?.enabled ? 'Auto-commit activo: desactivar' : 'Activar auto-commit al estar inactivo'}
+              aria-label="Auto-commit"
+              onclick={(e) => { e.stopPropagation(); toggleAutoFor(p.path) }}
+            >Auto</button>
+          </div>
         </div>
       {/each}
     </div>
