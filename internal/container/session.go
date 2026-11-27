@@ -9,7 +9,6 @@ package container
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -78,7 +77,7 @@ func SpawnTap(script, dir string, rows, cols int, sb *Scrollback, tap func([]byt
 
 	cmd := p.Command(shellExe(), "-NoLogo", "-NoProfile", "-Command", script)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "COMPASS_EMBEDDED=1")
+	cmd.Env = append(shell.Environ(), "COMPASS_EMBEDDED=1")
 
 	if err := cmd.Start(); err != nil {
 		_ = p.Close()

@@ -122,11 +122,17 @@ func RunPSInDirStatus(script string, dir string) error {
 	return nil
 }
 
+// Environ devuelve el entorno del proceso listo para un hijo: igual que
+// os.Environ() pero sin un JAVA_HOME que apunte a un JDK inexistente.
+func Environ() []string {
+	return dropBrokenJavaHome(os.Environ())
+}
+
 // mergeEnv devuelve el entorno del proceso con las variables de envs
 // aplicadas. Hay que partir de os.Environ(): un Cmd con Env no nulo deja de
 // heredar PATH, SystemRoot, TEMP y todo lo demas.
 func mergeEnv(envs map[string]string) []string {
-	env := os.Environ()
+	env := Environ()
 	for k, v := range envs {
 		prefix := k + "="
 		filtered := env[:0]
@@ -139,6 +145,41 @@ func mergeEnv(envs map[string]string) []string {
 		env = append(filtered, prefix+v)
 	}
 	return env
+}
+
+var javaHomeWarn sync.Once
+
+// dropBrokenJavaHome quita JAVA_HOME del entorno si apunta a una carpeta sin
+// bin/java(.exe). Es el caso tipico de un JDK desinstalado o movido: Gradle
+// aborta con "JAVA_HOME is set to an invalid directory" y Flutter no compila,
+// aunque el PATH tenga un Java perfectamente valido. Al descartarla, los hijos
+// resuelven java por PATH y el build sigue.
+func dropBrokenJavaHome(env []string) []string {
+	out := env[:0]
+	for _, kv := range env {
+		if len(kv) > len("JAVA_HOME=") && strings.EqualFold(kv[:len("JAVA_HOME=")], "JAVA_HOME=") {
+			dir := strings.TrimSpace(strings.Trim(kv[len("JAVA_HOME="):], `"`))
+			if dir != "" && !javaHomeUsable(dir) {
+				javaHomeWarn.Do(func() {
+					fmt.Printf("[WARN] JAVA_HOME apunta a %s, que no tiene bin\\java.exe. "+
+						"Se ignora y se usa el java del PATH.\n", dir)
+				})
+				continue
+			}
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// javaHomeUsable indica si dir parece un JDK/JRE con el ejecutable de Java.
+func javaHomeUsable(dir string) bool {
+	for _, name := range []string{"java.exe", "java"} {
+		if fi, err := os.Stat(filepath.Join(dir, "bin", name)); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // RunPSStatus ejecuta un script en dir con entorno extra; devuelve si tuvo exito.
