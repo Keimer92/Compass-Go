@@ -7,9 +7,11 @@
 package webui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +29,15 @@ const (
 	kitD1Env    = "COMPASS_KIT_D1"
 )
 
+// Regexes para leer el bloque [[d1_databases]] del wrangler.toml de una
+// instancia. reD1Block captura el contenido hasta el siguiente encabezado de
+// tabla, porque el marcador [[d1_databases]] puede venir pegado al valor previo.
+var (
+	reD1Block = regexp.MustCompile(`(?s)\[\[d1_databases\]\](.*?)(?:\[\[|\z)`)
+	reD1Name  = regexp.MustCompile(`(?m)^\s*database_name\s*=\s*"([^"]+)"`)
+	reD1ID    = regexp.MustCompile(`(?m)^\s*database_id\s*=\s*"([^"]+)"`)
+)
+
 // KitD1Instance describe una instancia del worker (worker/instances/<nombre>).
 type KitD1Instance struct {
 	Name       string   `json:"name"`
@@ -38,6 +49,38 @@ type KitD1Instance struct {
 	HasSchema  bool     `json:"hasSchema"`
 	HasKeys    bool     `json:"hasKeys"`
 	Scripts    []string `json:"scripts"`
+	// Base D1 declarada en el wrangler.toml de la instancia.
+	DatabaseName string `json:"databaseName"`
+	DatabaseID   string `json:"databaseId"`
+}
+
+// KitD1Database es una base D1 de Cloudflare con sus métricas de las últimas
+// 24 h (las mismas que muestra el dashboard) y la instancia local que la usa.
+type KitD1Database struct {
+	Name      string `json:"name"`
+	ID        string `json:"id"`
+	CreatedAt string `json:"createdAt"`
+	NumTables int    `json:"numTables"`
+	FileSize  int64  `json:"fileSize"`
+	// Instance/Worker identifican el worker local que apunta a esta base.
+	Instance string `json:"instance"`
+	Worker   string `json:"worker"`
+	// Missing marca una base declarada por una instancia pero inexistente en la
+	// cuenta de Cloudflare (tipico de un worker ya retirado).
+	Missing bool `json:"missing"`
+	// Analytics indica si las metricas de 24 h llegaron de Cloudflare.
+	Analytics    bool  `json:"analytics"`
+	ReadQueries  int64 `json:"readQueries"`
+	WriteQueries int64 `json:"writeQueries"`
+	RowsRead     int64 `json:"rowsRead"`
+	RowsWritten  int64 `json:"rowsWritten"`
+}
+
+// KitD1Databases es el estado del panel de bases D1.
+type KitD1Databases struct {
+	Account   string          `json:"account"`
+	Databases []KitD1Database `json:"databases"`
+	Error     string          `json:"error"`
 }
 
 // KitD1Consumer es un proyecto que consume el módulo o el worker del kit.
@@ -229,9 +272,28 @@ func wranglerWhoami(dir string, timeout time.Duration) string {
 
 // whoamiWithCommand separa el comando para poder probar el plazo sin red.
 func whoamiWithCommand(dir, command string, timeout time.Duration) string {
+	text, runErr, timedOut := runWranglerCapture(dir, command, timeout)
+	if timedOut {
+		return "Wrangler tardó demasiado en responder"
+	}
+	if runErr != nil && text == "" {
+		return "Sin sesión de Wrangler (ejecuta Wrangler login)"
+	}
+	if text == "" {
+		return "Sin sesión de Wrangler"
+	}
+	return text
+}
+
+// runWranglerCapture ejecuta un comando en dir con la salida (stdout y stderr)
+// en un archivo temporal. Con CombinedOutput en Windows se cuelga: al vencer el
+// plazo Go mata cmd.exe, pero el node.exe nieto hereda el pipe y el lector
+// nunca ve EOF. Con un archivo, Run vuelve en cuanto termina el proceso.
+// --yes, CI=1 y el stdin nulo evitan que npx espere una confirmación.
+func runWranglerCapture(dir, command string, timeout time.Duration) (string, error, bool) {
 	f, err := os.CreateTemp("", "compass-wrangler-*.txt")
 	if err != nil {
-		return "No se pudo consultar Wrangler: " + err.Error()
+		return "", err, false
 	}
 	name := f.Name()
 	defer os.Remove(name)
@@ -253,17 +315,245 @@ func whoamiWithCommand(dir, command string, timeout time.Duration) string {
 	timedOut := ctx.Err() != nil
 
 	out, _ := os.ReadFile(name)
-	text := strings.TrimSpace(string(out))
-	if timedOut {
-		return "Wrangler tardó demasiado en responder"
+	return strings.TrimSpace(string(out)), runErr, timedOut
+}
+
+// kitD1WranglerDir elige la carpeta desde la que correr Wrangler: una instancia
+// con package.json (ahi estan las dependencias) o la raiz del kit.
+func kitD1WranglerDir(root string) string {
+	for _, ins := range kitD1Instances(root) {
+		if ins.HasPackage {
+			return filepath.Join(root, "worker", "instances", ins.Name)
+		}
 	}
-	if runErr != nil && text == "" {
-		return "Sin sesión de Wrangler (ejecuta Wrangler login)"
+	return root
+}
+
+// KitD1Databases lista las bases D1 de la cuenta con el tamaño, las tablas y
+// las métricas de 24 h que muestra el dashboard de Cloudflare, cruzadas con las
+// instancias locales que las usan. Es una llamada de red: el panel la pide
+// aparte para no bloquear el resto del estado.
+func (b *Bridge) KitD1Databases() KitD1Databases {
+	root := b.kitD1Root()
+	out := KitD1Databases{Databases: []KitD1Database{}}
+	if root == "" {
+		out.Error = "Kit D1 no encontrado"
+		return out
 	}
-	if text == "" {
-		return "Sin sesión de Wrangler"
+	dir := kitD1WranglerDir(root)
+
+	// 1) Cuenta activa (la misma que usa Wrangler) para las métricas.
+	account := strings.TrimSpace(os.Getenv("CLOUDFLARE_ACCOUNT_ID"))
+	if account == "" {
+		if text, err, timedOut := runWranglerCapture(dir, "npx --yes wrangler whoami --json", 25*time.Second); err == nil && !timedOut {
+			var who struct {
+				Accounts []struct {
+					ID string `json:"id"`
+				} `json:"accounts"`
+			}
+			if decodeFirstJSON(text, &who) == nil && len(who.Accounts) > 0 {
+				account = who.Accounts[0].ID
+			}
+		}
 	}
-	return text
+	out.Account = account
+
+	// 2) Bases de la cuenta.
+	cloud := []KitD1Database{}
+	text, err, timedOut := runWranglerCapture(dir, "npx --yes wrangler d1 list --json", 30*time.Second)
+	switch {
+	case timedOut:
+		out.Error = "Wrangler tardó demasiado al listar las bases"
+	case err != nil && strings.TrimSpace(text) == "":
+		out.Error = "Sin sesión de Wrangler (ejecuta Wrangler login)"
+	default:
+		var rows []struct {
+			UUID      string `json:"uuid"`
+			Name      string `json:"name"`
+			CreatedAt string `json:"created_at"`
+			NumTables int    `json:"num_tables"`
+			FileSize  int64  `json:"file_size"`
+		}
+		if e := decodeFirstJSON(text, &rows); e != nil {
+			out.Error = "No se pudo leer la lista de bases de Wrangler"
+		} else {
+			for _, r := range rows {
+				cloud = append(cloud, KitD1Database{
+					Name: r.Name, ID: r.UUID, CreatedAt: r.CreatedAt,
+					NumTables: r.NumTables, FileSize: r.FileSize,
+				})
+			}
+		}
+	}
+
+	// 3) Métricas de 24 h (GraphQL). Si falla, se muestran solo tamaño/tablas.
+	stats := d1Analytics(cloudflareToken(), account)
+
+	instances := kitD1Instances(root)
+	byID := map[string]KitD1Instance{}
+	for _, ins := range instances {
+		if ins.DatabaseID != "" {
+			byID[strings.ToLower(ins.DatabaseID)] = ins
+		}
+	}
+	seen := map[string]bool{}
+	for _, db := range cloud {
+		key := strings.ToLower(db.ID)
+		seen[key] = true
+		if ins, ok := byID[key]; ok {
+			db.Instance, db.Worker = ins.Name, ins.WorkerName
+		}
+		if st, ok := stats[key]; ok {
+			db.Analytics = true
+			db.ReadQueries, db.WriteQueries = st.ReadQueries, st.WriteQueries
+			db.RowsRead, db.RowsWritten = st.RowsRead, st.RowsWritten
+		}
+		out.Databases = append(out.Databases, db)
+	}
+	// Bases declaradas por una instancia local que ya no existen en la cuenta:
+	// se listan marcadas para poder limpiar el worker que las apunta.
+	for _, ins := range instances {
+		key := strings.ToLower(ins.DatabaseID)
+		if ins.DatabaseID == "" || seen[key] {
+			continue
+		}
+		out.Databases = append(out.Databases, KitD1Database{
+			Name: ins.DatabaseName, ID: ins.DatabaseID,
+			Instance: ins.Name, Worker: ins.WorkerName, Missing: true,
+		})
+	}
+	sort.Slice(out.Databases, func(i, j int) bool { return out.Databases[i].Name < out.Databases[j].Name })
+	return out
+}
+
+// d1Stats son los contadores de 24 h de una base.
+type d1Stats struct {
+	ReadQueries  int64
+	WriteQueries int64
+	RowsRead     int64
+	RowsWritten  int64
+}
+
+// d1Analytics consulta la API GraphQL de Cloudflare con el token de Wrangler.
+// Es la misma fuente que usa el dashboard para "Queries", "Rows read" y
+// "Rows written" de las últimas 24 h.
+func d1Analytics(token, account string) map[string]d1Stats {
+	if strings.TrimSpace(token) == "" || strings.TrimSpace(account) == "" {
+		return nil
+	}
+	const query = `query($acc:String!,$since:Time!){viewer{accounts(filter:{accountTag:$acc}){` +
+		`d1AnalyticsAdaptiveGroups(limit:100,filter:{datetime_geq:$since}){` +
+		`dimensions{databaseId}sum{readQueries writeQueries rowsRead rowsWritten}}}}}`
+	body, err := json.Marshal(map[string]any{
+		"query": query,
+		"variables": map[string]string{
+			"acc":   account,
+			"since": time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		return nil
+	}
+	req, err := http.NewRequest(http.MethodPost,
+		"https://api.cloudflare.com/client/v4/graphql", bytes.NewReader(body))
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var parsed struct {
+		Data struct {
+			Viewer struct {
+				Accounts []struct {
+					Groups []struct {
+						Dimensions struct {
+							DatabaseID string `json:"databaseId"`
+						} `json:"dimensions"`
+						Sum struct {
+							ReadQueries  float64 `json:"readQueries"`
+							WriteQueries float64 `json:"writeQueries"`
+							RowsRead     float64 `json:"rowsRead"`
+							RowsWritten  float64 `json:"rowsWritten"`
+						} `json:"sum"`
+					} `json:"d1AnalyticsAdaptiveGroups"`
+				} `json:"accounts"`
+			} `json:"viewer"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil
+	}
+	out := map[string]d1Stats{}
+	for _, acc := range parsed.Data.Viewer.Accounts {
+		for _, g := range acc.Groups {
+			if g.Dimensions.DatabaseID == "" {
+				continue
+			}
+			out[strings.ToLower(g.Dimensions.DatabaseID)] = d1Stats{
+				ReadQueries:  int64(g.Sum.ReadQueries),
+				WriteQueries: int64(g.Sum.WriteQueries),
+				RowsRead:     int64(g.Sum.RowsRead),
+				RowsWritten:  int64(g.Sum.RowsWritten),
+			}
+		}
+	}
+	return out
+}
+
+// cloudflareToken devuelve el token para la API: primero CLOUDFLARE_API_TOKEN
+// (CI/automatizacion) y si no el que guarda Wrangler al hacer login. Nunca sale
+// del proceso: solo se usa para la consulta GraphQL.
+func cloudflareToken() string {
+	if t := strings.TrimSpace(os.Getenv("CLOUDFLARE_API_TOKEN")); t != "" {
+		return t
+	}
+	var paths []string
+	if a := strings.TrimSpace(os.Getenv("APPDATA")); a != "" {
+		// Wrangler mapea %APPDATA% a XDG_CONFIG_HOME en Windows.
+		paths = append(paths, filepath.Join(a, "xdg.config", ".wrangler", "config", "default.toml"))
+	}
+	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
+		paths = append(paths, filepath.Join(x, ".wrangler", "config", "default.toml"))
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(h, ".config", ".wrangler", "config", "default.toml"))
+	}
+	re := regexp.MustCompile(`(?m)^oauth_token\s*=\s*"([^"]+)"`)
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		if m := re.FindSubmatch(data); len(m) == 2 {
+			return string(m[1])
+		}
+	}
+	return ""
+}
+
+// decodeFirstJSON decodifica el primer valor JSON del texto. Wrangler mezcla
+// avisos en el mismo flujo que el --json, asi que no se puede decodificar el
+// archivo entero.
+func decodeFirstJSON(text string, v any) error {
+	for i := 0; i < len(text); i++ {
+		if text[i] != '{' && text[i] != '[' {
+			continue
+		}
+		dec := json.NewDecoder(strings.NewReader(text[i:]))
+		if err := dec.Decode(v); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("no se encontro JSON en la salida")
 }
 
 // KitD1Actions devuelve el catálogo de acciones para dibujar los botones.
@@ -386,6 +676,17 @@ func kitD1Instances(root string) []KitD1Instance {
 		if b, err := os.ReadFile(filepath.Join(dir, "wrangler.toml")); err == nil {
 			if m := regexp.MustCompile(`(?m)^name\s*=\s*"([^"]+)"`).FindSubmatch(b); len(m) == 2 {
 				ins.WorkerName = string(m[1])
+			}
+			// Base D1 declarada por la instancia. El encabezado [[d1_databases]]
+			// no siempre empieza linea: algunos wrangler.toml lo pegan al valor
+			// anterior, asi que se busca el bloque y se lee dentro de el.
+			if blk := reD1Block.FindSubmatch(b); len(blk) == 2 {
+				if m := reD1Name.FindSubmatch(blk[1]); len(m) == 2 {
+					ins.DatabaseName = string(m[1])
+				}
+				if m := reD1ID.FindSubmatch(blk[1]); len(m) == 2 {
+					ins.DatabaseID = string(m[1])
+				}
 			}
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, "sync-project.json")); err == nil {
