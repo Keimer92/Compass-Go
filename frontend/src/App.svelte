@@ -8,7 +8,7 @@
     closeTerminal, focusWindow, getDebug, getThemes, getTheme, setTheme, getSettings, setSettings,
     subcards, onWorkspaceChanged, pickProject as pickProjectDialog, listTerminals,
     listCleanupCandidates, purgeCleanupCandidates, getSoundCatalog, previewSound,
-    getVibeTools, setReleasePortable, projectRepos, onAutoCommit, onGitChanged,
+    getVibeTools, setReleasePortable, projectRepos, projectKits, onAutoCommit, onGitChanged,
     autoCommitStatusFor, setAutoCommitFor, openExternal,
   } from './lib/bridge'
   import { notifyRepoChanged } from './lib/repoChanged'
@@ -25,7 +25,7 @@
   import { warmExplorer, warmLog } from './lib/panelCache'
   import { pushToast } from './lib/toast.svelte'
   import { initTaskProgress } from './lib/gitTaskStore.svelte'
-  import type { ProjectInfo, ProjectRepo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, AutoCommitState, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo, VibeToolInfo } from './lib/bridge'
+  import type { ProjectInfo, ProjectRepo, ProjectKitInfo, MenuItemInfo, WorkspaceInfo, ThemeInfo, Settings, AutoCommitState, Subcard, TerminalInfo, CleanupTarget, CleanupPurgeResult, SoundCatalog, SoundEventInfo, VibeToolInfo } from './lib/bridge'
 
   interface Tab {
     key: number
@@ -39,6 +39,7 @@
   // Insignias de repo y estado de auto-commit por proyecto: las cards viven
   // acá, así que el estado no se pierde al cambiar de pestaña lateral.
   let repoBadges = $state<Record<string, ProjectRepo>>({})
+  let kitBadges = $state<Record<string, ProjectKitInfo>>({})
   let autoStates = $state<Record<string, AutoCommitState>>({})
   const changeToastAt = new Map<string, number>()
   let autoPoll: ReturnType<typeof setInterval> | undefined
@@ -53,6 +54,17 @@
     try {
       const list = await projectRepos()
       for (const r of list) repoBadges[r.path] = r
+    } catch {
+      // Sin workspace no hay insignias; no interrumpe el arranque.
+    }
+  }
+
+  // Insignias de core kits (WhatsApp / Kit D1) por proyecto. La deteccion vive
+  // en Go; aqui solo se cachea el resultado para no repetirla en cada repintado.
+  async function loadKitBadges() {
+    try {
+      const list = await projectKits()
+      for (const k of list) kitBadges[k.path] = k
     } catch {
       // Sin workspace no hay insignias; no interrumpe el arranque.
     }
@@ -457,6 +469,7 @@
     onWorkspaceChanged(() => {
       refresh()
       loadRepoBadges()
+      loadKitBadges()
       loadAutoStates()
       notifyRepoChanged()
     })
@@ -465,6 +478,7 @@
     // proyecto activo para decidir cual queda seleccionada.
     refresh().then(restoreTerminals).catch(() => {})
     loadRepoBadges()
+    loadKitBadges()
     loadAutoStates()
     autoPoll = setInterval(loadAutoStates, 15_000)
     return () => {
@@ -1121,6 +1135,20 @@
             <span class="dot" style="background:{colors[i % colors.length]}"></span>
             <span class="pname">{p.name}</span>
           </button>
+          {#if kitBadges[p.path]?.whatsapp}
+            <span
+              class="project-kit wa"
+              title="Consume el motor de WhatsApp (Kit Whatsapp)"
+              aria-label="Usa Kit Whatsapp"
+            >WA</span>
+          {/if}
+          {#if kitBadges[p.path]?.d1}
+            <span
+              class="project-kit d1"
+              title="Consume Kit D1 (módulo syncengine o D1 de Flutter)"
+              aria-label="Usa Kit D1"
+            >D1</span>
+          {/if}
           <button
             class="project-repo"
             class:github={repoBadges[p.path]?.isGitHub}

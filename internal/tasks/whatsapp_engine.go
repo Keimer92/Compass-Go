@@ -80,6 +80,23 @@ func projectUsesWhatsappEngine(ctx *project.ProjectContext) bool {
 	return projectImportsWhatsapp(ctx.ScriptDir)
 }
 
+// ProjectUsesWhatsappEngineAt indica si el proyecto en dir consume el motor de
+// WhatsApp. Es la versión exportada que usa la tarjeta del sidebar para pintar
+// su insignia: construye el contexto mínimo sin depender del cwd.
+func ProjectUsesWhatsappEngineAt(dir string) bool {
+	pt, ok := project.ClassifyDir(dir)
+	if !ok || pt.IsKit() {
+		// Un kit abierto como proyecto no "consume" el motor: lo es.
+		return false
+	}
+	ctx := &project.ProjectContext{
+		ScriptDir:         dir,
+		ProjectType:       pt,
+		HasWhatsAppEngine: fileExists(filepath.Join(pt.WhatsappPath(dir), "engine.js")),
+	}
+	return projectUsesWhatsappEngine(ctx)
+}
+
 // flutterUsesWhatsappEngine detecta que un proyecto Flutter depende del motor
 // aunque la carpeta whatsapp_engine ya no esté en el proyecto (ahora vive en el
 // corekit de Compass): lo delata la regla install() del CMakeLists de Windows

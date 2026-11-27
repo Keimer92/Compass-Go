@@ -212,3 +212,56 @@ func TestKitD1CandidatesExePrimero(t *testing.T) {
 		t.Fatalf("la copia del exe (%d) debe ir antes que la del proyecto (%d)", idxExe, idxProj)
 	}
 }
+
+// TestProjectKitsInsignias comprueba la deteccion que alimenta las insignias de
+// la tarjeta: modulo Go del kit o servicio D1 de Flutter, y marcador del motor
+// de WhatsApp.
+func TestProjectKitsInsignias(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv(kitD1Env, "")
+
+	goConsumer := t.TempDir()
+	if err := os.WriteFile(filepath.Join(goConsumer, "go.mod"),
+		[]byte("module demo\n\nrequire github.com/Keimer92/Compass-Go/Kit-D1/go/syncengine v0.1.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goConsumer, "use-whatsapp-engine"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	flutterConsumer := t.TempDir()
+	if err := os.WriteFile(filepath.Join(flutterConsumer, "pubspec.yaml"), []byte("name: demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(flutterConsumer, "lib", "services"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(flutterConsumer, "lib", "services", "d1_sync.dart"), []byte("// d1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plain := t.TempDir()
+	if err := os.WriteFile(filepath.Join(plain, "go.mod"), []byte("module plano\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	b := &Bridge{ws: &workspace.Workspace{Projects: []*workspace.Project{
+		{Path: goConsumer}, {Path: flutterConsumer}, {Path: plain}, nil,
+	}}}
+	got := map[string]ProjectKitInfo{}
+	for _, k := range b.ProjectKits() {
+		got[k.Path] = k
+	}
+	if k := got[goConsumer]; !k.Whatsapp || !k.D1 {
+		t.Fatalf("consumidor Go mal detectado: %+v", k)
+	}
+	if k := got[flutterConsumer]; k.Whatsapp || !k.D1 {
+		t.Fatalf("consumidor Flutter mal detectado: %+v", k)
+	}
+	if k := got[plain]; k.Whatsapp || k.D1 {
+		t.Fatalf("proyecto sin kits marcado: %+v", k)
+	}
+	if len(got) != 3 {
+		t.Fatalf("se esperaban 3 proyectos, hubo %d", len(got))
+	}
+}

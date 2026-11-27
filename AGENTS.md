@@ -512,6 +512,13 @@ además se administra desde un panel propio.
 | **WhatsApp** | `Kit Whatsapp/` | motor de envíos Baileys compartido (Go/Wails, Flutter, Kotlin) | etapado automático en cada release de Windows |
 | **D1** | `Kit-D1/` | stack de sincronización Cloudflare D1 (módulo Go + Worker) | panel "Kit D1" del sidebar |
 
+- **Insignias en la tarjeta del proyecto**: `Bridge.ProjectKits()`
+  (`internal/webui/projectkits.go`) devuelve `{path, whatsapp, d1}` por proyecto
+  y `App.svelte` pinta `WA` (verde) y `D1` (violeta) junto a las de repo y
+  "Auto". WhatsApp usa `tasks.ProjectUsesWhatsappEngineAt` (misma detección que
+  el staging); D1 mira `go.mod` (módulo `syncengine`) o `lib/services/d1_sync.dart`
+  (Flutter). Un kit abierto como proyecto no se marca a sí mismo.
+
 ### Kit WhatsApp
 
 - `Kit Whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,

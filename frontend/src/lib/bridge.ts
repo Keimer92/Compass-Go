@@ -19,6 +19,9 @@ export interface ProjectRepo {
   remoteUrl: string
 }
 export const projectRepos = () => call<ProjectRepo[]>(M('ProjectRepos'))
+// Core kits que consume cada proyecto (insignias de su tarjeta).
+export interface ProjectKitInfo { path: string; whatsapp: boolean; d1: boolean }
+export const projectKits = () => call<ProjectKitInfo[]>(M('ProjectKits'))
 
 const call = <T>(method: string, ...args: any[]): Promise<T> =>
   Call.ByName(method, ...args) as unknown as Promise<T>
