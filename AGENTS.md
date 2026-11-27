@@ -535,6 +535,14 @@ además se administra desde un panel propio.
   GymPro lo consume con un shim de 60 líneas en `internal/whatsapp` y
   `models.WhatsappStatus` es un alias de `whatsapp.Status`. Flutter sigue con
   su adaptador Dart sobre el mismo protocolo (ver más abajo).
+- **Sidecar para Flutter** (`Kit-Whatsapp/go/whatsapp/cmd/host`): binario
+  `whatsapp-host.exe` que resuelve Node y el bundle con la misma lógica que los
+  proyectos Go y reenvía stdin/stdout/stderr sin interpretar el protocolo. Se
+  compila en `dist.bat` (así el binario instalado no necesita Go) y, si falta,
+  al etajar (queda cacheado en `Kit-Whatsapp/host/`, gitignored). El staging lo
+  copia junto a `index.js` y la regla `install()` del CMakeLists ya lo empaqueta.
+  El servicio Dart lo prefiere y solo cae a `node` directo si no existe. Usa un
+  job object de Windows para no dejar el motor huérfano si la app muere.
 - **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
   2. `<dir del exe>/Kit-Whatsapp` (instalación / binario compilado);

@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -337,6 +338,35 @@ func ensureWhatsappSingleBundle(src string) bool {
 	return fileExists(indexJs)
 }
 
+// ensureWhatsappHost devuelve la ruta de whatsapp-host.exe, el sidecar que
+// lanzan las apps que no pueden enlazar Go (Flutter). Si el kit no trae el
+// binario se compila con Go y se cachea en <kit>/host/. Devuelve "" si no hay
+// ni binario ni Go: el proyecto cae al modo node directo.
+func ensureWhatsappHost(src string) string {
+	dest := filepath.Join(src, "host", "whatsapp-host.exe")
+	if fileExists(dest) {
+		return dest
+	}
+	modDir := filepath.Join(src, "go", "whatsapp")
+	if !dirExists(modDir) {
+		return ""
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return ""
+	}
+	fmt.Println("[INFO] Compilando el sidecar del motor de WhatsApp (whatsapp-host)...")
+	cmd := exec.Command("go", "build", "-trimpath", "-o", dest, "./cmd/host")
+	cmd.Dir = modDir
+	// GOWORK=off: el kit es un modulo propio y no debe heredar el workspace de
+	// Compass (que no lo incluye).
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("[WARN] No se pudo compilar whatsapp-host.exe (se usara node directo): %v\n%s\n", err, out)
+		return ""
+	}
+	return dest
+}
+
 // stageFlutterWhatsappEngine deja whatsapp_engine/index.js en la raíz del
 // proyecto: es lo que empaqueta windows/CMakeLists.txt junto al exe y lo que el
 // servicio Dart resuelve en runtime (Node se toma del PATH).
@@ -368,6 +398,17 @@ func stageFlutterWhatsappEngine(ctx *project.ProjectContext, src string) {
 		fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s (desde %s)\n", dest, src)
 	} else {
 		fmt.Printf("[OK] Motor de WhatsApp ya al día en %s (desde %s)\n", dest, src)
+	}
+
+	// Sidecar: la app Flutter lanza whatsapp-host.exe (mismo supervisor que los
+	// proyectos Go) y el host resuelve node y el bundle. Si no hay binario, la
+	// app cae al modo node directo.
+	if host := ensureWhatsappHost(src); host != "" {
+		if err := copyFile(host, filepath.Join(dest, "whatsapp-host.exe")); err != nil {
+			fmt.Printf("[WARN] No se pudo copiar whatsapp-host.exe: %v\n", err)
+		} else {
+			fmt.Println("[OK] Sidecar whatsapp-host.exe etajado junto al motor.")
+		}
 	}
 
 	// El motor se etaja, pero quien lo mete en el release es la regla install()
@@ -474,6 +515,10 @@ func cleanupStagedWhatsappResources(ctx *project.ProjectContext) {
 	if ctx.ProjectType == project.TypeFlutter {
 		if err := os.Remove(filepath.Join(dest, "index.js")); err != nil && !os.IsNotExist(err) {
 			fmt.Printf("[WARN] No se pudo borrar index.js de %s: %v\n", dest, err)
+		}
+		// El sidecar también es generado (el release lleva su copia).
+		if err := os.Remove(filepath.Join(dest, "whatsapp-host.exe")); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("[WARN] No se pudo borrar whatsapp-host.exe de %s: %v\n", dest, err)
 		}
 		// Solo elimina la carpeta si quedó vacía (no toca archivos del proyecto).
 		_ = os.Remove(dest)

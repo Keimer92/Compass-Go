@@ -115,7 +115,7 @@ func TestCleanupStagedWhatsappResources(t *testing.T) {
 	if err := os.MkdirAll(flutterDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"node.exe", "index.js", "engine.js"} {
+	for _, f := range []string{"node.exe", "index.js", "engine.js", "whatsapp-host.exe"} {
 		if err := os.WriteFile(filepath.Join(flutterDir, f), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +142,9 @@ func TestCleanupStagedWhatsappResources(t *testing.T) {
 	if !fileExists(filepath.Join(flutterDir, "engine.js")) {
 		t.Error("se borro un archivo del proyecto que no es del kit")
 	}
-	if fileExists(filepath.Join(flutterDir, "node.exe")) || fileExists(filepath.Join(flutterDir, "index.js")) {
+	if fileExists(filepath.Join(flutterDir, "node.exe")) ||
+		fileExists(filepath.Join(flutterDir, "index.js")) ||
+		fileExists(filepath.Join(flutterDir, "whatsapp-host.exe")) {
 		t.Error("quedaron archivos del kit en Flutter")
 	}
 
@@ -151,7 +153,7 @@ func TestCleanupStagedWhatsappResources(t *testing.T) {
 	if err := os.MkdirAll(onlyKit, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"node.exe", "index.js"} {
+	for _, f := range []string{"node.exe", "index.js", "whatsapp-host.exe"} {
 		if err := os.WriteFile(filepath.Join(onlyKit, f), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}

@@ -8,3 +8,6 @@ whatsapp-engine-bundle/
 single/
 # El runtime usa el Node 20+ del sistema: nunca se versiona un node.exe (~70 MB).
 node.exe
+
+# Binario del sidecar (lo compila dist.bat / el staging, no se versiona).
+/host/

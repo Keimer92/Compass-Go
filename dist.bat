@@ -164,6 +164,24 @@ if exist "Kit-Whatsapp" (
     echo [SKIP] No se encontro la carpeta "Kit-Whatsapp"; se omite.
 )
 
+REM Sidecar del motor para Flutter: se compila AQUI (no al etajar) para que el
+REM binario instalado no necesite Go. El host resuelve node y el bundle, y
+REM reenvia stdio; las apps Flutter lo lanzan en vez de node.
+if exist "dist\payload\Kit-Whatsapp\go\whatsapp\cmd\host\main.go" (
+    echo [INFO] Compilando whatsapp-host.exe (sidecar del motor)...
+    if not exist "dist\payload\Kit-Whatsapp\host" mkdir "dist\payload\Kit-Whatsapp\host" >nul 2>nul
+    pushd "dist\payload\Kit-Whatsapp\go\whatsapp"
+    set "GOWORK=off"
+    go build -trimpath -o "..\..\host\whatsapp-host.exe" ./cmd/host
+    set "GOWORK="
+    popd
+    if exist "dist\payload\Kit-Whatsapp\host\whatsapp-host.exe" (
+        echo [OK] whatsapp-host.exe generado.
+    ) else (
+        echo [WARN] No se pudo compilar whatsapp-host.exe: las apps Flutter usaran node directo.
+    )
+)
+
 REM Kit D1: viaja dentro del repo (subtree) y se copia al payload sin los
 REM artefactos que se generan con npm install. Las acciones del panel que
 REM usan npm (bootstrap/typecheck/dev/deploy) necesitan el "Instalar

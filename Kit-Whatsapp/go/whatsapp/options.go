@@ -71,3 +71,9 @@ func exeDir() string {
 	}
 	return filepath.Dir(exe)
 }
+
+// fileExists indica si p es un archivo (no un directorio).
+func fileExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
