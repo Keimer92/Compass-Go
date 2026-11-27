@@ -348,6 +348,15 @@ func (b *Bridge) autoCommit(r *autoTrack) {
 		"dir": r.dir, "ok": cerr == nil,
 		"message": firstLine(msg), "out": out, "error": r.lastErr,
 	})
+	// Tras un commit el arbol queda limpio y r.sig se reinicia: el vigilante ya
+	// no ve diferencia y no emitiria git:changed, asi que el explorador seguia
+	// mostrando los archivos commiteados hasta cambiar de pestaña. Se avisa aqui
+	// (despues de git:auto, para que el aviso de cambios no duplique el toast).
+	if cerr == nil {
+		Emit("git:changed", map[string]any{
+			"dir": r.dir, "changes": 0, "conflict": false,
+		})
+	}
 }
 
 // autoSig resume el estado del arbol para detectar actividad: codigos de

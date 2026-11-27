@@ -1090,8 +1090,30 @@ proyecto.
   `internal/webui/kitd1.go`): botón "Kit D1" en el pie del sidebar, al lado de
   "Ajustes de Git". El kit es **global**, no por proyecto (como Git), y el panel
   muestra ruta, versión del módulo Go, rama/tag/working tree, sesión de Wrangler
-  (`whoami`), instancias de `worker/instances/*` y consumidores del workspace
-  (módulo Go con `go.work` local, o Flutter).
+  (`whoami`), bases D1, instancias de `worker/instances/*` y consumidores del
+  workspace (módulo Go con `go.work` local, o Flutter).
+- **Bases D1** (`KitD1Databases`): lista las bases de la cuenta con lo mismo que
+  el dashboard de Cloudflare —tamaño, tablas y, en las últimas 24 h, queries de
+  lectura/escritura y rows leídas/escritas—. Los datos salen de
+  `npx wrangler d1 list --json` (tamaño/tablas) y de la API GraphQL
+  (`d1AnalyticsAdaptiveGroups`) con el token que Wrangler guarda al hacer login
+  (`%APPDATA%\xdg.config\.wrangler\config\default.toml`, o `CLOUDFLARE_API_TOKEN`).
+  El token nunca sale del proceso. Cada base se cruza con la instancia local por
+  `database_id`; una base declarada por una instancia pero inexistente en la
+  cuenta se pinta como **no existe** (`missing`), que es la señal de un worker
+  retirado.
+- **Nombres de workers y bases**: `database_name` es la clave canónica (la
+  provisión resuelve/crea la D1 por ese nombre). **Convención para instancias
+  nuevas: el `name` del worker debe ser igual al `database_name`.** Las dos
+  instancias heredadas no se renombran porque el nombre del worker forma la URL
+  `*.workers.dev` y las apps instaladas ya apuntan a ella:
+  `gympro-d1-sync` ↔ base `gympro` y `schooltracker-go-wails-v3` ↔ base
+  `school-tracker-mined-go-wails-v3`. El panel muestra la pareja
+  instancia · worker junto a cada base para que el mapeo siga visible.
+- La instancia `school-tracker-flutter` se retiró (2026-11-27): su D1 ya no
+  existía y el repo Flutter tampoco; School Tracker es ahora Go+Wails y usa la
+  instancia `school-tracker`. En Cloudflare el worker `school-tracker-flutter`
+  sigue desplegado como huérfano y hay que borrarlo desde el dashboard.
 - **Acciones**: ensamblar, typecheck, dev, deploy, provision dry-run/real,
   whoami/login, listar tenants, exportar/rotar clave e instalar dependencias.
   Se arman en `KitD1Script` con **whitelist** de acción + validación de

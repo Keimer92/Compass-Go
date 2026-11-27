@@ -60,7 +60,6 @@ type KitD1Database struct {
 	Name      string `json:"name"`
 	ID        string `json:"id"`
 	CreatedAt string `json:"createdAt"`
-	NumTables int    `json:"numTables"`
 	FileSize  int64  `json:"fileSize"`
 	// Instance/Worker identifican el worker local que apunta a esta base.
 	Instance string `json:"instance"`
@@ -371,7 +370,6 @@ func (b *Bridge) KitD1Databases() KitD1Databases {
 			UUID      string `json:"uuid"`
 			Name      string `json:"name"`
 			CreatedAt string `json:"created_at"`
-			NumTables int    `json:"num_tables"`
 			FileSize  int64  `json:"file_size"`
 		}
 		if e := decodeFirstJSON(text, &rows); e != nil {
@@ -379,8 +377,7 @@ func (b *Bridge) KitD1Databases() KitD1Databases {
 		} else {
 			for _, r := range rows {
 				cloud = append(cloud, KitD1Database{
-					Name: r.Name, ID: r.UUID, CreatedAt: r.CreatedAt,
-					NumTables: r.NumTables, FileSize: r.FileSize,
+					Name: r.Name, ID: r.UUID, CreatedAt: r.CreatedAt, FileSize: r.FileSize,
 				})
 			}
 		}
@@ -388,14 +385,22 @@ func (b *Bridge) KitD1Databases() KitD1Databases {
 
 	// 3) Métricas de 24 h (GraphQL). Si falla, se muestran solo tamaño/tablas.
 	stats := d1Analytics(cloudflareToken(), account)
+	out.Databases = mergeKitD1Databases(cloud, kitD1Instances(root), stats)
+	return out
+}
 
-	instances := kitD1Instances(root)
+// mergeKitD1Databases cruza las bases de la cuenta con las instancias locales
+// (por database_id) y con las métricas de 24 h. Las bases que una instancia
+// declara pero que ya no existen en la cuenta se listan con Missing=true, para
+// poder ver y retirar el worker huérfano que las apunta.
+func mergeKitD1Databases(cloud []KitD1Database, instances []KitD1Instance, stats map[string]d1Stats) []KitD1Database {
 	byID := map[string]KitD1Instance{}
 	for _, ins := range instances {
 		if ins.DatabaseID != "" {
 			byID[strings.ToLower(ins.DatabaseID)] = ins
 		}
 	}
+	out := make([]KitD1Database, 0, len(cloud)+len(instances))
 	seen := map[string]bool{}
 	for _, db := range cloud {
 		key := strings.ToLower(db.ID)
@@ -408,21 +413,19 @@ func (b *Bridge) KitD1Databases() KitD1Databases {
 			db.ReadQueries, db.WriteQueries = st.ReadQueries, st.WriteQueries
 			db.RowsRead, db.RowsWritten = st.RowsRead, st.RowsWritten
 		}
-		out.Databases = append(out.Databases, db)
+		out = append(out, db)
 	}
-	// Bases declaradas por una instancia local que ya no existen en la cuenta:
-	// se listan marcadas para poder limpiar el worker que las apunta.
 	for _, ins := range instances {
 		key := strings.ToLower(ins.DatabaseID)
 		if ins.DatabaseID == "" || seen[key] {
 			continue
 		}
-		out.Databases = append(out.Databases, KitD1Database{
+		out = append(out, KitD1Database{
 			Name: ins.DatabaseName, ID: ins.DatabaseID,
 			Instance: ins.Name, Worker: ins.WorkerName, Missing: true,
 		})
 	}
-	sort.Slice(out.Databases, func(i, j int) bool { return out.Databases[i].Name < out.Databases[j].Name })
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 

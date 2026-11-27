@@ -245,6 +245,28 @@ export interface KitD1Instance {
   hasSchema: boolean
   hasKeys: boolean
   scripts: string[]
+  databaseName: string
+  databaseId: string
+}
+// Base D1 de Cloudflare con las métricas de 24 h que muestra el dashboard.
+export interface KitD1Database {
+  name: string
+  id: string
+  createdAt: string
+  fileSize: number
+  instance: string
+  worker: string
+  missing: boolean
+  analytics: boolean
+  readQueries: number
+  writeQueries: number
+  rowsRead: number
+  rowsWritten: number
+}
+export interface KitD1Databases {
+  account: string
+  databases: KitD1Database[]
+  error: string
 }
 export interface KitD1Consumer {
   name: string
@@ -274,6 +296,7 @@ export interface KitD1ActionDef {
 }
 export const kitD1Info = () => call<KitD1Info>(M('KitD1Info'))
 export const kitD1Whoami = () => call<string>(M('KitD1Whoami'))
+export const kitD1Databases = () => call<KitD1Databases>(M('KitD1Databases'))
 export const kitD1Actions = () => call<KitD1ActionDef[]>(M('KitD1Actions'))
 export const kitD1SetPath = (path: string) => call<KitD1Info>(M('KitD1SetPath'), path)
 export const kitD1PickPath = () => call<KitD1Info>(M('KitD1PickPath'))

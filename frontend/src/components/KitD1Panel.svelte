@@ -3,11 +3,13 @@
   import {
     kitD1Info,
     kitD1Whoami,
+    kitD1Databases,
     kitD1Actions,
     kitD1SetPath,
     kitD1PickPath,
     kitD1Script,
     type KitD1Info,
+    type KitD1Databases,
     type KitD1ActionDef,
   } from '../lib/bridge'
 
@@ -24,8 +26,10 @@
   })
   let actions = $state<KitD1ActionDef[]>([])
   let whoami = $state('')
+  let databases = $state<KitD1Databases>({ account: '', databases: [], error: '' })
   let loading = $state(true)
   let whoLoading = $state(false)
+  let dbLoading = $state(false)
   let error = $state('')
   let selected = $state('')
   let version = $state('')
@@ -59,7 +63,42 @@
       actions = []
     }
     loading = false
-    if (info.exists) void refreshWhoami()
+    if (info.exists) {
+      void refreshWhoami()
+      void loadDatabases()
+    }
+  }
+
+  async function loadDatabases() {
+    dbLoading = true
+    try {
+      databases = await kitD1Databases()
+    } catch (e) {
+      databases = { account: '', databases: [], error: (e as Error).message }
+    } finally {
+      dbLoading = false
+    }
+  }
+
+  // Tamaño legible como el dashboard (512 B, 12.4 kB, 3.1 MB).
+  function fmtBytes(n: number): string {
+    if (!n) return '—'
+    const units = ['B', 'kB', 'MB', 'GB', 'TB']
+    let v = n
+    let i = 0
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024
+      i++
+    }
+    return `${i === 0 ? v : v.toFixed(1)} ${units[i]}`
+  }
+
+  // Contadores del dashboard: 1.2k, 3.4M…
+  function fmtNum(n: number): string {
+    if (n < 1000) return String(n)
+    if (n < 1e6) return `${(n / 1e3).toFixed(1)}k`
+    if (n < 1e9) return `${(n / 1e6).toFixed(1)}M`
+    return `${(n / 1e9).toFixed(1)}G`
   }
 
   async function refreshWhoami() {
@@ -78,7 +117,10 @@
     try {
       info = await kitD1PickPath()
       if (!selected && info.instances.length) selected = info.instances[0].name
-      if (info.exists) void refreshWhoami()
+      if (info.exists) {
+        void refreshWhoami()
+        void loadDatabases()
+      }
     } catch (e) {
       error = (e as Error).message
     }
@@ -88,7 +130,11 @@
     try {
       info = await kitD1SetPath('')
       whoami = ''
-      if (info.exists) void refreshWhoami()
+      databases = { account: '', databases: [], error: '' }
+      if (info.exists) {
+        void refreshWhoami()
+        void loadDatabases()
+      }
     } catch (e) {
       error = (e as Error).message
     }
@@ -181,6 +227,53 @@
         </section>
 
         <section class="sec">
+          <div class="sec-title">
+            Bases D1
+            <button class="lnk" onclick={loadDatabases} disabled={dbLoading}>
+              {dbLoading ? 'consultando…' : 'Actualizar'}
+            </button>
+          </div>
+          {#if databases.error}
+            <p class="warn">{databases.error}</p>
+          {:else if dbLoading && !databases.databases.length}
+            <p class="hint">Consultando Cloudflare…</p>
+          {:else if !databases.databases.length}
+            <p class="hint">La cuenta no tiene bases D1.</p>
+          {:else}
+            <div class="db-list">
+              <div class="db-head">
+                <span>Base</span>
+                <span>Tamaño</span>
+                <span>Queries 24 h</span>
+                <span>Rows 24 h</span>
+              </div>
+              {#each databases.databases as db (db.id)}
+                <div class="db" class:missing={db.missing}>
+                  <span class="db-name" title={db.id}>
+                    {db.name}
+                    {#if db.missing}<span class="tag bad">no existe</span>{/if}
+                    <span class="db-map">
+                      {#if db.instance}{db.instance}{:else}sin instancia{/if}
+                      {#if db.worker} · {db.worker}{/if}
+                    </span>
+                  </span>
+                  <span class="num">{db.missing ? '—' : fmtBytes(db.fileSize)}</span>
+                  <span class="num" title="lecturas / escrituras">
+                    {#if db.analytics}{fmtNum(db.readQueries)} / {fmtNum(db.writeQueries)}{:else}—{/if}
+                  </span>
+                  <span class="num" title="rows leídas / escritas">
+                    {#if db.analytics}{fmtNum(db.rowsRead)} / {fmtNum(db.rowsWritten)}{:else}—{/if}
+                  </span>
+                </div>
+              {/each}
+            </div>
+            <p class="hint">
+              Métricas de las últimas 24 h de la cuenta {databases.account || '(sin identificar)'}, igual que el dashboard de Cloudflare.
+            </p>
+          {/if}
+        </section>
+
+        <section class="sec">
           <div class="sec-title">Instancias del worker</div>
           {#if info.instances.length}
             <div class="inst-grid">
@@ -193,6 +286,9 @@
                   <span class="inst-name">{ins.name}</span>
                   <span class="inst-worker">{ins.workerName || '(sin worker)'}</span>
                   <span class="inst-url" title={ins.workerUrl}>{ins.workerUrl || 'sin URL'}</span>
+                  {#if ins.databaseName}
+                    <span class="inst-db" title={ins.databaseId}>base {ins.databaseName}</span>
+                  {/if}
                   <span class="tags">
                     {#if ins.hasPackage}<span class="tag">pkg</span>{/if}
                     {#if ins.hasSchema}<span class="tag">schema</span>{/if}
@@ -323,6 +419,29 @@
   .inst-name { font-size: 11px; font-weight: 700; }
   .inst-worker { font-size: 10px; color: var(--muted); }
   .inst-url { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inst-db { font-size: 9px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .db-list {
+    margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .db-head, .db {
+    display: grid; grid-template-columns: 1.9fr .8fr 1.1fr 1.2fr;
+    gap: 8px; align-items: center; padding: 5px 9px;
+  }
+  .db-head {
+    font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); background: color-mix(in srgb, var(--panel) 80%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .db { font-size: 11px; border-bottom: 1px solid var(--border); }
+  .db:last-child { border-bottom: none; }
+  .db.missing { opacity: .7; }
+  .db-name {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+    min-width: 0; font-weight: 600;
+  }
+  .db-map { flex-basis: 100%; font-size: 9px; font-weight: 400; color: var(--muted); }
+  .num { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tag.bad { color: var(--red); }
   .tags { display: flex; gap: 4px; }
   .tag { font-size: 9px; color: var(--accent); opacity: 0.85; }
   .consumer-list { margin-top: 8px; }

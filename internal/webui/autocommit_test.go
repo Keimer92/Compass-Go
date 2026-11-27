@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -305,5 +306,61 @@ func TestAutoCommitEmitsFailureEvent(t *testing.T) {
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("no se emitio git:auto tras el fallo del commit")
+	}
+}
+
+// Tras un commit automatico el arbol queda limpio y la firma se reinicia: sin
+// el git:changed explicito el explorador seguia listando los archivos ya
+// commiteados hasta cambiar de pestaña.
+func TestAutoCommitEmitsGitChanged(t *testing.T) {
+	dir := initRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "nota.txt"), []byte("hola\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := settings.Default()
+	cfg.AutoCommitIdleMin = 1
+	settings.Save(cfg)
+	b := NewBridge(dir)
+	if err := b.SetAutoCommit(true); err != nil {
+		t.Fatalf("activar Auto: %v", err)
+	}
+	b.autoMu.Lock()
+	r := b.autoRuns[commitKey(dir)]
+	r.changedAt = r.changedAt.Add(-2 * time.Minute)
+	b.autoMu.Unlock()
+
+	var mu sync.Mutex
+	var order []string
+	done := make(chan struct{}, 1)
+	prev := emitHook
+	emitHook = func(name string, data any) {
+		if name != "git:auto" && name != "git:changed" {
+			return
+		}
+		mu.Lock()
+		order = append(order, name)
+		mu.Unlock()
+		if name == "git:changed" {
+			if m, ok := data.(map[string]any); !ok || m["dir"] != dir {
+				t.Errorf("git:changed con datos inesperados: %+v", data)
+			}
+			select {
+			case done <- struct{}{}:
+			default:
+			}
+		}
+	}
+	defer func() { emitHook = prev }()
+
+	b.autoStep(r)
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("no se emitio git:changed tras el commit automatico")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) < 2 || order[0] != "git:auto" || order[1] != "git:changed" {
+		t.Fatalf("orden de eventos = %v, queria git:auto antes de git:changed", order)
 	}
 }

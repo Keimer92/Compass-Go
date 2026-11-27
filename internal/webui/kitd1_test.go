@@ -83,6 +83,78 @@ func TestKitD1InfoConsumidores(t *testing.T) {
 	_ = parent
 }
 
+// TestKitD1InstancesLeeBaseD1 comprueba el cruce con wrangler.toml, incluido el
+// encabezado [[d1_databases]] pegado al valor anterior (formato real de
+// ela-academy-flutter) y varios bloques de tabla en el mismo archivo.
+func TestKitD1InstancesLeeBaseD1(t *testing.T) {
+	root := t.TempDir()
+	pega := filepath.Join(root, "worker", "instances", "pegada")
+	if err := os.MkdirAll(pega, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	toml := "name = \"pegada-d1-sync\"\ncompatibility_date = \"2026-11-04\"[[d1_databases]]\n" +
+		"binding = \"DB\"\ndatabase_name = \"pegada\"\ndatabase_id = \"AAA-111\"[[kv_namespaces]]\n" +
+		"binding = \"ROUTING\"\nid = \"kv1\"\n"
+	if err := os.WriteFile(filepath.Join(pega, "wrangler.toml"), []byte(toml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	otra := filepath.Join(root, "worker", "instances", "otra")
+	if err := os.MkdirAll(otra, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	toml2 := "name = \"otra\"\n\n[[kv_namespaces]]\nbinding = \"ROUTING\"\nid = \"kv2\"\n\n" +
+		"[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"otra-base\"\ndatabase_id = \"BBB-222\"\n"
+	if err := os.WriteFile(filepath.Join(otra, "wrangler.toml"), []byte(toml2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]KitD1Instance{}
+	for _, ins := range kitD1Instances(root) {
+		got[ins.Name] = ins
+	}
+	if ins := got["pegada"]; ins.WorkerName != "pegada-d1-sync" || ins.DatabaseName != "pegada" || ins.DatabaseID != "AAA-111" {
+		t.Fatalf("pegada mal leida: %+v", ins)
+	}
+	if ins := got["otra"]; ins.DatabaseName != "otra-base" || ins.DatabaseID != "BBB-222" {
+		t.Fatalf("otra mal leida: %+v", ins)
+	}
+}
+
+// TestMergeKitD1Databases cubre el cruce bases↔instancias↔métricas y el caso de
+// la base declarada por una instancia que ya no existe en la cuenta.
+func TestMergeKitD1Databases(t *testing.T) {
+	cloud := []KitD1Database{
+		{Name: "zeta", ID: "id-z", FileSize: 2048},
+		{Name: "alfa", ID: "ID-A", FileSize: 512},
+	}
+	instances := []KitD1Instance{
+		{Name: "alfa-inst", WorkerName: "alfa-worker", DatabaseName: "alfa", DatabaseID: "id-a"},
+		{Name: "huerfana", WorkerName: "school-tracker-flutter", DatabaseName: "school-tracker-flutter", DatabaseID: "id-muerta"},
+		{Name: "sin-base"},
+	}
+	stats := map[string]d1Stats{"id-z": {ReadQueries: 7, WriteQueries: 3, RowsRead: 100, RowsWritten: 9}}
+
+	got := mergeKitD1Databases(cloud, instances, stats)
+	if len(got) != 3 {
+		t.Fatalf("esperaba 3 bases, got %d: %+v", len(got), got)
+	}
+	if got[0].Name != "alfa" || got[1].Name != "school-tracker-flutter" || got[2].Name != "zeta" {
+		t.Fatalf("orden inesperado: %+v", got)
+	}
+	// El cruce por id ignora mayusculas.
+	if got[0].Instance != "alfa-inst" || got[0].Worker != "alfa-worker" || got[0].Missing {
+		t.Fatalf("alfa mal cruzada: %+v", got[0])
+	}
+	// La base muerta se marca para poder limpiar el worker que la apunta.
+	if !got[1].Missing || got[1].Instance != "huerfana" {
+		t.Fatalf("base huerfana mal marcada: %+v", got[1])
+	}
+	// Métricas de 24 h en la base que las tiene.
+	if !got[2].Analytics || got[2].RowsRead != 100 || got[2].WriteQueries != 3 {
+		t.Fatalf("metricas no aplicadas: %+v", got[2])
+	}
+}
+
 func TestKitD1ScriptValidaAcciones(t *testing.T) {
 	_, b := kitFixture(t)
 
