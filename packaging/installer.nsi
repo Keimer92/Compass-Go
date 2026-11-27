@@ -96,6 +96,9 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
   ; Vaciarlos primero garantiza que $INSTDIR tenga exactamente lo que trae el
   ; binario recien compilado.
   RMDir /r "$INSTDIR\Kit-D1"
+  RMDir /r "$INSTDIR\Kit-Whatsapp"
+  ; Nombre anterior del kit (antes del renombrado): se elimina para no dejar
+  ; una copia huerfana de ~4 MB que ya nadie usa.
   RMDir /r "$INSTDIR\Kit Whatsapp"
   ; Restos del layout anterior (corekit\whatsapp).
   RMDir /r "$INSTDIR\corekit"

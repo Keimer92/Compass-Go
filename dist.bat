@@ -125,34 +125,34 @@ REM de ~2418 archivos a ~30 y la instalacion de ~15 s a unos pocos segundos.
 REM El repo ya NO guarda node.exe: --with-node lo copia del Node del PATH.
 REM Se borra la copia previa porque /MIR + /XD no purga las carpetas excluidas.
 set "RC_ERR="
-if exist "Kit Whatsapp" (
+if exist "Kit-Whatsapp" (
     if "%NO_NODE%"=="1" (
         echo [INFO] Copiando el kit de WhatsApp sin node.exe ^(--no-node^)...
-        if exist "dist\payload\Kit Whatsapp" rmdir /s /q "dist\payload\Kit Whatsapp"
-        robocopy "Kit Whatsapp" "dist\payload\Kit Whatsapp" /E /XD node_modules out examples /XF node.exe /NFL /NDL /NJH /NJS /NP >nul
+        if exist "dist\payload\Kit-Whatsapp" rmdir /s /q "dist\payload\Kit-Whatsapp"
+        robocopy "Kit-Whatsapp" "dist\payload\Kit-Whatsapp" /E /XD node_modules out examples /XF node.exe /NFL /NDL /NJH /NJS /NP >nul
         if errorlevel 8 set "RC_ERR=1"
     ) else (
         echo [INFO] Copiando el kit de WhatsApp a dist\payload sin artefactos de build...
-        if exist "dist\payload\Kit Whatsapp" rmdir /s /q "dist\payload\Kit Whatsapp"
-        robocopy "Kit Whatsapp" "dist\payload\Kit Whatsapp" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
+        if exist "dist\payload\Kit-Whatsapp" rmdir /s /q "dist\payload\Kit-Whatsapp"
+        robocopy "Kit-Whatsapp" "dist\payload\Kit-Whatsapp" /E /XD node_modules out examples /NFL /NDL /NJH /NJS /NP >nul
         if errorlevel 8 set "RC_ERR=1"
         REM El repo ya no guarda un node.exe: para el sidecar se toma el Node
         REM 20+ del sistema (el primero del PATH). Si no hay Node, se avisa y el
         REM instalador queda sin sidecar (los proyectos usarian el del PATH).
-        if not exist "dist\payload\Kit Whatsapp\node.exe" (
+        if not exist "dist\payload\Kit-Whatsapp\node.exe" (
             for /f "delims=" %%I in ('where node 2^>nul') do (
-                if not exist "dist\payload\Kit Whatsapp\node.exe" (
-                    copy /y "%%I" "dist\payload\Kit Whatsapp\node.exe" >nul 2>nul
+                if not exist "dist\payload\Kit-Whatsapp\node.exe" (
+                    copy /y "%%I" "dist\payload\Kit-Whatsapp\node.exe" >nul 2>nul
                 )
             )
         )
-        if not exist "dist\payload\Kit Whatsapp\node.exe" (
+        if not exist "dist\payload\Kit-Whatsapp\node.exe" (
             echo [WARN] No se encontro Node en el PATH: el payload va sin node.exe.
             echo        Instala Node 20+ o compila sin --with-node.
         )
     )
     if defined RC_ERR (
-        echo [WARN] robocopy devolvio un error al copiar el kit; revisa dist\payload\Kit Whatsapp.
+        echo [WARN] robocopy devolvio un error al copiar el kit; revisa dist\payload\Kit-Whatsapp.
     ) else (
         if "%NO_NODE%"=="1" (
             echo [OK] Kit de WhatsApp copiado ^(sin node.exe: los proyectos usaran Node 20+ del sistema^).
@@ -161,7 +161,7 @@ if exist "Kit Whatsapp" (
         )
     )
 ) else (
-    echo [SKIP] No se encontro la carpeta "Kit Whatsapp"; se omite.
+    echo [SKIP] No se encontro la carpeta "Kit-Whatsapp"; se omite.
 )
 
 REM Kit D1: viaja dentro del repo (subtree) y se copia al payload sin los

@@ -16,8 +16,19 @@ import (
 )
 
 // Relativa al ejecutable de Compass donde vive el motor de WhatsApp canónico
-// dentro del repo/instalación (Kit Whatsapp).
-const whatsappEngineRel = "Kit Whatsapp"
+// dentro del repo/instalación (Kit-Whatsapp). Sin espacios: el kit alberga un
+// módulo Go (Kit-Whatsapp/go/whatsapp) y una ruta de módulo no admite espacios.
+const whatsappEngineRel = "Kit-Whatsapp"
+
+// whatsappEngineLegacyRel son los nombres anteriores del kit. Se siguen
+// aceptando para instalaciones que aun no han vuelto a pasar por install.bat
+// (que es quien reinstala la carpeta y re-fija COMPASS_WHATSAPP_ENGINE).
+var whatsappEngineLegacyRel = []string{"Kit Whatsapp"}
+
+// whatsappEngineNames devuelve el nombre actual seguido de los heredados.
+func whatsappEngineNames() []string {
+	return append([]string{whatsappEngineRel}, whatsappEngineLegacyRel...)
+}
 
 // whatsappEngineMarker es un archivo opcional que un proyecto puede crear en su
 // raíz para optar explícitamente a incrustar el motor de WhatsApp canónico.
@@ -35,28 +46,35 @@ func whatsappEngineEnv() string {
 // whatsappEngineSource devuelve la ruta del motor de WhatsApp canónico.
 // Orden de resolución:
 //  1. COMPASS_WHATSAPP_ENGINE (override explícito).
-//  2. <dir del exe>/Kit Whatsapp (instalación / binario compilado).
-//  3. <cwd>/Kit Whatsapp (desarrollo con `go run`).
+//  2. <dir del exe>/Kit-Whatsapp (instalación / binario compilado).
+//  3. <cwd>/Kit-Whatsapp (desarrollo con `go run`).
 //  4. fallback a (2).
+//
+// En cada paso se prueban también los nombres heredados ("Kit Whatsapp") para
+// no romper una instalación anterior al renombrado.
 func whatsappEngineSource() string {
 	if v := whatsappEngineEnv(); v != "" {
 		return filepath.Clean(v)
 	}
-	rel := whatsappEngineRel
+	names := whatsappEngineNames()
 	if exe, err := os.Executable(); err == nil {
-		if cand := filepath.Join(filepath.Dir(exe), rel); dirExists(cand) {
-			return cand
+		for _, n := range names {
+			if cand := filepath.Join(filepath.Dir(exe), n); dirExists(cand) {
+				return cand
+			}
 		}
 	}
 	if wd, err := os.Getwd(); err == nil {
-		if cand := filepath.Join(wd, rel); dirExists(cand) {
-			return cand
+		for _, n := range names {
+			if cand := filepath.Join(wd, n); dirExists(cand) {
+				return cand
+			}
 		}
 	}
 	if exe, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(exe), rel)
+		return filepath.Join(filepath.Dir(exe), whatsappEngineRel)
 	}
-	return rel
+	return whatsappEngineRel
 }
 
 // projectUsesWhatsappEngine indica si el proyecto debe incrustar el motor.
@@ -132,13 +150,13 @@ func textFileContains(path, needle string) bool {
 // projectImportsWhatsapp escanea recursivamente las fuentes Go del proyecto en
 // busca de una importación cuyo path referencie whatsapp (p.ej. internal/whatsapp
 // del supervisor). Omite carpetas que no son código fuente (node_modules,
-// vendor, .git, bin, resources, out, Kit Whatsapp, corekit) para no rallar ni
+// vendor, .git, bin, resources, out, Kit-Whatsapp, corekit) para no rallar ni
 // dar falsos positivos dentro del propio Compass.
 func projectImportsWhatsapp(root string) bool {
 	skip := map[string]bool{
 		"node_modules": true, "vendor": true, ".git": true,
 		"bin": true, "resources": true, "out": true, "corekit": true,
-		"Kit Whatsapp": true,
+		"Kit-Whatsapp": true, "Kit Whatsapp": true,
 	}
 	found := false
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

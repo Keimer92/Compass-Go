@@ -59,7 +59,7 @@ agentes y desarrolladores está en [`AGENTS.md`](AGENTS.md).
 
 | Kit | Carpeta | Para qué |
 |-----|---------|----------|
-| **WhatsApp** | [`Kit Whatsapp/`](Kit%20Whatsapp/) | motor Baileys de envíos, compartido por GymPro, ELA Group y proyectos Flutter |
+| **WhatsApp** | [`Kit-Whatsapp/`](Kit%20Whatsapp/) | motor Baileys de envíos, compartido por GymPro, ELA Group y proyectos Flutter |
 | **D1** | [`Kit-D1/`](Kit-D1/) | sincronización Cloudflare D1: módulo Go, contrato wire y Worker por proyecto |
 
 ### Motor de WhatsApp
@@ -191,7 +191,7 @@ Compass Go UX/
 │  ├─ container/           ConPTY: sesión, scrollback, parser vt10x
 │  ├─ menu/                modelo de cards por tipo de proyecto
 │  └─ theme/ settings/ sound/ workspace/ ...   servicios transversales
-├─ Kit Whatsapp/           motor de WhatsApp canónico + bundles
+├─ Kit-Whatsapp/           motor de WhatsApp canónico + bundles
 ├─ Kit-D1/                 stack D1 (Go + protocolo + Worker) [git subtree]
 ├─ assets/ packaging/      iconos y plantilla del instalador NSIS
 ├─ dev.bat / dist.bat / install.bat / uninstall.bat

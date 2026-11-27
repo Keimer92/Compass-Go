@@ -75,7 +75,7 @@ Compass Go/
 ├─ dist.bat                   # compilar (frontend + Go) y empaquetar el instalador en dist/
 ├─ uninstall.bat              # desinstalar de la máquina (usa Uninstall.exe si existe)
 ├─ go-winres.json             # metadatos del .exe (nombre "Compass Go")
-├─ Kit Whatsapp/              # motor de WhatsApp canónico (engine.js, bundle.mjs)
+├─ Kit-Whatsapp/              # motor de WhatsApp canónico (engine.js, bundle.mjs)
 │  ├─ whatsapp-engine-bundle/ #   bundle de ncc para Go/Wails
 │  └─ single/                 #   bundle autocontenido para Flutter
 ├─ Kit-D1/                    # stack de sincronización Cloudflare D1 (subtree)
@@ -119,7 +119,7 @@ install.bat --with-node  # vuelve a empaquetar node.exe (sidecar)
   empezar y justo antes de instalar, porque `dist.bat` tarda minutos y puedes
   abrir Compass mientras compila).
 - **Purga los kits antes de instalar**: `packaging\installer.nsi` hace
-  `RMDir /r` de `$INSTDIR\Kit-D1` y `$INSTDIR\Kit Whatsapp` justo antes de
+  `RMDir /r` de `$INSTDIR\Kit-D1` y `$INSTDIR\Kit-Whatsapp` justo antes de
   `File /r "payload\*"`. NSIS sobrescribe pero no borra, así que sin esta purga
   los archivos retirados del repo quedarían para siempre en la instalación.
 - Al terminar hace `pause` para que el resumen quede a la vista.
@@ -154,7 +154,7 @@ trabajo temporal: al terminar `makensis` se borran el `.nsi`, el `.bmp` y
 `CompassGo-Setup.exe` (el instalador lo lleva todo dentro). Con
 `--no-installer` sí se conserva `dist\payload` (es el único artefacto).
 
-Al copiar `Kit Whatsapp/` al payload se excluyen los artefactos de build del motor
+Al copiar `Kit-Whatsapp/` al payload se excluyen los artefactos de build del motor
 (`node_modules`, `out`, `examples`) y, **por defecto, también `node.exe`**: el
 runtime usa el **Node 20+ instalado en el sistema** (PATH) y el bundle ya viaja
 compilado. El payload baja a ~13 MB / ~35 archivos y la instalación silenciosa
@@ -509,7 +509,7 @@ además se administra desde un panel propio.
 
 | Kit | Carpeta | Qué es | Se gestiona desde |
 |-----|---------|--------|-------------------|
-| **WhatsApp** | `Kit Whatsapp/` | motor de envíos Baileys compartido (Go/Wails, Flutter, Kotlin) | etapado automático en cada release de Windows |
+| **WhatsApp** | `Kit-Whatsapp/` | motor de envíos Baileys compartido (Go/Wails, Flutter, Kotlin) | etapado automático en cada release de Windows |
 | **D1** | `Kit-D1/` | stack de sincronización Cloudflare D1 (módulo Go + Worker) | panel "Kit D1" del sidebar |
 
 - **Insignias en la tarjeta del proyecto**: `Bridge.ProjectKits()`
@@ -521,15 +521,15 @@ además se administra desde un panel propio.
 
 ### Kit WhatsApp
 
-- `Kit Whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
+- `Kit-Whatsapp/` contiene `engine.js`, `bundle.mjs`, `package.json`,
   `node_modules/` y el bundle generado `whatsapp-engine-bundle/`. **No guarda
   ningún `node.exe`**: el runtime usa el **Node 20+ del sistema** (PATH) y
   `dist.bat --with-node` copia ese Node del PATH al payload cuando se necesita
   el sidecar para distribuir a máquinas sin Node.
 - **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
-  2. `<dir del exe>/Kit Whatsapp` (instalación / binario compilado);
-  3. `<cwd>/Kit Whatsapp` (desarrollo con `go run`).
+  2. `<dir del exe>/Kit-Whatsapp` (instalación / binario compilado);
+  3. `<cwd>/Kit-Whatsapp` (desarrollo con `go run`).
 - **Detección de uso (opt-in + automática)** (`projectUsesWhatsappEngine` /
   `projectImportsWhatsapp` en `internal/tasks/whatsapp_engine.go`): un proyecto
   recibe el runtime si se cumple **cualquiera** de estos criterios:
@@ -541,7 +541,7 @@ además se administra desde un panel propio.
   4. **escaneo automático**: sus fuentes Go importan un paquete cuya ruta
      referencia `whatsapp` (p.ej. `miproyecto/internal/whatsapp`). El escaneo
      recorre recursivamente los `.go` y omite `node_modules`, `vendor`, `.git`,
-     `bin`, `resources`, `out` y `Kit Whatsapp` (para no rallar ni falsar positivos
+     `bin`, `resources`, `out` y `Kit-Whatsapp` (para no rallar ni falsar positivos
      dentro del propio Compass); para en cuanto encuentra una coincidencia.
   El marcador `use-whatsapp-engine` es el mecanismo **canónico y
   multiplataforma**: sirve igual para Flutter, Kotlin, Python, Go y Go+Wails y
@@ -604,12 +604,12 @@ además se administra desde un panel propio.
   que reconstruye el bundle si `engine.js` es más nuevo). La antigua card
   "WhatsApp" y las tareas `whatsapp` / `whatsapp-portable` se retiraron: el
   portable lo genera el propio release para los proyectos que usan el motor.
-- `install.bat` / `dist.bat` copian `Kit Whatsapp/` junto al binario/instalador
+- `install.bat` / `dist.bat` copian `Kit-Whatsapp/` junto al binario/instalador
   (sin los artefactos de build del motor: `node_modules`, `out`, `examples`, y
   sin `node.exe` salvo con `--with-node`).
 - **Variable de entorno en la instalación**: `install.bat` define
   `COMPASS_WHATSAPP_ENGINE` (ámbito Usuario) apuntando al kit instalado
-  (`%LOCALAPPDATA%\Programs\Keimer\Kit Whatsapp`), para que los proyectos
+  (`%LOCALAPPDATA%\Programs\Keimer\Kit-Whatsapp`), para que los proyectos
   que consumen el motor (p.ej. GymPro en modo desarrollo) lo reutilicen en vivo
   sin copiarlo dentro del proyecto. `uninstall.bat` elimina esa variable.
   El modo desarrollo de Compass (`windows-dev` → `wails3 task dev`) no hace
@@ -717,7 +717,7 @@ stdin/stdout está documentado arriba, en
 [Protocolo stdin/stdout del motor](#protocolo-stdinstout-del-motor).
 
 ##### Modelo mental
-- El motor **canónico** vive en `Kit Whatsapp/` dentro de Compass Go: única
+- El motor **canónico** vive en `Kit-Whatsapp/` dentro de Compass Go: única
   fuente de verdad (`engine.js`, `bundle.mjs`, `node_modules/`). El repo no
   guarda `node.exe`: el runtime usa Node 20+ del sistema.
 - Cada proyecto consumidor recibe **su propia copia** del bundle generado
@@ -728,18 +728,18 @@ stdin/stdout está documentado arriba, en
 ##### Resolución dinámica de la ruta del motor (sin hardcodear disco)
 `whatsappEngineSource()` en `internal/tasks/whatsapp_engine.go` prueba en orden:
 1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
-2. `<dir del exe>/Kit Whatsapp`;
-3. `<cwd>/Kit Whatsapp`.
+2. `<dir del exe>/Kit-Whatsapp`;
+3. `<cwd>/Kit-Whatsapp`.
 
 Ninguna capa usa una letra de unidad fija, por tanto:
 - Si **instalas** Compass, `install.bat` fija `COMPASS_WHATSAPP_ENGINE` a
-  `%LOCALAPPDATA%\Programs\Keimer\Kit Whatsapp` (ruta **relativa a la
+  `%LOCALAPPDATA%\Programs\Keimer\Kit-Whatsapp` (ruta **relativa a la
   máquina**: sobrevive a mover el repo).
 - Si trabajas **solo desde el repo** (`go run` / `wails dev`), la variable puede
-  estar ausente y la resolución cae a `<cwd>/Kit Whatsapp` (encuentra el
+  estar ausente y la resolución cae a `<cwd>/Kit-Whatsapp` (encuentra el
   motor dentro del repo).
 - **Nunca** apuntes la env var a una ruta absoluta del repo
-  (`D:\...\Compass Go\Kit Whatsapp`): se rompería al volver a mover la
+  (`D:\...\Compass Go\Kit-Whatsapp`): se rompería al volver a mover la
   carpeta. Usa siempre la ruta de instalación relativa o deja que Compass la
   resuelva por cwd/exe.
 
@@ -754,12 +754,12 @@ Para integrar un proyecto nuevo basta con que importe el paquete `whatsapp`;
 Compass etapará el motor solo. No hace falta marcador manual.
 
 ##### Pasos operativos (integrar / actualizar)
-1. **Editar el motor canónico** solo en `Kit Whatsapp/engine.js` (y
+1. **Editar el motor canónico** solo en `Kit-Whatsapp/engine.js` (y
    `bundle.mjs` si cambia el empaquetado). No tocar los bundles generados.
 2. **Regenerar el bundle** (lo hace Compass al ejecutar la tarea `whatsapp`, o
    manual):
    ```bat
-   cd "Kit Whatsapp"
+   cd "Kit-Whatsapp"
    npm install
    node bundle.mjs --asset      # Go/Wails          → whatsapp-engine-bundle/
    node bundle.mjs --single     # Flutter           → out/single/index.js
