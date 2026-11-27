@@ -168,7 +168,7 @@ REM Sidecar del motor para Flutter: se compila AQUI (no al etajar) para que el
 REM binario instalado no necesite Go. El host resuelve node y el bundle, y
 REM reenvia stdio; las apps Flutter lo lanzan en vez de node.
 if exist "dist\payload\Kit-Whatsapp\go\whatsapp\cmd\host\main.go" (
-    echo [INFO] Compilando whatsapp-host.exe (sidecar del motor)...
+    echo [INFO] Compilando whatsapp-host.exe ^(sidecar del motor^)...
     if not exist "dist\payload\Kit-Whatsapp\host" mkdir "dist\payload\Kit-Whatsapp\host" >nul 2>nul
     pushd "dist\payload\Kit-Whatsapp\go\whatsapp"
     set "GOWORK=off"
@@ -263,7 +263,7 @@ if not exist "%MAKENSIS%" (
 
 echo [INFO] Generando dist\CompassGo-Setup.exe...
 pushd "dist"
-"%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% %FAST_FLAG% installer.nsi >nul
+"%MAKENSIS%" %ICON_FLAG% %HEADER_FLAG% %FAST_FLAG% installer.nsi
 set "MAKENSIS_RC=%errorlevel%"
 popd
 REM El .nsi y el .bmp solo hacen falta mientras compila makensis: se borran

@@ -99,9 +99,22 @@ REM compilaba. Se vuelve a comprobar antes de tocar el directorio instalado.
 call :require_compass_closed
 if errorlevel 1 exit /b 1
 echo [INFO] Instalando en silencio con %SETUP%...
+REM El instalador puede abortar (p.ej. si Compass se abrio mientras compilaba
+REM dist.bat) dejando el .exe anterior. Comparar la fecha antes/despues evita
+REM cantar un [OK] falso: solo hay exito si el binario cambio de verdad.
+for %%I in ("%BINDIR%\compass-go.exe") do set "EXE_ANTES=%%~tI"
 start /wait "" "%SETUP%" /S
 if not exist "%BINDIR%\compass-go.exe" (
     echo [ERROR] El instalador no dejo compass-go.exe en %BINDIR%.
+    echo.
+    pause
+    exit /b 1
+)
+for %%I in ("%BINDIR%\compass-go.exe") do set "EXE_DESPUES=%%~tI"
+if "%EXE_ANTES%"=="%EXE_DESPUES%" (
+    echo [ERROR] El instalador no reemplazo %BINDIR%\compass-go.exe.
+    echo         Lo mas probable: Compass Go seguia abierto. Cierralo del todo
+    echo         ^(incluida la ventana de la bandeja^) y vuelve a ejecutar install.bat.
     echo.
     pause
     exit /b 1

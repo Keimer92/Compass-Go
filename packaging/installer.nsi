@@ -90,6 +90,15 @@ Section "!${APPNAME} (obligatorio)" SEC_MAIN
 
   SetOutPath "$INSTDIR"
 
+  ; Windows no permite sobrescribir un .exe en uso. Se comprueba ANTES de
+  ; purgar los kits: si Compass Go sigue abierto se aborta sin tocar nada, en
+  ; vez de dejar la instalacion a medias (sin kits y con el binario viejo).
+  ClearErrors
+  Delete "$INSTDIR\${APPEXE}"
+  IfErrors 0 +3
+    MessageBox MB_ICONSTOP|MB_OK "Cierra Compass Go antes de instalar. No se ha modificado nada." /SD IDOK
+    Abort
+
   ; Purga los kits instalados antes de copiar el payload nuevo. NSIS con
   ; "File /r" sobrescribe pero NO borra, asi que un archivo que desaparecio del
   ; repo (o que cambio de nombre) se quedaria para siempre en la instalacion.
