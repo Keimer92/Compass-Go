@@ -352,3 +352,63 @@ func TestInfoJSONDetectsPartialMarkers(t *testing.T) {
 		t.Fatalf("detectVersion(info.json) = %q, %v; queria 1.1.0", got, ok)
 	}
 }
+
+// Los corekits (Kit WhatsApp y Kit D1) se versionan por su package.json.
+func TestVersionKitsUsePackageJSON(t *testing.T) {
+	for _, pt := range []project.ProjectType{project.TypeWhatsappKit, project.TypeKitD1} {
+		t.Run(pt.Label(), func(t *testing.T) {
+			root := t.TempDir()
+			pkg := "{\n  \"name\": \"kit\",\n  \"version\": \"2.0.2\"\n}\n"
+			if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(pkg), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			ctx := &project.ProjectContext{ScriptDir: root, ProjectType: pt}
+
+			info, err := VersionInfo(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(info.Files) != 1 || info.Files[0].Path != "package.json" || info.Files[0].Current != "2.0.2" {
+				t.Fatalf("plan inesperado: %+v", info)
+			}
+			if _, err := VersionApply(ctx, "3.0.0"); err != nil {
+				t.Fatal(err)
+			}
+			data, _ := os.ReadFile(filepath.Join(root, "package.json"))
+			if !strings.Contains(string(data), `"version": "3.0.0"`) {
+				t.Fatalf("package.json sin actualizar: %q", data)
+			}
+		})
+	}
+}
+
+// Kotlin sin versionName (KMP/desktop): la version es `version = "x.y.z"` del
+// proyecto Gradle. No debe confundirse con versionName.
+func TestVersionKotlinProjectVersionFallback(t *testing.T) {
+	root := t.TempDir()
+	src := "plugins {\n    kotlin(\"jvm\") version \"2.0.0\"\n}\n\ngroup = \"com.demo\"\nversion = \"1.2.0\"\n"
+	if err := os.WriteFile(filepath.Join(root, "build.gradle.kts"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeKotlin}
+
+	info, err := VersionInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Files) != 1 || info.Files[0].Current != "1.2.0" {
+		t.Fatalf("plan inesperado: %+v", info)
+	}
+	if _, err := VersionApply(ctx, "1.3.0"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "build.gradle.kts"))
+	got := string(data)
+	if !strings.Contains(got, `version = "1.3.0"`) {
+		t.Fatalf("version del proyecto sin actualizar: %q", got)
+	}
+	// El plugin sigue en su version: solo se toca la linea del proyecto.
+	if !strings.Contains(got, `kotlin("jvm") version "2.0.0"`) {
+		t.Fatalf("se modifico la version del plugin: %q", got)
+	}
+}

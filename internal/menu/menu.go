@@ -303,6 +303,8 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 			return "Firmas y huellas"
 		case Git:
 			return "Init · remoto · estado"
+		case VersionItem:
+			return "pubspec.yaml + build number"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:
@@ -332,6 +334,8 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 			return "Firmas y huellas"
 		case Git:
 			return "Init · remoto · estado"
+		case VersionItem:
+			return "versionName + versionCode"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:
@@ -401,6 +405,8 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 			return "Limpia binarios"
 		case Git:
 			return "Init · remoto · estado"
+		case VersionItem:
+			return "const version en main.go"
 		case ConfigureTerminal:
 			return "Autocompletado"
 		case Environment:
@@ -408,7 +414,10 @@ func (m MenuItem) Description(pt project.ProjectType) string {
 		case Tests:
 			return "go test ./..."
 		}
+	case project.TypeWhatsappKit, project.TypeKitD1:
+		if m == VersionItem {
+			return "package.json del kit"
+		}
 	}
 	return ""
 }
-

@@ -46,16 +46,17 @@ func TestMenuTasksAreRegisteredForEveryType(t *testing.T) {
 }
 
 // TestKitTypesOnlyHaveGenericTasks fija el contrato de los corekits: se abren
-// para versionarlos (git, terminal, entorno, limpieza), pero no deben ofrecer
-// build, release, firma ni version, que no aplican a una libreria.
+// para versionarlos (version, git, terminal, entorno, limpieza), pero no deben
+// ofrecer build, release ni firma, que no aplican a una libreria.
 func TestKitTypesOnlyHaveGenericTasks(t *testing.T) {
 	for _, pt := range []project.ProjectType{project.TypeWhatsappKit, project.TypeKitD1} {
-		for _, task := range []string{"windows-dev", "windows-build", "windows-release", "version", "go-test"} {
+		for _, task := range []string{"windows-dev", "windows-build", "windows-release", "go-test"} {
 			if _, ok := registry[fmt.Sprintf("%s|%d", task, pt)]; ok {
 				t.Errorf("%s no deberia tener la tarea %q", pt.Label(), task)
 			}
 		}
-		for _, task := range []string{"clean", "git", "terminal", "environment"} {
+		// La version de un kit vive en su package.json (Node).
+		for _, task := range []string{"clean", "git", "terminal", "environment", "version"} {
 			if _, ok := registry[fmt.Sprintf("%s|%d", task, pt)]; !ok {
 				t.Errorf("%s deberia tener la tarea %q", pt.Label(), task)
 			}

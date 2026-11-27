@@ -363,8 +363,10 @@ archivos son opcionales: si existen y tienen marcador, se sincronizan.
 | Flutter | `pubspec.yaml` | `version: 1.2.3+45` (raíz, sin comillas) |
 | Go puro | `main.go` (o `version.go`) | `const version = "1.2.3"` |
 | Go + Wails v3 | `build/config.yml` y `frontend/package.json` | `info.version: "1.2.3"` y `"version": "1.2.3"` |
-| Kotlin | `build.gradle(.kts)` de la raíz o del módulo | `versionName "1.2.3"` + `versionCode N` |
+| Kotlin | `build.gradle(.kts)` de la raíz o del módulo | `versionName "1.2.3"` + `versionCode N`, o `version = "1.2.3"` |
 | Python | `pyproject.toml` | `version = "1.2.3"` bajo `[project]` o `[tool.poetry]` |
+| Kit WhatsApp (Node) | `package.json` (raíz del kit) | `"version": "1.2.3"` |
+| Kit D1 (Node + Go) | `package.json` (raíz del kit) | `"version": "1.2.3"` |
 
 Detalle por tipo (lo que sincroniza además de la fuente obligatoria):
 
@@ -385,11 +387,20 @@ Detalle por tipo (lo que sincroniza además de la fuente obligatoria):
   propósito (la versión canónica en Wails vive en `config.yml`/`package.json` y
   un const que nadie lee solo ensucia el código). Esto evita que un `main.go`
   sin const aborte el versionado de todo el proyecto.
-- **Kotlin**: `build.gradle(.kts)` en raíz, `app/` y `composeApp/`. Sin
-  `versionCode` literal el archivo se omite (no se puede mantener el entero
-  sincronizado).
+- **Kotlin**: `build.gradle(.kts)` en raíz, `app/` y `composeApp/`. Android usa
+  `versionName` + `versionCode` literales (sin `versionCode` el archivo se omite,
+  no se puede mantener el entero sincronizado). Si el archivo no tiene
+  `versionName` pero sí la `version = "x.y.z"` del proyecto Gradle (KMP, desktop,
+  librerías), se versiona esa línea con `fmtGradleProject` y no se toca ningún
+  `versionCode` ni la versión de los plugins.
 - **Python**: solo `pyproject.toml`; con versión dinámica (`dynamic = [...]`) el
   versionador aborta pidiendo actualizarla en el sistema de build.
+- **Kit WhatsApp** (`TypeWhatsappKit`) y **Kit D1** (`TypeKitD1`): se versionan
+  por el `package.json` de la raíz del kit (`fmtJSON`, obligatorio). Kit D1 no
+  tenía ninguno: se añadió uno mínimo (`private: true`) para que el versionador
+  funcione; su código sigue siendo Go + scripts `.mjs` y el tag del módulo
+  (`Kit-D1/go/syncengine/vX.Y.Z`) se publica aparte. No se tocan
+  `node_modules/` ni los `package.json` de `worker/instances/`.
 
 Notas de implementación que no se deben romper:
 

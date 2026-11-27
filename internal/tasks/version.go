@@ -19,6 +19,10 @@ func init() {
 	Register("version", project.TypePython, VersionBump)
 	Register("version", project.TypeGo, VersionBump)
 	Register("version", project.TypeGoWails, VersionBump)
+	// Los corekits tambien se versionan: su version vive en el package.json
+	// (Node), igual que en un proyecto JS normal.
+	Register("version", project.TypeWhatsappKit, VersionBump)
+	Register("version", project.TypeKitD1, VersionBump)
 }
 
 type versionFormat int
@@ -36,6 +40,9 @@ const (
 	fmtPubspec
 	fmtWinres
 	fmtRunnerRC
+	// fmtGradleProject es la `version = "x.y.z"` de un build.gradle(.kts) sin
+	// versionName/versionCode (Kotlin Multiplatform, desktop, librerias).
+	fmtGradleProject
 )
 
 type versionSource int
@@ -79,9 +86,13 @@ var (
 	reGradleCode     = regexp.MustCompile(`(?m)^[ \t]*versionCode[ \t]*=?[ \t]*(\d+)`)
 	reGradleNameRep  = regexp.MustCompile(`(?m)^([ \t]*versionName[ \t]*=?[ \t]*")[^"]+(")`)
 	reGradleCodeRep  = regexp.MustCompile(`(?m)^([ \t]*versionCode[ \t]*=?[ \t]*)(\d+)`)
-	rePyprojectVer   = regexp.MustCompile(`(?m)^([ \t]*version[ \t]*=[ \t]*")[^"]+(".*)$`)
-	rePackage        = regexp.MustCompile(`(?m)^\[package\]\s*$`)
-	reNewVersion     = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$`)
+	// version = "x.y.z" del proyecto Gradle (KMP/desktop), sin versionName.
+	// No confunde `versionName = "..."` porque exige `=` justo tras `version`.
+	reGradleProjVer    = regexp.MustCompile(`(?m)^[ \t]*version[ \t]*=[ \t]*"([^"]+)"`)
+	reGradleProjVerRep = regexp.MustCompile(`(?m)^([ \t]*version[ \t]*=[ \t]*")[^"]+(")`)
+	rePyprojectVer     = regexp.MustCompile(`(?m)^([ \t]*version[ \t]*=[ \t]*")[^"]+(".*)$`)
+	rePackage          = regexp.MustCompile(`(?m)^\[package\]\s*$`)
+	reNewVersion       = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$`)
 
 	// Flutter: version: 1.2.3+45 (build number despues del '+').
 	rePubspec        = regexp.MustCompile(`(?m)^[ \t]*version:[ \t]*(\d+\.\d+\.\d+)(?:\+(\d+))?[ \t]*$`)
@@ -300,6 +311,12 @@ func planVersion(ctx *project.ProjectContext) (*versionPlan, error) {
 			}
 			if hasCur {
 				files = append(files, versionFile{path: sf.path, format: sf.format, current: cur, hasCurrent: true, currentCode: cc, hasCode: true, text: text})
+				continue
+			}
+			// Sin versionName: puede ser un build.gradle de Kotlin Multiplatform
+			// o desktop, donde la version es `version = "x.y.z"` del proyecto.
+			if v, ok := cap1(reGradleProjVer, text); ok {
+				files = append(files, versionFile{path: sf.path, format: fmtGradleProject, current: v, hasCurrent: true, text: text})
 				continue
 			}
 		} else {
@@ -541,7 +558,8 @@ func versionConfigs(ctx *project.ProjectContext) []sourceFile {
 		}
 	case project.TypeKotlin:
 		// Kotlin Multiplatform: build.gradle(.kts) en la raiz y en los modulos.
-		// Sintaxis Groovy (`versionName "x"`) y Kotlin DSL (`versionName = "x"`).
+		// Android usa `versionName` + `versionCode` (Groovy o Kotlin DSL); KMP y
+		// desktop usan `version = "x.y.z"` en la raiz (fmtGradleProject).
 		return []sourceFile{
 			mk("build.gradle", fmtGradle, srcOptional),
 			mk("build.gradle.kts", fmtGradle, srcOptional),
@@ -571,6 +589,12 @@ func versionConfigs(ctx *project.ProjectContext) []sourceFile {
 		}
 	case project.TypePython:
 		return []sourceFile{mk("pyproject.toml", fmtPyproject, srcRequired)}
+	case project.TypeWhatsappKit, project.TypeKitD1:
+		// Los corekits son paquetes Node: la version vive en el package.json del
+		// kit (no en el de node_modules ni en el de las instancias generadas).
+		// Kit WhatsApp la usa tambien para publicar el motor; Kit D1 la declara
+		// aqui aunque su codigo sea Go + scripts .mjs.
+		return []sourceFile{mk("package.json", fmtJSON, srcRequired)}
 	default: // Go
 		return []sourceFile{mk("go.mod", fmtTOML, srcRequired)}
 	}
@@ -603,6 +627,8 @@ func detectVersion(f versionFormat, text string) (string, bool) {
 		return cap1(reIJProductCap, text)
 	case fmtGradle:
 		return gradleName(text)
+	case fmtGradleProject:
+		return cap1(reGradleProjVer, text)
 	case fmtPlist:
 		return cap1(rePlistFirst, text)
 	case fmtPubspec:
@@ -714,6 +740,8 @@ func missingHint(f versionFormat) string {
 		return `se esperaban "file_version", "product_version" y "ProductVersion" (info.json)`
 	case fmtGradle:
 		return `se esperaba "versionName \"x.y.z\"" (build.gradle)`
+	case fmtGradleProject:
+		return `se esperaba "version = \"x.y.z\"" en build.gradle(.kts)`
 	case fmtPlist:
 		return `se esperaban "CFBundleShortVersionString" y "CFBundleVersion" (Info.plist)`
 	case fmtPyproject:
@@ -767,6 +795,8 @@ func applyFormat(f *versionFile, newVer string) (string, error) {
 	case fmtGradle:
 		renamed := reGradleNameRep.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer))
 		return reGradleCodeRep.ReplaceAllString(renamed, fmt.Sprintf(`${1}%d`, f.currentCode+1)), nil
+	case fmtGradleProject:
+		return reGradleProjVerRep.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer)), nil
 	case fmtPlist:
 		return rePlist.ReplaceAllString(f.text, fmt.Sprintf(`${1}%s${2}`, newVer)), nil
 	case fmtPubspec:
