@@ -92,7 +92,10 @@ var (
 	reWinresInfo     = regexp.MustCompile(`("(?:FileVersion|ProductVersion)"[ \t]*:[ \t]*")[^"]+(")`)
 	// Flutter Windows: valores fallback de Runner.rc cuando no hay defines.
 	reRCStr = regexp.MustCompile(`(?m)^([ \t]*#define[ \t]+VERSION_AS_STRING[ \t]+")[^"]+(")`)
-	reRCNum = regexp.MustCompile(`(?m)^([ \t]*#define[ \t]+VERSION_AS_NUMBER[ \t]+)\d+,\d+,\d+,\d+`)
+	// reRCStrVal captura SOLO el valor; reRCStr tiene el prefijo en el grupo 1
+	// porque se usa para reemplazar, no para leer.
+	reRCStrVal = regexp.MustCompile(`(?m)^[ \t]*#define[ \t]+VERSION_AS_STRING[ \t]+"([^"]+)"`)
+	reRCNum    = regexp.MustCompile(`(?m)^([ \t]*#define[ \t]+VERSION_AS_NUMBER[ \t]+)\d+,\d+,\d+,\d+`)
 )
 
 // VersionBump actualiza la version del proyecto (port de versionar.bat).
@@ -310,7 +313,13 @@ func planVersion(ctx *project.ProjectContext) (*versionPlan, error) {
 
 		// Sin marcador: una fuente opcional que no sabemos insertar con
 		// seguridad se omite en lugar de abortar todo el versionado.
-		if sf.source == srcOptional && !isInsertableFormat(sf.format) {
+		//
+		// fmtGoConst es insertable, pero en Wails main.go se omite igual: la
+		// version canonica vive en build/config.yml y frontend/package.json, y
+		// añadir un `const version` que nadie lee solo ensucia el codigo. Si el
+		// proyecto ya lo tiene, hasCur es true y se actualiza como cualquier
+		// otro archivo.
+		if sf.source == srcOptional && (sf.format == fmtGoConst || !isInsertableFormat(sf.format)) {
 			omitted = append(omitted, sf.path)
 			continue
 		}
@@ -558,6 +567,7 @@ func versionConfigs(ctx *project.ProjectContext) []sourceFile {
 			mk("build/ios/Info.dev.plist", fmtPlist, srcOptional),
 			mk("build/darwin/Info.plist", fmtPlist, srcOptional),
 			mk("build/darwin/Info.dev.plist", fmtPlist, srcOptional),
+			mk("build/linux/nfpm/nfpm.yaml", fmtYAML, srcOptional),
 		}
 	case project.TypePython:
 		return []sourceFile{mk("pyproject.toml", fmtPyproject, srcRequired)}
@@ -581,13 +591,16 @@ func detectVersion(f versionFormat, text string) (string, bool) {
 	case fmtNsis:
 		return cap1(reNsis, text)
 	case fmtInfoJSON:
-		fv, ok1 := cap1(reIJFile, text)
-		_, ok2 := cap1(reIJProduct, text)
-		_, ok3 := cap1(reIJProductCap, text)
-		if ok1 && ok2 && ok3 {
-			return fv, true
+		// Wails v3 escribe `fixed.file_version` y `info.<lang>.ProductVersion`;
+		// `product_version` solo aparece en perfiles antiguos. Basta con uno de
+		// los tres para considerar el archivo versionable.
+		if v, ok := cap1(reIJFile, text); ok {
+			return v, true
 		}
-		return "", false
+		if v, ok := cap1(reIJProduct, text); ok {
+			return v, true
+		}
+		return cap1(reIJProductCap, text)
 	case fmtGradle:
 		return gradleName(text)
 	case fmtPlist:
@@ -597,7 +610,7 @@ func detectVersion(f versionFormat, text string) (string, bool) {
 	case fmtWinres:
 		return winresVersion(text)
 	case fmtRunnerRC:
-		return cap1(reRCStr, text)
+		return cap1(reRCStrVal, text)
 	}
 	return "", false
 }

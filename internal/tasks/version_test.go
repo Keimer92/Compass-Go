@@ -277,3 +277,78 @@ func TestVersionApplyGoInsertsConst(t *testing.T) {
 		t.Fatalf("no se inserto el const: %q", data)
 	}
 }
+
+// Un main.go de Wails sin `const version` no debe abortar el versionado: se
+// omite y el resto de archivos (config.yml, package.json, plists...) se
+// actualiza igual.
+func TestVersionGoWailsOmitsMainGoWithoutConst(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("main.go", "package main\n\nfunc main() {}\n")
+	write("frontend/package.json", "{\n  \"name\": \"frontend\",\n  \"version\": \"0.0.0\"\n}\n")
+	write("build/config.yml", "version: '3'\ninfo:\n  version: \"0.0.1\"\n")
+
+	ctx := &project.ProjectContext{ScriptDir: root, ProjectType: project.TypeGoWails}
+	info, err := VersionInfo(ctx)
+	if err != nil {
+		t.Fatalf("el versionador no debe fallar por main.go: %v", err)
+	}
+	var paths []string
+	for _, f := range info.Files {
+		paths = append(paths, f.Path)
+	}
+	joined := strings.ReplaceAll(strings.Join(paths, ","), `\`, "/")
+	if !strings.Contains(joined, "frontend/package.json") || !strings.Contains(joined, "build/config.yml") {
+		t.Fatalf("faltan archivos versionables: %v", paths)
+	}
+	for _, f := range info.Files {
+		if f.Path == "main.go" {
+			t.Fatal("main.go sin const version no deberia listarse")
+		}
+	}
+
+	if _, err := VersionApply(ctx, "2.1.0"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "frontend/package.json"))
+	if !strings.Contains(string(data), `"version": "2.1.0"`) {
+		t.Fatalf("package.json sin actualizar: %q", data)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(root, "build/config.yml"))
+	if !strings.Contains(string(cfg), `version: "2.1.0"`) {
+		t.Fatalf("config.yml sin actualizar: %q", cfg)
+	}
+}
+
+// Runner.rc se lee con un regex que captura el valor; el de reemplazo tiene el
+// prefijo en el grupo 1 y devolvia basura como "version actual".
+func TestRunnerRCDetectReturnsValue(t *testing.T) {
+	src := "#ifdef FLUTTER_VERSION\n" +
+		"#define VERSION_AS_STRING FLUTTER_VERSION\n" +
+		"#else\n" +
+		"#define VERSION_AS_STRING \"1.4.2\"\n" +
+		"#endif\n"
+	got, ok := detectVersion(fmtRunnerRC, src)
+	if !ok || got != "1.4.2" {
+		t.Fatalf("detectVersion(Runner.rc) = %q, %v; queria 1.4.2", got, ok)
+	}
+}
+
+// info.json de Wails v3 trae file_version y ProductVersion, pero no siempre
+// product_version; basta uno para versionarlo.
+func TestInfoJSONDetectsPartialMarkers(t *testing.T) {
+	src := `{"fixed": {"file_version": "1.1.0"},"info": {"0409": {"ProductVersion": "1.1.0"}}}`
+	got, ok := detectVersion(fmtInfoJSON, src)
+	if !ok || got != "1.1.0" {
+		t.Fatalf("detectVersion(info.json) = %q, %v; queria 1.1.0", got, ok)
+	}
+}

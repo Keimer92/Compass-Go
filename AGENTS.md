@@ -332,6 +332,77 @@ proyecto concreto:
 - **Consola**: `compass-web.exe --task windows-release-x64` sin `--portable`
   tampoco genera el portable; el flag es la única forma de activarlo.
 
+## Versionador (card Version) y archivos de versión por tipo de proyecto
+
+La card **Version** (`menu.VersionItem`) ya **no abre una pestaña ConPTY**: abre
+un modal GUI (`frontend/src/components/Version.svelte`) que lista los archivos
+de versión del proyecto, su valor actual y aplica la versión nueva. El puente
+expone `Bridge.VersionInfo()` y `Bridge.ApplyVersion(version)`, respaldados por
+`tasks.VersionInfo` / `tasks.VersionApply` (`internal/tasks/version.go`).
+
+- **Plan y aplicación separados**: `planVersion(ctx)` valida el proyecto
+  (todo-o-nada, sin escribir) y `versionPlan.Apply(newVer)` escribe. La tarea de
+  terminal (`VersionBump`, `--task version`) usa exactamente el mismo par, así
+  que la GUI y la consola nunca divergen.
+- **Validación**: `X.Y.Z` con sufijo opcional (`-pre`, `+build`) en ambos
+  caminos (`tasks.ValidVersion`). En Flutter el build number (`+N`) se
+  incrementa solo si no se indica uno explícito.
+- **Fuente obligatoria vs opcional**: si falta un archivo `srcRequired` el
+  versionado aborta; los `srcOptional` que no existen o no tienen marcador se
+  omiten y se muestran como "se omiten" en el modal. Un proyecto nunca se queda
+  a medias: si algo falla, no se escribe ningún archivo.
+
+### Regla para proyectos nuevos (según Compass Go)
+
+Todo proyecto nuevo **debe** traer, como mínimo, la fuente obligatoria de su
+tipo con un marcador de versión literal y actualizable por regex. Los demás
+archivos son opcionales: si existen y tienen marcador, se sincronizan.
+
+| Tipo | Fuente obligatoria (mínimo) | Marcador esperado |
+|---|---|---|
+| Flutter | `pubspec.yaml` | `version: 1.2.3+45` (raíz, sin comillas) |
+| Go puro | `main.go` (o `version.go`) | `const version = "1.2.3"` |
+| Go + Wails v3 | `build/config.yml` y `frontend/package.json` | `info.version: "1.2.3"` y `"version": "1.2.3"` |
+| Kotlin | `build.gradle(.kts)` de la raíz o del módulo | `versionName "1.2.3"` + `versionCode N` |
+| Python | `pyproject.toml` | `version = "1.2.3"` bajo `[project]` o `[tool.poetry]` |
+
+Detalle por tipo (lo que sincroniza además de la fuente obligatoria):
+
+- **Flutter**: `pubspec.yaml` (obligatoria) + `android/app/build.gradle(.kts)`
+  (solo si tiene `versionName` **y** `versionCode` literales),
+  `ios/Runner/Info.plist`, `ios/Flutter/Info.plist`, `macos/Runner/Info.plist`,
+  `windows/runner/Runner.rc` (fallback `VERSION_AS_STRING` /
+  `VERSION_AS_NUMBER`; Flutter los sobreescribe en build).
+- **Go puro**: un único archivo, `main.go` si existe o `version.go` si no. Si no
+  hay `const version`, se inserta después de los imports con un `package`
+  deducido de `go.mod` (`applyGoVersion`), sin dejar código inválido.
+- **Go + Wails v3**: `go-winres.json`, `frontend/package.json`,
+  `build/config.yml`, `build/windows/nsis/project.nsi`,
+  `build/windows/info.json`, `build/android/app/build.gradle`,
+  `build/ios/Info.plist`, `build/ios/Info.dev.plist`, `build/darwin/Info.plist`,
+  `build/darwin/Info.dev.plist`, `build/linux/nfpm/nfpm.yaml`.
+  **`main.go` solo se versiona si ya tiene `const version`**; si no, se omite a
+  propósito (la versión canónica en Wails vive en `config.yml`/`package.json` y
+  un const que nadie lee solo ensucia el código). Esto evita que un `main.go`
+  sin const aborte el versionado de todo el proyecto.
+- **Kotlin**: `build.gradle(.kts)` en raíz, `app/` y `composeApp/`. Sin
+  `versionCode` literal el archivo se omite (no se puede mantener el entero
+  sincronizado).
+- **Python**: solo `pyproject.toml`; con versión dinámica (`dynamic = [...]`) el
+  versionador aborta pidiendo actualizarla en el sistema de build.
+
+Notas de implementación que no se deben romper:
+
+- `Runner.rc` se **lee** con `reRCStrVal` (grupo 1 = valor) y se **escribe** con
+  `reRCStr` (grupo 1 = prefijo, grupo 2 = cierre). Usar el regex de reemplazo
+  para leer devuelve basura (`#define VERSION_AS_STRING "`).
+- `info.json` de Wails v3 puede traer solo `file_version` + `ProductVersion` (sin
+  `product_version`); basta uno de los tres para considerarlo versionable.
+- `build/config.yml` tiene dos claves `version`: la de Wails (`version: '3'`,
+  comillas simples, no coincide) y la de la app (`version: "x.y.z"`). Los regex
+  solo aceptan comillas dobles, así que se actualiza la correcta.
+- La GUI refresca el panel Git con `notifyRepoChanged()` al terminar.
+
 ## Panel Git lateral (tipo VSCode)
 
 - **Git vive en el panel derecho, no en una card**: la card Git y sus subcards
