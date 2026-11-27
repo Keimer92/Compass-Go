@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -132,6 +133,20 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, data, 0644)
+}
+
+// copyFileIfChanged copia src sobre dst solo cuando el contenido difiere (o el
+// destino no existe). Evita reescribir bundles idénticos en cada build, que
+// invalidaría builds incrementales y ensuciaría las fechas de modificación.
+func copyFileIfChanged(src, dst string) (bool, error) {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return false, err
+	}
+	if prev, err := os.ReadFile(dst); err == nil && bytes.Equal(prev, data) {
+		return false, nil
+	}
+	return true, os.WriteFile(dst, data, 0644)
 }
 
 // moveFile deja src en dst sobrescribiendo el destino. Prueba rename primero;

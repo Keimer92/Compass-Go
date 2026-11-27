@@ -54,7 +54,9 @@ func FlutterRunWindows(ctx *project.ProjectContext) error {
 	if err := ensurePubget(ctx); err != nil {
 		return err
 	}
-	prepareWhatsappEngine(ctx)
+	// En dev el servicio Dart puede leer el kit canónico por
+	// COMPASS_WHATSAPP_ENGINE; solo se etaja si esa vía no está disponible.
+	prepareWhatsappEngineDev(ctx)
 	return shell.SpawnNewWindowInteractive("Flutter Desktop (Dev)", ctx.ScriptDir, "flutter run -d windows")
 }
 

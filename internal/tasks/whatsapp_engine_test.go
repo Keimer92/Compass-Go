@@ -307,3 +307,85 @@ func TestFlutterUsesWhatsappEngine(t *testing.T) {
 		t.Error("projectUsesWhatsappEngine no detectó el proyecto Flutter")
 	}
 }
+
+// fakeCanonicalKit crea un kit canónico mínimo con el bundle single-file.
+func fakeCanonicalKit(t *testing.T) string {
+	t.Helper()
+	kit := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(kit, "single"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(kit, "single", "index.js"), []byte("// bundle"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return kit
+}
+
+// TestDevUsesCanonicalKit: con COMPASS_WHATSAPP_ENGINE apuntando al kit, el dev
+// de Flutter usa el kit y no copia el motor dentro del proyecto (igual que los
+// proyectos Go). Sin la variable, o sin el bundle single, se etaja.
+func TestDevUsesCanonicalKit(t *testing.T) {
+	proj := t.TempDir()
+	ctx := &project.ProjectContext{ScriptDir: proj, ProjectType: project.TypeFlutter, HasWhatsAppEngine: true}
+
+	// Sin variable: no hay atajo.
+	t.Setenv("COMPASS_WHATSAPP_ENGINE", "")
+	if _, ok := devUsesCanonicalKit(ctx); ok {
+		t.Error("sin COMPASS_WHATSAPP_ENGINE no debe usarse el kit canónico")
+	}
+
+	// Kit sin bundle single: no hay atajo.
+	t.Setenv("COMPASS_WHATSAPP_ENGINE", t.TempDir())
+	if _, ok := devUsesCanonicalKit(ctx); ok {
+		t.Error("sin single/index.js no debe usarse el kit canónico")
+	}
+
+	// Kit completo: se usa y se devuelve su ruta.
+	kit := fakeCanonicalKit(t)
+	t.Setenv("COMPASS_WHATSAPP_ENGINE", kit)
+	src, ok := devUsesCanonicalKit(ctx)
+	if !ok {
+		t.Fatal("con el kit canónico completo debe usarse sin copiar")
+	}
+	if src != filepath.Clean(kit) {
+		t.Errorf("ruta del kit = %q, queria %q", src, kit)
+	}
+
+	// Un proyecto que no consume el motor no entra en la rama.
+	other := &project.ProjectContext{ScriptDir: t.TempDir(), ProjectType: project.TypeFlutter}
+	if _, ok := devUsesCanonicalKit(other); ok {
+		t.Error("un proyecto sin motor no debe usar el kit canónico")
+	}
+}
+
+// TestCopyFileIfChanged verifica que no se reescribe un archivo idéntico.
+func TestCopyFileIfChanged(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.js")
+	dst := filepath.Join(dir, "dst.js")
+	if err := os.WriteFile(src, []byte("hola"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := copyFileIfChanged(src, dst)
+	if err != nil || !changed {
+		t.Fatalf("primera copia: changed=%v err=%v", changed, err)
+	}
+	changed, err = copyFileIfChanged(src, dst)
+	if err != nil || changed {
+		t.Fatalf("copia idéntica no debe reescribir: changed=%v err=%v", changed, err)
+	}
+	if err := os.WriteFile(src, []byte("adios"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err = copyFileIfChanged(src, dst)
+	if err != nil || !changed {
+		t.Fatalf("contenido distinto debe copiarse: changed=%v err=%v", changed, err)
+	}
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "adios" {
+		t.Fatalf("destino desactualizado: %q", data)
+	}
+}

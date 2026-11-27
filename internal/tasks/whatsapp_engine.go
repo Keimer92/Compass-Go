@@ -27,6 +27,11 @@ const whatsappEngineMarker = "use-whatsapp-engine"
 // errScanStop corta el WalkDir cuando ya se encontró la señal.
 var errScanStop = errors.New("stop scan")
 
+// whatsappEngineEnv devuelve COMPASS_WHATSAPP_ENGINE limpio ("" si no esta).
+func whatsappEngineEnv() string {
+	return strings.TrimSpace(os.Getenv("COMPASS_WHATSAPP_ENGINE"))
+}
+
 // whatsappEngineSource devuelve la ruta del motor de WhatsApp canónico.
 // Orden de resolución:
 //  1. COMPASS_WHATSAPP_ENGINE (override explícito).
@@ -34,7 +39,7 @@ var errScanStop = errors.New("stop scan")
 //  3. <cwd>/Kit Whatsapp (desarrollo con `go run`).
 //  4. fallback a (2).
 func whatsappEngineSource() string {
-	if v := os.Getenv("COMPASS_WHATSAPP_ENGINE"); v != "" {
+	if v := whatsappEngineEnv(); v != "" {
 		return filepath.Clean(v)
 	}
 	rel := whatsappEngineRel
@@ -173,6 +178,43 @@ func prepareWhatsappEngine(ctx *project.ProjectContext) {
 	stageWhatsappEngine(ctx)
 }
 
+// prepareWhatsappEngineDev es la variante para ejecutar en desarrollo
+// (`flutter run`). En Flutter, si COMPASS_WHATSAPP_ENGINE apunta al kit
+// canónico, el servicio Dart lo lee directamente y no hace falta copiar nada
+// al proyecto: es la misma convención que usan los proyectos Go. Sin la
+// variable (o sin el bundle single) se etaja como siempre, que es el único
+// modo de que funcione sin Compass instalado.
+func prepareWhatsappEngineDev(ctx *project.ProjectContext) {
+	ensureWhatsappNpm(ctx)
+	if src, ok := devUsesCanonicalKit(ctx); ok {
+		fmt.Println("[OK] Motor de WhatsApp: en dev se usa el kit canonico instalado.")
+		fmt.Printf("     %s\n", src)
+		fmt.Println("     (sin copia en el proyecto; el release si la lleva)")
+		return
+	}
+	stageWhatsappEngine(ctx)
+}
+
+// devUsesCanonicalKit indica si el dev puede leer el motor del kit canónico
+// sin copiarlo: proyecto Flutter que consume el motor, COMPASS_WHATSAPP_ENGINE
+// definida y bundle `single/index.js` disponible. Devuelve la ruta del kit.
+func devUsesCanonicalKit(ctx *project.ProjectContext) (string, bool) {
+	if ctx.ProjectType != project.TypeFlutter || !projectUsesWhatsappEngine(ctx) {
+		return "", false
+	}
+	if whatsappEngineEnv() == "" {
+		return "", false
+	}
+	src := whatsappEngineSource()
+	if !fileExists(filepath.Join(src, "single", "index.js")) {
+		return "", false
+	}
+	if !ensureWhatsappSingleBundle(src) {
+		return "", false
+	}
+	return src, true
+}
+
 // stageWhatsappEngine asegura que el motor canónico esté en la salida del
 // proyecto. Es un no-op si el proyecto no usa el motor o el motor canónico no
 // existe.
@@ -272,7 +314,12 @@ func stageFlutterWhatsappEngine(ctx *project.ProjectContext, src string) {
 		fmt.Printf("[WARN] No se pudo crear %s: %v\n", dest, err)
 		return
 	}
-	if err := copyFile(filepath.Join(src, "single", "index.js"), filepath.Join(dest, "index.js")); err != nil {
+	srcFile := filepath.Join(src, "single", "index.js")
+	destFile := filepath.Join(dest, "index.js")
+	// Copiar solo si cambió: reescribir el mismo contenido cada build invalida
+	// el build incremental de Flutter sin necesidad.
+	changed, err := copyFileIfChanged(srcFile, destFile)
+	if err != nil {
 		fmt.Printf("[WARN] No se pudo copiar el bundle de WhatsApp: %v\n", err)
 		return
 	}
@@ -282,7 +329,11 @@ func stageFlutterWhatsappEngine(ctx *project.ProjectContext, src string) {
 	if err := os.Remove(filepath.Join(dest, "node.exe")); err == nil {
 		fmt.Println("[INFO] Eliminado node.exe del staging anterior; se usará Node 20+ del sistema.")
 	}
-	fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s\n", dest)
+	if changed {
+		fmt.Printf("[OK] Motor de WhatsApp canónico instalado en %s (desde %s)\n", dest, src)
+	} else {
+		fmt.Printf("[OK] Motor de WhatsApp ya al día en %s (desde %s)\n", dest, src)
+	}
 
 	// El motor se etaja, pero quien lo mete en el release es la regla install()
 	// del CMakeLists. Si falta, se inyecta: sin ella el build sale sin motor y

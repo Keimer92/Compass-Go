@@ -551,7 +551,16 @@ además se administra desde un panel propio.
   copia **solo `whatsapp-engine-bundle`** al `bin/resources/` del proyecto (o al
   `resources/` de Flutter/Kotlin según tipo). En **Flutter** el destino es
   `whatsapp_engine/` (index.js `--single`). No copia `node.exe` y, si quedó uno
-  de un staging anterior, lo elimina para forzar el Node del PATH.
+  de un staging anterior, lo elimina para forzar el Node del PATH. La copia solo
+  se reescribe si el contenido cambió (`copyFileIfChanged`), para no invalidar
+  builds incrementales.
+- **Convención única en dev (Go y Flutter)**: `flutter run` usa
+  `prepareWhatsappEngineDev`, que **no copia** el motor al proyecto cuando
+  `COMPASS_WHATSAPP_ENGINE` está definida y el kit tiene `single/index.js`; el
+  servicio Dart lo lee directo del kit. Si la variable no existe (o el bundle
+  falta) se etaja como siempre, que es el único modo de funcionar sin Compass
+  instalado. El **release siempre lleva su copia**, porque en la máquina del
+  usuario final no hay variable ni kit.
 - **Node en runtime (cascada)**: los consumidores buscan primero un sidecar
   `node.exe` **del propio proyecto** (staging/release anterior) y, si no,
   `node` en el PATH; exigen **Node >= 20** (Baileys 6.7.x). No usan el
@@ -757,13 +766,15 @@ Compass etapará el motor solo. No hace falta marcador manual.
 4. **Dev en vivo** (sin re-etapar en cada cambio): asegúrate de que
    `COMPASS_WHATSAPP_ENGINE` apunte a la instalación (`install.bat` lo deja
    listo). El modo `windows-dev` hereda el entorno y el proyecto ve el engine.
+   En Flutter, `flutter run` hace lo mismo: el servicio Dart resuelve
+   `COMPASS_WHATSAPP_ENGINE/single` y Compass no copia nada al proyecto.
    Tras mover Compass, re-ejecuta `install.bat` para re-fijar la variable.
 
 ##### Por framework (dónde va el bundle)
 | Framework | Destino del bundle | Resolución en runtime |
 |---|---|---|
-| Go + Wails v3 | `resources/whatsapp-engine-bundle/` | `internal/whatsapp` desde el cwd de la app |
-| Flutter | `whatsapp_engine/index.js` (modo single) | cwd → exe dir → app docs |
+| Go + Wails v3 | `resources/whatsapp-engine-bundle/` | `COMPASS_WHATSAPP_ENGINE` → cwd de la app |
+| Flutter | `whatsapp_engine/index.js` (modo single) | `COMPASS_WHATSAPP_ENGINE/single` → cwd → exe dir → app docs |
 | Kotlin | carpeta de recursos del framework | según launcher |
 
 ##### Ejemplo concreto: GymPro (Go + Wails v3)
