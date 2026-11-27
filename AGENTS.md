@@ -526,6 +526,15 @@ además se administra desde un panel propio.
   ningún `node.exe`**: el runtime usa el **Node 20+ del sistema** (PATH) y
   `dist.bat --with-node` copia ese Node del PATH al payload cuando se necesita
   el sidecar para distribuir a máquinas sin Node.
+- **Cliente Go compartido** (`Kit-Whatsapp/go/whatsapp`): módulo propio
+  `github.com/Keimer92/Compass-Go/Kit-Whatsapp/go/whatsapp`, tag
+  `Kit-Whatsapp/go/whatsapp/vX.Y.Z`. Implementa el supervisor completo (resolver
+  Node, instancia única por mutex, protocolo stdin/stdout, QR, envíos, sesión y
+  logs) y es agnóstico del proyecto: la app solo llama a
+  `Configure(Options{AppName, AppVersion, Profile, DataDir})` y `New(emit)`.
+  GymPro lo consume con un shim de 60 líneas en `internal/whatsapp` y
+  `models.WhatsappStatus` es un alias de `whatsapp.Status`. Flutter sigue con
+  su adaptador Dart sobre el mismo protocolo (ver más abajo).
 - **Resolución de ruta** (`internal/tasks/whatsapp_engine.go`):
   1. env `COMPASS_WHATSAPP_ENGINE` (override explícito);
   2. `<dir del exe>/Kit-Whatsapp` (instalación / binario compilado);
