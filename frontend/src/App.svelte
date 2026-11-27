@@ -1131,10 +1131,17 @@
     <div class="projects">
       {#each workspace.projects as p, i}
         <div class:active={i === workspace.active} class="project">
-          <button class="project-main" onclick={() => pickProject(i)} title={p.path}>
+          <button
+            class="project-hit"
+            onclick={() => pickProject(i)}
+            title={p.path}
+            aria-label={`Abrir ${p.name}`}
+            aria-current={i === workspace.active ? 'true' : undefined}
+          ></button>
+          <div class="project-top">
             <span class="dot" style="background:{colors[i % colors.length]}"></span>
             <span class="pname">{p.name}</span>
-          </button>
+          </div>
           <button class="project-close" onclick={() => dropProject(i)} aria-label="Cerrar proyecto" title="Cerrar proyecto">×</button>
           <div class="project-chips">
             {#if kitBadges[p.path]?.whatsapp}
