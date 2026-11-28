@@ -111,7 +111,11 @@ func (t *TerminalService) OpenSession(id, label, project, script, dir string, ro
 
 	t.mu.Lock()
 	s.sess = sess
+	targetCols, targetRows := s.cols, s.rows
 	t.mu.Unlock()
+	if targetCols != cols || targetRows != rows {
+		sess.Resize(targetCols, targetRows)
+	}
 
 	go func() {
 		code := sess.WaitExit()

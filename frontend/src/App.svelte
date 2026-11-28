@@ -891,7 +891,9 @@
     const id = `tab-${sessionTag}-${tab.key}`
     tab.ptyId = id
     tab.exited = false
-    const opened = await openTerminal(id, tab.label, script, entry.term.rows, entry.term.cols)
+    const openRows = entry.term.rows
+    const openCols = entry.term.cols
+    const opened = await openTerminal(id, tab.label, script, openRows, openCols)
     if (!opened) {
       tab.ptyId = null
       tab.exited = true
@@ -899,8 +901,11 @@
       return
     }
     lastError = ''
-    // La ConPTY ya nace con este tamano: no hace falta reenviarlo al activar.
-    lastPtySize.set(tab.key, `${entry.term.cols}x${entry.term.rows}`)
+    // Registra el tamaño con el que nació la ConPTY; si el layout cambió
+    // mientras abría, resizePty sincroniza la diferencia ahora.
+    lastPtySize.set(tab.key, `${openCols}x${openRows}`)
+    fitTerm(tab.key)
+    resizePty(tab, entry)
     entry.term.focus()
     reclaimFocus()
   }
@@ -930,7 +935,9 @@
     const id = `tab-${sessionTag}-${tab.key}`
     tab.ptyId = id
     tab.exited = false
-    const opened = await openTerminal(id, tab.label, script, entry.term.rows, entry.term.cols)
+    const openRows = entry.term.rows
+    const openCols = entry.term.cols
+    const opened = await openTerminal(id, tab.label, script, openRows, openCols)
     if (!opened) {
       tab.ptyId = null
       tab.exited = true
@@ -938,7 +945,9 @@
       return
     }
     lastError = ''
-    lastPtySize.set(tab.key, `${entry.term.cols}x${entry.term.rows}`)
+    lastPtySize.set(tab.key, `${openCols}x${openRows}`)
+    fitTerm(tab.key)
+    resizePty(tab, entry)
     entry.term.focus()
     reclaimFocus()
   }
