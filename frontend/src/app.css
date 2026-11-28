@@ -103,6 +103,10 @@
 /* Sin scroll horizontal: si el calculo de columnas se quedara corto por un
    pixel, no debe aparecer una barra inferior que robe una fila. */
 .term-host .xterm-viewport { overflow-x: hidden; }
+/* Neutraliza letter-spacing (-0.01em en body) y text-rendering (optimizeLegibility
+   en :root) dentro del renderer DOM de xterm: alteran el ancho real de los glifos
+   respecto a la celda medida y recortan los ultimos caracteres en lineas largas. */
+.term-host .xterm { letter-spacing: 0; text-rendering: optimizeSpeed; font-variant-ligatures: none; }
 .term-empty { height: 100%; display: grid; place-items: center; font-size: 12px; }
 .right { width: 300px; flex-shrink: 0; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 50%, var(--bg)); display: flex; flex-direction: column; }
 .right-tabs { display: flex; gap: 4px; padding: 10px; border-bottom: 1px solid var(--border); }
