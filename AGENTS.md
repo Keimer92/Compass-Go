@@ -1114,6 +1114,18 @@ proyecto.
   existía y el repo Flutter tampoco; School Tracker es ahora Go+Wails y usa la
   instancia `school-tracker`. En Cloudflare el worker `school-tracker-flutter`
   sigue desplegado como huérfano y hay que borrarlo desde el dashboard.
+- **Claves de instancia** (`KitD1Keys` / `KitD1GenerateKey` /
+  `KitD1GenerateAllKeys`): el panel consulta y emite el archivo `.key`
+  (`{workerUrl, schoolKey}`) de cada worker sin pasar por Node. La clave se
+  busca en `sync-keys.json` y, si no está, en el KV de ruteo del worker
+  (`[[kv_namespaces]]` con `routingKv`, normalmente `SCHOOL_ROUTING`): el valor
+  de cada clave es el `database_id` al que enruta (`primary` = la base propia
+  del worker). **Nunca se rota sola**: `sk = sha256(clave)[0..8]` separa los
+  datos, así que una clave nueva abre un espacio vacío y los equipos ya
+  vinculados dejarían de ver lo nuevo. Solo se crea una clave cuando el worker
+  no tiene ninguna, y entonces se registra en el KV y se guarda en
+  `sync-keys.json`. El `.key` se escribe en el directorio de la instancia
+  (`<namespace>-<slug>.key`, cubierto por el `*.key` del `.gitignore`).
 - **Acciones**: ensamblar, typecheck, dev, deploy, provision dry-run/real,
   whoami/login, listar tenants, exportar/rotar clave e instalar dependencias.
   Se arman en `KitD1Script` con **whitelist** de acción + validación de

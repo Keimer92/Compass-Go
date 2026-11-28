@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -335,5 +336,104 @@ func TestProjectKitsInsignias(t *testing.T) {
 	}
 	if len(got) != 3 {
 		t.Fatalf("se esperaban 3 proyectos, hubo %d", len(got))
+	}
+}
+
+// El .key se emite con la clave que ya está en sync-keys.json, sin tocar la
+// red: reemitir no debe rotar, porque cada clave abre su propio espacio de
+// datos (sk = sha256(clave)) y los equipos ya vinculados dejarían de ver lo
+// nuevo.
+func TestKitD1GenerateKeyReusesSavedKey(t *testing.T) {
+	root, b := kitFixture(t)
+	dir := filepath.Join(root, "worker", "instances", "alpha")
+	proyecto := `{
+		"namespace": "ns-alpha",
+		"keyPrefix": "kp_",
+		"routingKv": "SCHOOL_ROUTING",
+		"keysFile": "sync-keys.json",
+		"defaultTenant": "default",
+		"workerUrl": "https://worker-alpha.example.workers.dev"
+	}`
+	if err := os.WriteFile(filepath.Join(dir, "sync-project.json"), []byte(proyecto), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenants.json"), []byte(`{"tenants":[{"slug":"nube"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	guardadas := `{"nube":{"name":"nube","schoolKey":"kp_abc123","databaseId":"11111111-2222-3333-4444-555555555555"}}`
+	if err := os.WriteFile(filepath.Join(dir, "sync-keys.json"), []byte(guardadas), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	k := b.KitD1GenerateKey("alpha")
+	if k.Error != "" {
+		t.Fatalf("error inesperado: %s", k.Error)
+	}
+	if k.Key != "kp_abc123" || k.Source != "keys-file" {
+		t.Fatalf("clave=%q source=%q, quería la guardada en sync-keys.json", k.Key, k.Source)
+	}
+	if k.KeyFile == "" {
+		t.Fatal("no se escribió el archivo .key")
+	}
+	if filepath.Base(k.KeyFile) != "ns-alpha-nube.key" {
+		t.Fatalf("nombre del .key = %q", filepath.Base(k.KeyFile))
+	}
+	blob, err := os.ReadFile(k.KeyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		WorkerURL string `json:"workerUrl"`
+		SchoolKey string `json:"schoolKey"`
+	}
+	if err := json.Unmarshal(blob, &got); err != nil {
+		t.Fatalf(".key no es JSON válido: %v", err)
+	}
+	if got.SchoolKey != "kp_abc123" {
+		t.Fatalf("schoolKey del .key = %q", got.SchoolKey)
+	}
+	if got.WorkerURL != "https://worker-alpha.example.workers.dev" {
+		t.Fatalf("workerUrl del .key = %q", got.WorkerURL)
+	}
+}
+
+func TestKitD1RoutingKVIDReadsGluedBlock(t *testing.T) {
+	dir := t.TempDir()
+	toml := "name = \"w\"\n" +
+		"[[kv_namespaces]]\nbinding = \"OTHER\"\nid = \"aaaaaaaa\"\n" +
+		"[[kv_namespaces]]\nbinding = \"SCHOOL_ROUTING\"\nid = \"bbbbbbbb\"\n" +
+		"[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"x\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "wrangler.toml"), []byte(toml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := kitD1RoutingKVID(dir, "SCHOOL_ROUTING"); got != "bbbbbbbb" {
+		t.Fatalf("id del KV de ruteo = %q, quería bbbbbbbb", got)
+	}
+	if got := kitD1RoutingKVID(dir, "MISSING"); got != "" {
+		t.Fatalf("binding inexistente devolvió %q", got)
+	}
+}
+
+// Sin KV en wrangler.toml no se puede registrar la clave: fallar antes de
+// ejecutar Wrangler evita crear una clave que el worker no sabría enrutar.
+func TestKitD1MintKeyRequiresRoutingKV(t *testing.T) {
+	dir := t.TempDir()
+	cfg := loadKitD1ProjectConfig(dir)
+	if _, err := kitD1MintKey(dir, cfg, "11111111-2222-3333-4444-555555555555"); err == nil {
+		t.Fatal("se esperaba error sin [[kv_namespaces]] en wrangler.toml")
+	}
+}
+
+func TestKitD1TenantSlugUsesFirstTenant(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "tenants.json"), []byte(`{"tenants":[{"slug":"nube"},{"slug":"otro"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadKitD1ProjectConfig(dir)
+	if got := kitD1TenantSlug(dir, cfg); got != "nube" {
+		t.Fatalf("slug = %q", got)
+	}
+	if got := kitD1TenantSlug(t.TempDir(), cfg); got != "default" {
+		t.Fatalf("sin tenants.json el slug debería ser default, fue %q", got)
 	}
 }

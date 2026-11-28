@@ -5,11 +5,15 @@
     kitD1Whoami,
     kitD1Databases,
     kitD1Actions,
+    kitD1Keys,
+    kitD1GenerateKey,
+    kitD1GenerateAllKeys,
     kitD1SetPath,
     kitD1PickPath,
     kitD1Script,
     type KitD1Info,
     type KitD1Databases,
+    type KitD1Key,
     type KitD1ActionDef,
   } from '../lib/bridge'
 
@@ -27,6 +31,13 @@
   let actions = $state<KitD1ActionDef[]>([])
   let whoami = $state('')
   let databases = $state<KitD1Databases>({ account: '', databases: [], error: '' })
+  let keys = $state<KitD1Key[]>([])
+  let keysLoaded = $state(false)
+  let keyLoading = $state(false)
+  // Instancia en curso ('*' = todas) para deshabilitar los botones.
+  let keyBusy = $state('')
+  let keyMsg = $state('')
+  let revealed = $state<string[]>([])
   let loading = $state(true)
   let whoLoading = $state(false)
   let dbLoading = $state(false)
@@ -113,6 +124,83 @@
     }
   }
 
+  // --- claves de instancia -------------------------------------------------
+  // Consultar y generar tocan Wrangler (varios segundos), por eso van aparte
+  // del estado que carga al abrir el modal.
+  async function loadKeys() {
+    keyLoading = true
+    keyMsg = ''
+    try {
+      keys = await kitD1Keys()
+      keysLoaded = true
+    } catch (e) {
+      keyMsg = (e as Error).message
+    } finally {
+      keyLoading = false
+    }
+  }
+
+  async function generateKey(instance: string) {
+    keyBusy = instance
+    keyMsg = ''
+    try {
+      const k = await kitD1GenerateKey(instance)
+      keys = keys.map((x) => (x.instance === k.instance ? k : x))
+      keysLoaded = true
+      if (k.error) keyMsg = `${instance}: ${k.error}`
+      else if (k.keyFile) keyMsg = `${instance}: .key escrito en ${k.keyFile}`
+    } catch (e) {
+      keyMsg = (e as Error).message
+    } finally {
+      keyBusy = ''
+    }
+  }
+
+  async function generateAllKeys() {
+    keyBusy = '*'
+    keyMsg = ''
+    try {
+      keys = await kitD1GenerateAllKeys()
+      keysLoaded = true
+      const written = keys.filter((k) => k.keyFile).length
+      keyMsg = `Archivos .key escritos: ${written} de ${keys.length}.`
+    } catch (e) {
+      keyMsg = (e as Error).message
+    } finally {
+      keyBusy = ''
+    }
+  }
+
+  function toggleReveal(instance: string) {
+    revealed = revealed.includes(instance)
+      ? revealed.filter((x) => x !== instance)
+      : [...revealed, instance]
+  }
+
+  // La clave es una credencial: oculta el cuerpo y deja prefijo y sufijo.
+  function maskKey(k: string): string {
+    const i = k.indexOf('_')
+    return `${i >= 0 ? k.slice(0, i + 1) : ''}${'•'.repeat(8)}${k.slice(-4)}`
+  }
+
+  function sourceLabel(k: KitD1Key): string {
+    switch (k.source) {
+      case 'keys-file': return 'sync-keys.json'
+      case 'kv': return 'KV de ruteo'
+      case 'generated': return 'nueva'
+      default: return ''
+    }
+  }
+
+  async function copyKey(k: KitD1Key) {
+    try {
+      await navigator.clipboard.writeText(k.key)
+      keyMsg = `Clave de ${k.instance} copiada al portapapeles.`
+    } catch {
+      keyMsg = 'No se pudo copiar al portapapeles.'
+    }
+  }
+
   async function pickPath() {
     try {
       info = await kitD1PickPath()
@@ -131,6 +219,9 @@
       info = await kitD1SetPath('')
       whoami = ''
       databases = { account: '', databases: [], error: '' }
+      keys = []
+      keysLoaded = false
+      keyMsg = ''
       if (info.exists) {
         void refreshWhoami()
         void loadDatabases()
@@ -303,6 +394,70 @@
         </section>
 
         <section class="sec">
+          <div class="sec-title">
+            Claves de instancia
+            {#if keysLoaded}
+              <button class="lnk" onclick={loadKeys} disabled={keyLoading || keyBusy !== ''}>
+                {keyLoading ? 'consultando…' : 'Actualizar'}
+              </button>
+            {/if}
+          </div>
+          {#if !keysLoaded}
+            <p class="hint">
+              Compass emite el archivo <code>.key</code> de cada worker (workerUrl + schoolKey).
+              Reutiliza la clave ya registrada en el KV de ruteo y solo crea una nueva si el
+              worker no tiene ninguna.
+            </p>
+            <div class="action-grid">
+              <button class="pill act" onclick={loadKeys} disabled={keyLoading || keyBusy !== ''}>
+                {keyLoading ? 'Consultando…' : 'Consultar claves'}
+              </button>
+              <button class="pill act" onclick={generateAllKeys} disabled={keyBusy !== ''}>
+                {keyBusy === '*' ? 'Generando…' : 'Generar todas'}
+              </button>
+            </div>
+          {:else if !keys.length}
+            <p class="hint">No hay instancias en worker/instances.</p>
+          {:else}
+            <div class="key-list">
+              {#each keys as k (k.instance)}
+                <div class="key-row">
+                  <span class="key-name">
+                    {k.instance}
+                    <span class="key-sub">
+                      {k.worker || 'sin worker'}{#if k.source} · {sourceLabel(k)}{/if}{#if k.extra} · {k.extra} clave(s) ajena(s){/if}
+                    </span>
+                  </span>
+                  {#if k.key}
+                    <code class="key-val">{revealed.includes(k.instance) ? k.key : maskKey(k.key)}</code>
+                    <button class="lnk" onclick={() => toggleReveal(k.instance)}>
+                      {revealed.includes(k.instance) ? 'Ocultar' : 'Ver'}
+                    </button>
+                    <button class="pill mini" onclick={() => copyKey(k)}>Copiar</button>
+                  {/if}
+                  <button
+                    class="pill mini"
+                    onclick={() => generateKey(k.instance)}
+                    disabled={keyBusy !== ''}
+                    title={k.key ? 'Escribe el archivo .key con la clave existente' : 'Crea una clave, la registra en el KV y escribe el .key'}
+                  >
+                    {keyBusy === k.instance ? '…' : k.key ? 'Exportar .key' : 'Generar key'}
+                  </button>
+                </div>
+                {#if k.error}<div class="msg error">{k.instance}: {k.error}</div>{/if}
+                {#if k.note}<div class="msg note">{k.note}</div>{/if}
+              {/each}
+            </div>
+            <div class="action-grid">
+              <button class="pill act" onclick={generateAllKeys} disabled={keyBusy !== ''}>
+                {keyBusy === '*' ? 'Generando…' : 'Generar todas'}
+              </button>
+            </div>
+            {#if keyMsg}<p class="hint">{keyMsg}</p>{/if}
+          {/if}
+        </section>
+
+        <section class="sec">
           <div class="sec-title">Consumidores del workspace</div>
           {#if info.consumers.length}
             <div class="consumer-list">
@@ -445,6 +600,21 @@
   .tags { display: flex; gap: 4px; }
   .tag { font-size: 9px; color: var(--accent); opacity: 0.85; }
   .consumer-list { margin-top: 8px; }
+  .key-list { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .key-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+    border-bottom: 1px solid var(--border); font-size: 11px;
+  }
+  .key-row:last-child { border-bottom: none; }
+  .key-name { display: flex; flex-direction: column; min-width: 110px; font-weight: 600; }
+  .key-sub { font-size: 9px; font-weight: 400; color: var(--muted); }
+  .key-val {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px;
+    color: var(--text); letter-spacing: .02em;
+  }
+  .pill.mini { padding: 3px 8px; font-size: 10px; }
+  .msg.note { color: var(--muted); background: color-mix(in srgb, var(--panel) 60%, transparent); }
   .consumer {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11px;

@@ -9,6 +9,8 @@ package webui
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,6 +38,16 @@ var (
 	reD1Block = regexp.MustCompile(`(?s)\[\[d1_databases\]\](.*?)(?:\[\[|\z)`)
 	reD1Name  = regexp.MustCompile(`(?m)^\s*database_name\s*=\s*"([^"]+)"`)
 	reD1ID    = regexp.MustCompile(`(?m)^\s*database_id\s*=\s*"([^"]+)"`)
+
+	// Bloques [[kv_namespaces]] para localizar el KV de ruteo (clave -> base).
+	// Se parten por "[[" en vez de usar una regex con salto: Go (RE2) no tiene
+	// lookahead y el delimitador quedaría consumido por el bloque anterior.
+	reKVBinding = regexp.MustCompile(`(?m)^\s*binding\s*=\s*"([^"]+)"`)
+	reKVID      = regexp.MustCompile(`(?m)^\s*id\s*=\s*"([^"]+)"`)
+
+	// Allowlist para lo que llega a la linea de comandos de Wrangler.
+	reSafeKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	reSafeID  = regexp.MustCompile(`^[0-9a-fA-F-]{8,64}$`)
 )
 
 // KitD1Instance describe una instancia del worker (worker/instances/<nombre>).
@@ -426,6 +438,363 @@ func mergeKitD1Databases(cloud []KitD1Database, instances []KitD1Instance, stats
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// --- claves de instancia ----------------------------------------------------
+
+// KitD1Key es la clave de conexión de una instancia: el par workerUrl +
+// schoolKey que la app importa desde un archivo .key. El panel la muestra
+// oculta hasta que el usuario la revela.
+type KitD1Key struct {
+	Instance     string `json:"instance"`
+	Worker       string `json:"worker"`
+	WorkerURL    string `json:"workerUrl"`
+	DatabaseName string `json:"databaseName"`
+	Key          string `json:"key"`
+	// Source dice de dónde salió la clave: "keys-file" (sync-keys.json),
+	// "kv" (KV de ruteo del worker) o "generated" (creada y registrada ahora).
+	Source string `json:"source"`
+	// Extra cuenta otras claves del KV con el mismo prefijo que apuntan a otra
+	// base (restos de instalaciones viejas).
+	Extra int `json:"extra"`
+	// KeyFile es el .key escrito por KitD1GenerateKey.
+	KeyFile string `json:"keyFile"`
+	Note    string `json:"note"`
+	Error   string `json:"error"`
+}
+
+// kitD1ProjectConfig son los campos de sync-project.json que usa la emisión de
+// claves, con los mismos valores por defecto que generate-key.mjs.
+type kitD1ProjectConfig struct {
+	Namespace     string `json:"namespace"`
+	KeyPrefix     string `json:"keyPrefix"`
+	RoutingKV     string `json:"routingKv"`
+	DefaultTenant string `json:"defaultTenant"`
+	KeysFile      string `json:"keysFile"`
+	WorkerURL     string `json:"workerUrl"`
+}
+
+func loadKitD1ProjectConfig(dir string) kitD1ProjectConfig {
+	cfg := kitD1ProjectConfig{
+		Namespace: "sync", KeyPrefix: "sync_", RoutingKV: "SCHOOL_ROUTING",
+		DefaultTenant: "default", KeysFile: "sync-keys.json",
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "sync-project.json")); err == nil {
+		_ = json.Unmarshal(b, &cfg)
+	}
+	if cfg.KeyPrefix == "" {
+		cfg.KeyPrefix = "sync_"
+	}
+	if cfg.RoutingKV == "" {
+		cfg.RoutingKV = "SCHOOL_ROUTING"
+	}
+	if cfg.KeysFile == "" {
+		cfg.KeysFile = "sync-keys.json"
+	}
+	if cfg.Namespace == "" {
+		cfg.Namespace = "sync"
+	}
+	if cfg.DefaultTenant == "" {
+		cfg.DefaultTenant = "default"
+	}
+	return cfg
+}
+
+// kitD1TenantSlug toma el primer tenant de tenants.json (el que usa
+// provision.mjs) o el defaultTenant del proyecto.
+func kitD1TenantSlug(dir string, cfg kitD1ProjectConfig) string {
+	var t struct {
+		Tenants []struct {
+			Slug string `json:"slug"`
+		} `json:"tenants"`
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "tenants.json")); err == nil {
+		if json.Unmarshal(b, &t) == nil && len(t.Tenants) > 0 && t.Tenants[0].Slug != "" {
+			return t.Tenants[0].Slug
+		}
+	}
+	return cfg.DefaultTenant
+}
+
+// kitD1RoutingKVID lee el id del KV de ruteo desde el wrangler.toml. El
+// encabezado [[kv_namespaces]] puede venir pegado al valor anterior, por eso se
+// recorren los bloques en lugar de anclar la busqueda al inicio de linea.
+func kitD1RoutingKVID(dir, binding string) string {
+	b, err := os.ReadFile(filepath.Join(dir, "wrangler.toml"))
+	if err != nil {
+		return ""
+	}
+	for _, blk := range strings.Split(string(b), "[[") {
+		if !strings.HasPrefix(blk, "kv_namespaces]]") {
+			continue
+		}
+		if m := reKVBinding.FindStringSubmatch(blk); len(m) == 2 && m[1] == binding {
+			if id := reKVID.FindStringSubmatch(blk); len(id) == 2 {
+				return id[1]
+			}
+		}
+	}
+	return ""
+}
+
+// readKitD1KeysFile lee sync-keys.json (clave -> datos del tenant). El archivo
+// es una credencial y vive fuera de git.
+func readKitD1KeysFile(dir, name string) (map[string]map[string]any, error) {
+	out := map[string]map[string]any{}
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return out, nil
+		}
+		return out, fmt.Errorf("no se pudo leer %s", name)
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return out, fmt.Errorf("%s ilegible: %v", name, err)
+	}
+	return out, nil
+}
+
+// kitD1KeysFromKV recupera las claves del KV de ruteo. Cada clave apunta a la
+// base donde viven sus datos ("primary" = la base propia del worker), así que
+// una clave solo sirve para esta instancia si apunta a su database_id.
+func kitD1KeysFromKV(dir string, cfg kitD1ProjectConfig, dbID string) (key string, extra int, err error) {
+	kvID := kitD1RoutingKVID(dir, cfg.RoutingKV)
+	if kvID == "" {
+		return "", 0, fmt.Errorf("no hay id para el KV %s en wrangler.toml", cfg.RoutingKV)
+	}
+	if !reSafeID.MatchString(kvID) {
+		return "", 0, fmt.Errorf("id del KV %s no válido", cfg.RoutingKV)
+	}
+	cmd := fmt.Sprintf("npx --yes wrangler kv key list --namespace-id=%s --remote", kvID)
+	text, runErr, timedOut := runWranglerCapture(dir, cmd, 30*time.Second)
+	switch {
+	case timedOut:
+		return "", 0, fmt.Errorf("Wrangler tardó demasiado al leer el KV")
+	case runErr != nil && strings.TrimSpace(text) == "":
+		return "", 0, fmt.Errorf("sin sesión de Wrangler (ejecuta Wrangler login)")
+	}
+	var rows []struct {
+		Name string `json:"name"`
+	}
+	if e := decodeFirstJSON(text, &rows); e != nil {
+		return "", 0, fmt.Errorf("no se pudo leer el KV %s", cfg.RoutingKV)
+	}
+	names := []string{}
+	for _, r := range rows {
+		if strings.HasPrefix(r.Name, cfg.KeyPrefix) && reSafeKey.MatchString(r.Name) {
+			names = append(names, r.Name)
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return "", 0, nil
+	}
+	// Con una sola clave no hace falta leer su valor: es la de la instancia.
+	if len(names) == 1 {
+		return names[0], 0, nil
+	}
+	for _, name := range names {
+		// La clave va sin comillas: cmd.exe las pasa literales y Wrangler las
+		// codifica en la URL (%22...%22), lo que devuelve 404. El allowlist
+		// reSafeKey ya impide cualquier metacaracter.
+		get := fmt.Sprintf("npx --yes wrangler kv key get --namespace-id=%s %s --remote", kvID, name)
+		v, runErr, to := runWranglerCapture(dir, get, 20*time.Second)
+		if to || runErr != nil {
+			continue
+		}
+		switch strings.TrimSpace(v) {
+		case dbID, "primary":
+			if key == "" {
+				key = name
+			}
+		default:
+			extra++
+		}
+	}
+	return key, extra, nil
+}
+
+// kitD1MintKey crea una clave nueva y la registra en el KV de ruteo apuntando a
+// la base de la instancia. Sin el registro la clave no serviría: el worker no
+// sabría en qué base buscar los datos.
+func kitD1MintKey(dir string, cfg kitD1ProjectConfig, dbID string) (string, error) {
+	kvID := kitD1RoutingKVID(dir, cfg.RoutingKV)
+	if kvID == "" || !reSafeID.MatchString(kvID) {
+		return "", fmt.Errorf("no hay id válido para el KV %s en wrangler.toml", cfg.RoutingKV)
+	}
+	if !reSafeID.MatchString(dbID) {
+		return "", fmt.Errorf("database_id no válido en wrangler.toml")
+	}
+	buf := make([]byte, 9)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("no se pudo generar la clave: %v", err)
+	}
+	key := cfg.KeyPrefix + hex.EncodeToString(buf)
+	if !reSafeKey.MatchString(key) {
+		return "", fmt.Errorf("el prefijo de clave %q no es válido", cfg.KeyPrefix)
+	}
+	cmd := fmt.Sprintf("npx --yes wrangler kv key put --namespace-id=%s %s %s --remote", kvID, key, dbID)
+	text, runErr, timedOut := runWranglerCapture(dir, cmd, 40*time.Second)
+	switch {
+	case timedOut:
+		return "", fmt.Errorf("Wrangler tardó demasiado al registrar la clave")
+	case runErr != nil:
+		return "", fmt.Errorf("no se pudo registrar la clave en %s: %s", cfg.RoutingKV, firstLine(text))
+	}
+	return key, nil
+}
+
+// kitD1InstanceKey resuelve la clave de una instancia. Con write=false solo
+// consulta (sync-keys.json y KV de ruteo); con write=true además persiste la
+// clave en sync-keys.json, crea una si no existe y escribe el archivo .key.
+func (b *Bridge) kitD1InstanceKey(root, name string, write bool) KitD1Key {
+	out := KitD1Key{Instance: name}
+	if !kitD1ValidInstance(root, name) {
+		out.Error = "Instancia no válida"
+		return out
+	}
+	dir := filepath.Join(root, "worker", "instances", name)
+	cfg := loadKitD1ProjectConfig(dir)
+	slug := kitD1TenantSlug(dir, cfg)
+	out.WorkerURL = cfg.WorkerURL
+	for _, ins := range kitD1Instances(root) {
+		if ins.Name == name {
+			out.Worker, out.DatabaseName = ins.WorkerName, ins.DatabaseName
+			// 1) sync-keys.json: fuente local e instantánea.
+			if out.Key == "" {
+				if saved, err := readKitD1KeysFile(dir, cfg.KeysFile); err == nil {
+					if rec := saved[slug]; rec != nil {
+						k, _ := rec["schoolKey"].(string)
+						if k == "" {
+							k, _ = rec["syncKey"].(string)
+						}
+						if k != "" {
+							out.Key, out.Source = k, "keys-file"
+						}
+					}
+				}
+			}
+			// 2) KV de ruteo: donde vive la relación clave -> base.
+			if out.Key == "" {
+				k, extra, err := kitD1KeysFromKV(dir, cfg, ins.DatabaseID)
+				if err != nil {
+					out.Error = err.Error()
+				} else {
+					out.Key, out.Extra = k, extra
+					if k != "" {
+						out.Source = "kv"
+					}
+				}
+			}
+			// 3) Sin clave: se crea una y se registra (solo si se pidió generar).
+			if write && out.Key == "" && out.Error == "" {
+				if ins.DatabaseID == "" {
+					out.Error = "La instancia no declara database_id en wrangler.toml"
+				} else if k, err := kitD1MintKey(dir, cfg, ins.DatabaseID); err != nil {
+					out.Error = err.Error()
+				} else {
+					out.Key, out.Source = k, "generated"
+				}
+			}
+			break
+		}
+	}
+	if !write || out.Key == "" {
+		return out
+	}
+
+	// Persistir en sync-keys.json (como provision.mjs) para no volver a
+	// consultar el KV en la próxima apertura del panel.
+	saved, err := readKitD1KeysFile(dir, cfg.KeysFile)
+	if err != nil {
+		out.Note = err.Error()
+	} else {
+		rec := saved[slug]
+		if rec == nil {
+			rec = map[string]any{}
+		}
+		rec["name"], rec["schoolKey"] = slug, out.Key
+		if id := kitD1DatabaseID(dir); id != "" {
+			rec["databaseId"] = id
+		}
+		saved[slug] = rec
+		blob, _ := json.MarshalIndent(saved, "", "  ")
+		if err := os.WriteFile(filepath.Join(dir, cfg.KeysFile), append(blob, '\n'), 0o600); err != nil {
+			out.Note = "No se pudo escribir " + cfg.KeysFile + ": " + err.Error()
+		}
+	}
+
+	// El archivo .key es lo que importa la app: workerUrl + schoolKey.
+	if cfg.WorkerURL == "" {
+		if out.Note == "" {
+			out.Note = "sync-project.json no declara workerUrl: el .key no se escribió"
+		}
+		return out
+	}
+	blob, _ := json.MarshalIndent(map[string]string{
+		"workerUrl": cfg.WorkerURL, "schoolKey": out.Key,
+	}, "", "  ")
+	path := filepath.Join(dir, cfg.Namespace+"-"+slug+".key")
+	if err := os.WriteFile(path, append(blob, '\n'), 0o600); err != nil {
+		out.Note = "No se pudo escribir el .key: " + err.Error()
+	} else {
+		out.KeyFile = path
+	}
+	return out
+}
+
+// kitD1DatabaseID relee el database_id de la instancia (para sync-keys.json).
+func kitD1DatabaseID(dir string) string {
+	b, err := os.ReadFile(filepath.Join(dir, "wrangler.toml"))
+	if err != nil {
+		return ""
+	}
+	if blk := reD1Block.FindSubmatch(b); len(blk) == 2 {
+		if m := reD1ID.FindSubmatch(blk[1]); len(m) == 2 {
+			return string(m[1])
+		}
+	}
+	return ""
+}
+
+// KitD1Keys consulta la clave de cada instancia sin crear nada. Es una llamada
+// de red (Wrangler), así que el panel la pide aparte del resto del estado.
+func (b *Bridge) KitD1Keys() []KitD1Key {
+	root := b.kitD1Root()
+	out := []KitD1Key{}
+	if root == "" {
+		return out
+	}
+	for _, ins := range kitD1Instances(root) {
+		out = append(out, b.kitD1InstanceKey(root, ins.Name, false))
+	}
+	return out
+}
+
+// KitD1GenerateKey emite el archivo .key de una instancia. Reutiliza la clave
+// ya registrada y solo crea una nueva cuando el worker no tiene ninguna: cada
+// clave abre su propio espacio de datos (sk = sha256(clave)), así que rotarla
+// sin querer dejaría a los equipos ya vinculados sin ver lo nuevo.
+func (b *Bridge) KitD1GenerateKey(instance string) KitD1Key {
+	root := b.kitD1Root()
+	if root == "" {
+		return KitD1Key{Instance: instance, Error: "Kit D1 no encontrado"}
+	}
+	return b.kitD1InstanceKey(root, instance, true)
+}
+
+// KitD1GenerateAllKeys emite el .key de todas las instancias en una sola
+// pasada, para no pulsar worker por worker.
+func (b *Bridge) KitD1GenerateAllKeys() []KitD1Key {
+	root := b.kitD1Root()
+	out := []KitD1Key{}
+	if root == "" {
+		return out
+	}
+	for _, ins := range kitD1Instances(root) {
+		out = append(out, b.kitD1InstanceKey(root, ins.Name, true))
+	}
 	return out
 }
 

@@ -1,4 +1,4 @@
-.app { display: flex; height: 100vh; }
+.app { display: flex; width: 100%; height: 100vh; overflow: hidden; }
 .sidebar { width: 252px; flex-shrink: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--sidebar) 94%, var(--bg)); border-right: 1px solid color-mix(in srgb, var(--border) 65%, transparent); padding: 14px 12px; }
 /* Marca: tile con degradado + wordmark. El icono es un SVG en currentColor. */
 .brand { display: flex; align-items: center; gap: 11px; padding: 4px 6px 2px; }
@@ -62,7 +62,7 @@
 .theme-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 9px; background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; transition: color .15s ease, background .15s ease, border-color .15s ease; }
 .theme-btn:hover { color: var(--text); background: color-mix(in srgb, var(--border) 70%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .theme-btn-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.content { flex: 1; display: flex; min-height: 0; }
+.content { flex: 1; display: flex; min-width: 0; min-height: 0; }
 .cards-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; gap: 14px; }
 /* El terminal ocupa un porcentaje FIJO (--term-pct) y las cards absorben el
    resto con scroll propio. Asi cambiar de proyecto (distinto numero de cards)
@@ -78,8 +78,8 @@
    contenido se recorta y se reajusta una sola vez al soltar. */
 .cards-area.dragging { cursor: row-resize; user-select: none; }
 .cards-area.dragging .terminal-panel { pointer-events: none; }
-.terminal-panel { flex: 0 0 var(--term-pct, 60%); min-height: 220px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
-.term-tabs { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: color-mix(in srgb, var(--border) 40%, var(--panel)); overflow-x: auto; }
+.terminal-panel { flex: 0 0 var(--term-pct, 60%); min-width: 0; min-height: 220px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
+.term-tabs { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 8px; background: color-mix(in srgb, var(--border) 40%, var(--panel)); overflow-x: auto; }
 .term-tab { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-radius: 12px; background: color-mix(in srgb, var(--border) 35%, var(--panel)); color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; border: 1px solid transparent; }
 .term-tab:hover { color: var(--text); }
 .term-tab.active { background: color-mix(in srgb, var(--accent) 26%, var(--panel)); color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -91,7 +91,7 @@
 .term-dot.dead { background: var(--muted); }
 .term-close { background: none; border: none; color: inherit; font-size: 14px; line-height: 1; padding: 0 2px; opacity: .6; cursor: pointer; }
 .term-close:hover { opacity: 1; }
-.term-stage { position: relative; flex: 1; min-height: 0; }
+.term-stage { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 /* El margen va en `inset`, no en `padding`: FitAddon mide el alto del host y,
    con box-sizing:border-box, el padding no se descuenta, así que calculaba una
    fila de más y la última línea quedaba cortada por el borde inferior. */

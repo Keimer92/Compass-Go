@@ -268,6 +268,20 @@ export interface KitD1Databases {
   databases: KitD1Database[]
   error: string
 }
+// Clave de conexión de una instancia (el contenido de un archivo .key).
+export interface KitD1Key {
+  instance: string
+  worker: string
+  workerUrl: string
+  databaseName: string
+  key: string
+  // 'keys-file' | 'kv' | 'generated' | ''
+  source: string
+  extra: number
+  keyFile: string
+  note: string
+  error: string
+}
 export interface KitD1Consumer {
   name: string
   path: string
@@ -298,6 +312,10 @@ export const kitD1Info = () => call<KitD1Info>(M('KitD1Info'))
 export const kitD1Whoami = () => call<string>(M('KitD1Whoami'))
 export const kitD1Databases = () => call<KitD1Databases>(M('KitD1Databases'))
 export const kitD1Actions = () => call<KitD1ActionDef[]>(M('KitD1Actions'))
+export const kitD1Keys = () => call<KitD1Key[]>(M('KitD1Keys'))
+export const kitD1GenerateKey = (instance: string) =>
+  call<KitD1Key>(M('KitD1GenerateKey'), instance)
+export const kitD1GenerateAllKeys = () => call<KitD1Key[]>(M('KitD1GenerateAllKeys'))
 export const kitD1SetPath = (path: string) => call<KitD1Info>(M('KitD1SetPath'), path)
 export const kitD1PickPath = () => call<KitD1Info>(M('KitD1PickPath'))
 export const kitD1Script = (action: string, instance: string, arg: string) =>
