@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -198,5 +199,65 @@ func TestGitPushEmitsProgress(t *testing.T) {
 		if e.Uploaded < 0 || e.Total < 0 {
 			t.Fatalf("bytes negativos: %+v", e)
 		}
+	}
+}
+
+// Un repo antiguo con 'master' que se estrena en un remoto vacio debe subir
+// 'main': Compass crea sus repositorios con main y no quiere que GitHub quede
+// con master solo por la inercia de la rama local.
+func TestGitPushRenamesMasterOnEmptyRemote(t *testing.T) {
+	dir := initRepo(t)
+	gitCommit(t, dir, "symbolic-ref", "HEAD", "refs/heads/master")
+	remote := filepath.Join(t.TempDir(), "remoto.git")
+	if out, err := exec.Command("git", "init", "--bare", "-q", remote).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v %s", err, out)
+	}
+	gitCommit(t, dir, "remote", "add", "origin", remote)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hola"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	b := NewBridge(dir)
+	if _, err := b.GitPush(); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if got := b.GitBranch(); got != "main" {
+		t.Fatalf("rama local %q, queria main", got)
+	}
+	out, err := exec.Command("git", "--git-dir", remote, "for-each-ref", "--format=%(refname:short)", "refs/heads").CombinedOutput()
+	if err != nil {
+		t.Fatalf("for-each-ref: %v %s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "main" {
+		t.Fatalf("ramas en el remoto %q, queria solo main", got)
+	}
+}
+
+// Si el remoto ya tiene ramas, su nombre manda: no se renombra la local.
+func TestGitPushKeepsMasterWhenRemoteHasBranches(t *testing.T) {
+	dir := initRepo(t)
+	gitCommit(t, dir, "symbolic-ref", "HEAD", "refs/heads/master")
+	remote := filepath.Join(t.TempDir(), "remoto.git")
+	if out, err := exec.Command("git", "init", "--bare", "-q", remote).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v %s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hola"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "init")
+	gitCommit(t, dir, "remote", "add", "origin", remote)
+	// El remoto ya tiene master (como un repo existente con contenido).
+	gitCommit(t, dir, "push", "-q", "origin", "master")
+	gitCommit(t, dir, "remote", "set-head", "origin", "master")
+
+	b := NewBridge(dir)
+	if _, err := b.GitPush(); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if got := b.GitBranch(); got != "master" {
+		t.Fatalf("rama local %q, queria master", got)
 	}
 }

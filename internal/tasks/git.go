@@ -75,6 +75,15 @@ func isRepo(ctx *project.ProjectContext) bool {
 	return err == nil
 }
 
+// remoteHasNoBranches dice si 'origin' existe y no tiene ninguna rama. Un
+// error (sin red, sin remoto) devuelve false: ante la duda no se renombra.
+func remoteHasNoBranches(ctx *project.ProjectContext) bool {
+	cmd := shell.HideConsole(exec.Command("git", "ls-remote", "--heads", "origin"))
+	cmd.Dir = ctx.ScriptDir
+	out, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(out)) == ""
+}
+
 func hasCommits(ctx *project.ProjectContext) bool {
 	return gitOut(ctx, "rev-parse", "--verify", "HEAD") != ""
 }
@@ -187,6 +196,19 @@ func pushCurrentBranch(ctx *project.ProjectContext) {
 		branch = "main"
 	}
 
+	// Estrenar un remoto vacio con 'master' dejaria el repo de GitHub con esa
+	// rama aunque Compass crea todo con main. Con el remoto ya poblado manda
+	// su nombre y no se renombra nada.
+	if branch == "master" && gitOut(ctx, "rev-parse", "--abbrev-ref", "@{upstream}") == "" && remoteHasNoBranches(ctx) {
+		fmt.Println("[INFO] El remoto esta vacio: renombrando 'master' a 'main'...")
+		if gitCapture(ctx, "branch", "-M", "main") == nil {
+			fmt.Println("[OK] Rama renombrada a 'main'.")
+			branch = "main"
+		} else {
+			fmt.Println("[WARN] No se pudo renombrar; se sube 'master'.")
+		}
+	}
+
 	fmt.Printf("[INFO] Subiendo la rama '%s' (git push -u origin %s)...\n", branch, branch)
 	if err := gitCapture(ctx, "push", "-u", "origin", branch); err != nil {
 		fmt.Printf("[ERROR] git push fallo:\n%s\n", err)
@@ -220,6 +242,14 @@ func createGithubRepo(ctx *project.ProjectContext) {
 		fmt.Println("       Borralo primero si quieres recrearlo: git remote remove origin")
 		ui.Pause()
 		return
+	}
+
+	// El repo nace vacio, asi que la rama del primer push sera la del repo en
+	// GitHub: se alinea a main antes de crearlo.
+	if gitOut(ctx, "rev-parse", "--abbrev-ref", "HEAD") == "master" {
+		if gitCapture(ctx, "branch", "-M", "main") == nil {
+			fmt.Println("[INFO] Rama 'master' renombrada a 'main' antes del primer push.")
+		}
 	}
 
 	defName := filepath.Base(ctx.ScriptDir)

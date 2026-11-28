@@ -430,6 +430,12 @@ Notas de implementación que no se deben romper:
   (`sidebar-foot`) al final del sidebar, de modo que cards y terminal ganan esos
   52 px de alto. El modal "Opciones" conserva "Herramientas" (cards de Config:
   Terminal, Entorno) y "General".
+- **Rama `main` por defecto**: los repos que crea Compass (GUI `GitInitRepo` y
+  CLI `createRepo`) nacen en `main`, sin depender del `init.defaultBranch` del
+  equipo. Un repo que ya existía con `master` se respeta: solo se renombra a
+  `main` cuando el primer push estrena un remoto **vacío** (no hay ninguna rama
+  en `origin`), porque ahí el nombre lo elige el primer push. Si el remoto ya
+  tiene ramas, manda el suyo y no se toca la historia local.
 - **Panel de Kit D1**: el botón "Kit D1" del pie del sidebar abre el panel de
   administración del kit. Está documentado completo en la sección
   [Core Kits → Kit D1](#kit-d1), junto al motor de WhatsApp.

@@ -887,11 +887,30 @@ func (b *Bridge) GitPush() (string, error) {
 		return "", errors.New("HEAD desacoplado: no se puede hacer push")
 	}
 
+	// Estrenar un remoto vacio con una rama llamada master dejaria el repo de
+	// GitHub con master, aunque Compass crea todos sus repos con main. Solo se
+	// renombra cuando el remoto no tiene ninguna rama: si ya esta poblado, el
+	// nombre que manda es el suyo y no se toca la historia local.
+	notice := ""
+	if info.Upstream == "" && info.Branch == "master" && remoteHasNoBranches(dir) {
+		if _, err := runGit(dir, "branch", "-M", "main"); err == nil {
+			notice = "Rama master renombrada a main. "
+			info = b.GitInfo()
+		}
+	}
+
 	out, err := pushBranch(dir, info)
 	if err != nil {
 		return "", pushError(out)
 	}
-	return pushNotice(out), nil
+	return notice + pushNotice(out), nil
+}
+
+// remoteHasNoBranches dice si 'origin' existe y no tiene ninguna rama. Un
+// error (sin red, sin remoto) devuelve false: ante la duda no se renombra nada.
+func remoteHasNoBranches(dir string) bool {
+	out, err := runGitTimeout(dir, 20*time.Second, "ls-remote", "--heads", "origin")
+	return err == nil && strings.TrimSpace(out) == ""
 }
 
 // pushBranch lanza el push informando del avance por "git:pushprogress". El
